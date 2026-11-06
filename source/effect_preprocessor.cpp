@@ -165,7 +165,7 @@ std::vector<std::filesystem::path> reshadefx::preprocessor::included_files() con
 {
 	std::vector<std::filesystem::path> files;
 	files.reserve(_file_cache.size());
-	for (const std::pair<std::string, std::string> &cache_entry : _file_cache)
+	for (const std::pair<const std::string, std::string> &cache_entry : _file_cache)
 		files.push_back(std::filesystem::u8path(cache_entry.first));
 	return files;
 }

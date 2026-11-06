@@ -37,6 +37,9 @@ namespace reshade
 		void on_reset();
 		void on_present();
 
+		// The test application's capture: each present after the effects, before the overlay
+		static inline void (*ultra_after_effects)(runtime *runtime) = nullptr;
+
 		uint64_t get_native() const final { return _swapchain->get_native(); }
 
 		void get_private_data(const uint8_t guid[16], uint64_t *data) const final { return _swapchain->get_private_data(guid, data); }
@@ -453,7 +456,7 @@ namespace reshade
 		api::resource _vr_overlay_tex = {};
 		api::resource_view _vr_overlay_target = {};
 
-		ultra::splash_state _ultra_splash;
+		ultra::SplashState _ultra_splash;
 		bool _ultra_tab_placed = false;
 		#pragma endregion
 

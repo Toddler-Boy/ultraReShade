@@ -70,8 +70,8 @@ reshade::d3d12::device_impl::device_impl(ID3D12Device *device) :
 		descriptor_heap_cpu(device, D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER),
 		descriptor_heap_cpu(device, D3D12_DESCRIPTOR_HEAP_TYPE_RTV),
 		descriptor_heap_cpu(device, D3D12_DESCRIPTOR_HEAP_TYPE_DSV) },
-	_gpu_view_heap(device),
-	_gpu_sampler_heap(device)
+	_gpu_sampler_heap(device),
+	_gpu_view_heap(device)
 {
 	for (UINT type = 0; type < D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES; ++type)
 		_descriptor_handle_size[type] = device->GetDescriptorHandleIncrementSize(static_cast<D3D12_DESCRIPTOR_HEAP_TYPE>(type));
@@ -2313,7 +2313,7 @@ D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu
 	const size_t heap_index = (handle.ptr >> heap_index_start) & 0xFFFFFFF;
 	assert(heap_index < _descriptor_heaps.size() && _descriptor_heaps[heap_index] != nullptr);
 
-	return { _descriptor_heaps[heap_index]->_orig_base_cpu_handle.ptr + (handle.ptr & (((1ull << heap_index_start) - 1) ^ 0x7)) };
+	return { static_cast<SIZE_T>(_descriptor_heaps[heap_index]->_orig_base_cpu_handle.ptr + (handle.ptr & (((1ull << heap_index_start) - 1) ^ 0x7))) };
 }
 #endif
 

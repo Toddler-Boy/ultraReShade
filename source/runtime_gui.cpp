@@ -838,7 +838,7 @@ void reshade::runtime::draw_gui()
 #if RESHADE_ADDON
 		&& !has_addon_event<addon_event::reshade_overlay>()
 #endif
-		&& !ultra::wants_splash_frame(_ultra_splash, is_loading())
+		&& !ultra::wantsSplashFrame(_ultra_splash, is_loading())
 		)
 	{
 		if (_primary_input_handler && _input != nullptr)
@@ -1046,7 +1046,7 @@ void reshade::runtime::draw_gui()
 	ImVec2 viewport_offset = ImVec2(0, 0);
 	const bool show_spinner = _reload_count > 1 && _tutorial_index != 0;
 
-	ultra::draw_splash(_ultra_splash, { _device, ImGui::GetBackgroundDrawList(), imgui_io.DisplaySize.x, imgui_io.DisplaySize.y, imgui_io.DeltaTime, _effects.size(), _reload_remaining_effects.load(), is_loading(), _show_overlay });
+	ultra::drawSplash(_ultra_splash, { _device, ImGui::GetBackgroundDrawList(), imgui_io.DisplaySize.x, imgui_io.DisplaySize.y, imgui_io.DeltaTime, _effects.size(), _reload_remaining_effects.load(), is_loading(), _show_overlay });
 
 
 	// Create ImGui widgets and windows
@@ -1441,12 +1441,12 @@ void reshade::runtime::draw_gui()
 					continue;
 
 				if (widget.title != "OSD")
-					ultra::dock_new_addon_window();
+					ultra::dockNewAddonWindow();
 
 				if (ImGui::Begin(widget.title.c_str(), nullptr, ImGuiWindowFlags_NoFocusOnAppearing))
 					widget.callback(this);
 				if (widget.title == "ultraGame")
-					ultra::place_ultragame_tab(_ultra_tab_placed);
+					ultra::placeUltraGameTab(_ultra_tab_placed);
 				ImGui::End();
 			}
 		}
@@ -1456,7 +1456,7 @@ void reshade::runtime::draw_gui()
 #endif
 
 	if (_show_overlay)
-		ultra::undock_dragged_node();
+		ultra::undockDraggedNode();
 
 	if (_effects_enabled &&
 		_preview_texture < _textures.size() &&
@@ -1835,7 +1835,7 @@ void reshade::runtime::draw_gui_home()
 
 	if (_reload_remaining_effects != std::numeric_limits<size_t>::max())
 	{
-		ultra::draw_window_progress_ring(ultra::compile_progress(_effects.size(), _reload_remaining_effects.load()));
+		ultra::drawWindowProgressRing(ultra::compileProgress(_effects.size(), _reload_remaining_effects.load()));
 		return; // Cannot show techniques and variables while effects are loading, since they are being modified in other threads during that time
 	}
 
@@ -4171,7 +4171,7 @@ void reshade::runtime::draw_technique_editor()
 							if (file.empty())
 								ImGui::TextUnformatted(message.data(), message.data() + message.size());
 							else
-								ImGui::Text("%s(%d): %.*s", std::filesystem::path(file).filename().u8string().c_str(), line, message.size(), message.data());
+								ImGui::Text("%s(%d): %.*s", std::filesystem::path(file).filename().u8string().c_str(), line, static_cast<int>(message.size()), message.data());
 						});
 					ImGui::EndTooltip();
 				}
@@ -4523,7 +4523,7 @@ void reshade::runtime::draw_technique_editor()
 		{
 			std::vector<size_t> technique_indices = _technique_sorting;
 
-			const auto move_technique = [this, &technique_indices](size_t from_index, size_t to_index) {
+			const auto move_technique = [&technique_indices](size_t from_index, size_t to_index) {
 				if (to_index < from_index) // Up
 					for (size_t i = from_index; to_index < i; --i)
 						std::swap(technique_indices[i - 1], technique_indices[i]);
@@ -5117,7 +5117,7 @@ void reshade::runtime::destroy_imgui_resources()
 	_device->destroy_pipeline_layout(_imgui_pipeline_layout);
 	_imgui_pipeline_layout = {};
 
-	ultra::destroy_splash(_ultra_splash, _device);
+	ultra::destroySplash(_ultra_splash, _device);
 }
 
 bool reshade::runtime::open_overlay(bool open, api::input_source source)

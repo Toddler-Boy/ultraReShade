@@ -11,6 +11,10 @@
 #include "addon_manager.hpp"
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
+#include "ultra_test_check.hpp"
+#include "ultra_test_run.hpp"
+#include "ultra_test_scene.hpp"
+#include <shellapi.h>
 #include <d3d9.h>
 #include <d3d11.h>
 #include <d3d12.h>
@@ -29,8 +33,8 @@ extern std::filesystem::path get_module_path(HMODULE module);
 extern "C" PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *pName);
 extern "C" PFN_vkVoidFunction VKAPI_CALL vkGetInstanceProcAddr(VkInstance instance, const char *pName);
 
-#define HR_CHECK(exp) { const HRESULT res = (exp); assert(SUCCEEDED(res)); }
-#define VK_CHECK(exp) { const VkResult res = (exp); assert(res >= VK_SUCCESS); }
+#define HR_CHECK(exp) { [[maybe_unused]] const HRESULT res = (exp); assert(SUCCEEDED(res)); }
+#define VK_CHECK(exp) { [[maybe_unused]] const VkResult res = (exp); assert(res >= VK_SUCCESS); }
 
 struct scoped_module_handle
 {
@@ -67,10 +71,42 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	g_module_handle = hInstance;
 	g_reshade_dll_path = get_module_path(hInstance);
 	g_target_executable_path = g_reshade_dll_path;
-	g_reshade_base_path = get_base_path();
 
 	std::error_code ec;
+
+	std::filesystem::path work_dir;
+	{	int argc = 0;
+		LPWSTR *const argv = CommandLineToArgvW(GetCommandLineW(), &argc);
+		for (int i = 1; argv != nullptr && i + 1 < argc; ++i)
+			if (_wcsicmp(argv[i], L"-work-dir") == 0)
+				work_dir = std::filesystem::absolute(argv[i + 1], ec);
+		LocalFree(argv);
+	}
+
+	// One folder per run, so several runs at once never share an ini, log, preset, screenshot or shader cache
+	if (!work_dir.empty())
+	{
+		std::filesystem::create_directories(work_dir / L"cache", ec);
+		if (!std::filesystem::is_directory(work_dir / L"cache", ec))
+			return EXIT_FAILURE;
+		if (!std::filesystem::exists(work_dir / L"ReShade.ini", ec))
+		{
+			std::filesystem::copy_file(g_reshade_dll_path.parent_path() / L"ReShade.ini", work_dir / L"ReShade.ini", ec);
+			reshade::ini_file config(work_dir / L"ReShade.ini");
+			config.set("GENERAL", "IntermediateCachePath", work_dir / L"cache");
+			config.save();
+			std::filesystem::copy_file(g_reshade_dll_path.parent_path() / L"ReShadePreset.ini", work_dir / L"ReShadePreset.ini", ec);
+		}
+		SetEnvironmentVariableW(L"RESHADE_BASE_PATH_OVERRIDE", work_dir.c_str());
+	}
+
+	g_reshade_base_path = get_base_path();
+
 	reshade::log::open_log_file(g_reshade_base_path / L"ReShade.log", ec);
+
+	reshade::ultra::TestCheck check;
+	if (!check.isValid())
+		return EXIT_FAILURE;
 
 	reshade::hooks::register_module(L"user32.dll");
 
@@ -102,10 +138,25 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	RegisterClass(&wc);
 
-	LONG window_w = 1024;
+	const reshade::ultra::TestOptions options = reshade::ultra::parseTestOptions();
+	if (!options.isValid)
+		return EXIT_FAILURE;
+
+	const std::optional<std::filesystem::path> model_folder = reshade::ultra::testModelFolder();
+	const std::filesystem::path head_folder = model_folder.value_or(g_reshade_dll_path.parent_path() / L"test_scene" / L"head");
+	const std::optional<reshade::ultra::TestModel> model =
+		model_folder.has_value() ? reshade::ultra::loadMetaHumanHead(head_folder) :
+		options.scene.kind == reshade::ultra::TestSceneKind::head ? reshade::ultra::loadTestHead(head_folder) : reshade::ultra::makeTestCube();
+	if (!model.has_value())
+	{
+		reshade::log::message(reshade::log::level::error, "Test application: the head could not be loaded from '%s'.", head_folder.u8string().c_str());
+		return EXIT_FAILURE;
+	}
+
+	LONG window_w = options.width != 0 ? options.width : GetSystemMetrics(SM_CXSCREEN) * 2 / 3;
 	if (LPSTR width_arg = std::strstr(lpCmdLine, "-width "))
 		window_w = std::strtol(width_arg + 7, nullptr, 10);
-	LONG window_h =  800;
+	LONG window_h = options.height != 0 ? options.height : GetSystemMetrics(SM_CYSCREEN) * 2 / 3;
 	if (LPSTR height_arg = std::strstr(lpCmdLine, "-height "))
 		window_h = std::strtol(height_arg + 8, nullptr, 10);
 
@@ -123,11 +174,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	if (window_handle == nullptr)
 		return 0;
 
-	ShowWindow(window_handle, nCmdShow);
+	// Agents run several of these at once while someone works: never take the focus
+	ShowWindow(window_handle, nCmdShow == SW_HIDE ? SW_HIDE : SW_SHOWNOACTIVATE);
 
 	// Avoid resize caused by 'ShowWindow' call
 	s_resize_w = 0;
 	s_resize_h = 0;
+
+	reshade::ultra::TestFrames frames(options, window_handle);
+	check.watch(frames);
 
 	MSG msg = {};
 
@@ -144,6 +199,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		api = reshade::api::device_api::opengl;
 	if (strstr(lpCmdLine, "-vulkan"))
 		api = reshade::api::device_api::vulkan;
+	if (options.api.has_value())
+		api = *options.api;
 
 	const bool validation = strstr(lpCmdLine, "-validation") != nullptr;
 	const bool vsync = strstr(lpCmdLine, "-vsync") != nullptr;
@@ -276,15 +333,24 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		com_ptr<ID3D11RenderTargetView> back_buffer_rtv;
 		HR_CHECK(device->CreateRenderTargetView(back_buffer.get(), nullptr, &back_buffer_rtv));
 
+		reshade::ultra::TestSceneD3d11 scene(device.get(), *model, options.scene);
+		scene.resize(back_buffer.get());
+
 		while (true)
 		{
 			while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) && msg.message != WM_QUIT)
 				DispatchMessage(&msg);
 			if (msg.message == WM_QUIT)
 				break;
+			if (!frames.next())
+			{
+				msg.wParam = EXIT_SUCCESS;
+				break;
+			}
 
 			if (s_resize_w != 0)
 			{
+				immediate_context->ClearState();
 				back_buffer_rtv.reset();
 				back_buffer.reset();
 
@@ -292,12 +358,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 				HR_CHECK(swapchain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)));
 				HR_CHECK(device->CreateRenderTargetView(back_buffer.get(), nullptr, &back_buffer_rtv));
+				scene.resize(back_buffer.get());
 
 				s_resize_w = s_resize_h = 0;
 			}
 
-			const float color[4] = { 0.5f, 0.5f, 0.5f, 1.0f };
-			immediate_context->ClearRenderTargetView(back_buffer_rtv.get(), color);
+			scene.render(immediate_context.get(), back_buffer_rtv.get(), frames.seconds());
 
 			HR_CHECK(swapchain->Present(vsync ? 1 : 0, 0));
 		}
@@ -375,6 +441,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		const UINT rtv_handle_size = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		HR_CHECK(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc)));
 
+		std::unique_ptr<reshade::ultra::TestSceneD3d12> scene;
+		if (!is_d3d12on7)
+		{
+			DXGI_SWAP_CHAIN_DESC1 desc = {};
+			HR_CHECK(swapchain->GetDesc1(&desc));
+			scene = std::make_unique<reshade::ultra::TestSceneD3d12>(device.get(), command_queue.get(), desc.Format, *model, options.scene);
+			scene->resize(desc.Width, desc.Height);
+		}
+
+		// The frame that resized comes back through the loop's start after the goto and must not count twice
+		bool is_frame_started = false;
+
 	resize_buffers:
 		D3D12_CPU_DESCRIPTOR_HANDLE rtv_handle = rtv_heap->GetCPUDescriptorHandleForHeapStart();
 
@@ -431,27 +509,41 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 				DispatchMessage(&msg);
 			if (msg.message == WM_QUIT)
 				break;
+			if (!is_frame_started && !frames.next())
+			{
+				msg.wParam = EXIT_SUCCESS;
+				break;
+			}
+			is_frame_started = false;
 
 			if (s_resize_w != 0)
 			{
 				// Clean up current resources referencing the back buffer
+				if (scene != nullptr)
+					scene->resize(s_resize_w, s_resize_h);
 				for (auto &ptr : cmd_lists)
 					ptr.reset();
 				for (auto &ptr : back_buffers)
 					ptr.reset();
 
 				if (!is_d3d12on7)
-					HR_CHECK(swapchain->ResizeBuffers(num_buffers, s_resize_w, s_resize_h, DXGI_FORMAT_UNKNOWN, 0));
+					HR_CHECK(swapchain->ResizeBuffers(num_buffers, s_resize_w, s_resize_h, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
 
 				s_resize_w = s_resize_h = 0;
+				is_frame_started = true;
 
 				goto resize_buffers; // Re-create command lists
 			}
 
 			const UINT swap_index = is_d3d12on7 ? 0 : swapchain->GetCurrentBackBufferIndex();
 
-			ID3D12CommandList *const cmd_list = cmd_lists[swap_index].get();
-			command_queue->ExecuteCommandLists(1, &cmd_list);
+			D3D12_CPU_DESCRIPTOR_HANDLE back_buffer_rtv = rtv_heap->GetCPUDescriptorHandleForHeapStart();
+			back_buffer_rtv.ptr += swap_index * rtv_handle_size;
+			if (scene == nullptr || !scene->render(back_buffers[swap_index].get(), back_buffer_rtv, frames.seconds()))
+			{
+				ID3D12CommandList *const cmd_list = cmd_lists[swap_index].get();
+				command_queue->ExecuteCommandLists(1, &cmd_list);
+			}
 
 			if (is_d3d12on7)
 			{
@@ -801,7 +893,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 				transition.subresourceRange = range;
 				vk.CmdPipelineBarrier(cmd_buffer, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT, 0, 0, nullptr, 0, nullptr, 1, &transition);
 
-				const VkClearColorValue color = { 0.5f, 0.5f, 0.5f, 1.0f };
+				const VkClearColorValue color = { { 0.5f, 0.5f, 0.5f, 1.0f } };
 				vk.CmdClearColorImage(cmd_buffer, swapchain_images[i], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &color, 1, &range);
 
 				transition.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -899,7 +991,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	reshade::hooks::uninstall();
 
-	return static_cast<int>(msg.wParam);
+	return check.exitCode(static_cast<int>(msg.wParam));
 }
 
 #endif

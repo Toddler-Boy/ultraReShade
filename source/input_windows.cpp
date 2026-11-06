@@ -723,7 +723,7 @@ extern "C" UINT WINAPI HookGetRawInputBuffer(PRAWINPUT pData, PUINT pcbSize, UIN
 	if (result == static_cast<UINT>(-1) || pData == nullptr || *pcbSize == 0 || !(reshade::input::is_blocking_any_mouse_input() || reshade::input::is_blocking_any_keyboard_input()))
 		return result;
 
-	using QWORD = UINT64;
+	using QWORD [[maybe_unused]] = UINT64;
 
 	for (UINT i = 0; i < result; ++i, pData = NEXTRAWINPUTBLOCK(pData))
 	{
@@ -902,7 +902,7 @@ extern "C" BOOL  WINAPI HookUnhookWindowsHookEx(HHOOK hhk)
 	reshade::log::message(reshade::log::level::info, "Redirecting UnhookWindowsHookEx(hhk = %p) ...", hhk);
 #endif
 
-	for (const std::pair<UINT64, std::pair<HHOOK, HOOKPROC>> &hook : s_windows_hooks)
+	for (const std::pair<const UINT64, std::pair<HHOOK, HOOKPROC>> &hook : s_windows_hooks)
 	{
 		if (hook.second.first == hhk)
 		{

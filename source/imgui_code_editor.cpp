@@ -207,12 +207,14 @@ void reshade::imgui::code_editor::render(const char *title, const uint32_t palet
 		else if (ctrl && !shift && !alt && ImGui::IsKeyPressed(ImGuiKey_A))
 			select_all();
 		else if (!_readonly)
+		{
 			if (!ctrl && !shift && !alt && ImGui::IsKeyPressed(ImGuiKey_Enter))
 				insert_character('\n', true);
 			else
 				for (ImWchar c : io.InputQueueCharacters)
 					if (c != 0 && (isprint(c) || isspace(c)))
 						insert_character(static_cast<char>(c), true);
+		}
 	}
 
 	// Handle mouse input
@@ -298,10 +300,12 @@ void reshade::imgui::code_editor::render(const char *title, const uint32_t palet
 				_interactive_end = _cursor_pos;
 
 				if (shift)
+				{
 					if (flip_selection)
 						_interactive_beg = _select_beg;
 					else
 						_interactive_end = _select_end;
+				}
 
 				select(_interactive_beg, _interactive_end, selection_mode::normal);
 			}

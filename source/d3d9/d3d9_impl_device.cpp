@@ -31,7 +31,7 @@ static bool convert_format_internal(reshade::api::format format, D3DFORMAT &inte
 }
 
 reshade::d3d9::device_impl::device_impl(IDirect3DDevice9 *device) :
-	api_object_impl(device), _caps(), _cp(), _backup_state(device)
+	api_object_impl(device), _cp(), _caps(), _backup_state(device)
 {
 	_orig->GetDirect3D(&_d3d);
 	_orig->GetDeviceCaps(&_caps);
@@ -88,12 +88,12 @@ void reshade::d3d9::device_impl::on_init()
 		_orig->SetSamplerState(0, D3DSAMP_MAXMIPLEVEL, 0);
 		_orig->SetSamplerState(0, D3DSAMP_SRGBTEXTURE, FALSE);
 
-		const D3DMATRIX identity_matrix = {
+		const D3DMATRIX identity_matrix = { { {
 			1.0f, 0.0f, 0.0f, 0.0f,
 			0.0f, 1.0f, 0.0f, 0.0f,
 			0.0f, 0.0f, 1.0f, 0.0f,
 			0.0f, 0.0f, 0.0f, 1.0f
-		};
+		} } };
 		_orig->SetTransform(D3DTS_VIEW, &identity_matrix);
 		_orig->SetTransform(D3DTS_PROJECTION, &identity_matrix);
 		_orig->SetTransform(D3DTS_WORLD, &identity_matrix);
@@ -673,7 +673,7 @@ bool reshade::d3d9::device_impl::create_resource_view(api::resource resource, ap
 			{
 				assert(desc.type == api::resource_view_type::texture_2d || desc.type == api::resource_view_type::texture_2d_multisample);
 
-				if (desc.texture.levels != 1 && !(desc.texture.levels == UINT32_MAX && IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1) || desc.texture.layers != 1)
+				if ((desc.texture.levels != 1 && !(desc.texture.levels == UINT32_MAX && IDirect3DCubeTexture9_GetLevelCount(static_cast<IDirect3DTexture9 *>(object)) == 1)) || desc.texture.layers != 1)
 					break;
 
 				face = static_cast<D3DCUBEMAP_FACES>(desc.texture.first_layer);

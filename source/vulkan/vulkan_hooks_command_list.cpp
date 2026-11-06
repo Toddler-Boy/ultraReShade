@@ -217,7 +217,7 @@ VkResult VKAPI_CALL vkBeginCommandBuffer(VkCommandBuffer commandBuffer, const Vk
 				reshade::invoke_addon_event<reshade::addon_event::begin_render_pass>(cmd_impl, 0, nullptr, nullptr, reshade::api::render_pass_flags::resume);
 			}
 		}
-		else if (const auto rendering_info =
+		else if ([[maybe_unused]] const auto rendering_info =
 			find_in_structure_chain<VkCommandBufferInheritanceRenderingInfo>(
 				inheritance_info.pNext, VK_STRUCTURE_TYPE_COMMAND_BUFFER_INHERITANCE_RENDERING_INFO))
 		{

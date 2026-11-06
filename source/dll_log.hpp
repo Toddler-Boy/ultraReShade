@@ -62,17 +62,17 @@ namespace reshade::log
 			return "E_NOINTERFACE";
 		case E_FAIL:
 			return "E_FAIL";
-		case 0x8876017C:
+		case static_cast<HRESULT>(0x8876017C):
 			return "D3DERR_OUTOFVIDEOMEMORY";
-		case 0x88760868:
+		case static_cast<HRESULT>(0x88760868):
 			return "D3DERR_DEVICELOST";
-		case 0x8876086A:
+		case static_cast<HRESULT>(0x8876086A):
 			return "D3DERR_NOTAVAILABLE";
-		case 0x8876086C:
+		case static_cast<HRESULT>(0x8876086C):
 			return "D3DERR_INVALIDCALL";
-		case 0x88760870:
+		case static_cast<HRESULT>(0x88760870):
 			return "D3DERR_DEVICEREMOVED";
-		case 0x88760874:
+		case static_cast<HRESULT>(0x88760874):
 			return "D3DERR_DEVICEHUNG";
 		case DXGI_ERROR_INVALID_CALL:
 			return "DXGI_ERROR_INVALID_CALL";

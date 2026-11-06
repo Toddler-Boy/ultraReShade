@@ -28,6 +28,8 @@ static std::vector<class wgl_swapchain *> s_opengl_swapchains;
 
 extern thread_local reshade::opengl::device_context_impl *g_opengl_context;
 
+extern std::filesystem::path get_system_path();
+
 // Set during OpenGL presentation, to avoid hooking internal D3D devices and layered DXGI swapchain
 extern thread_local bool g_in_dxgi_runtime;
 
@@ -1048,8 +1050,6 @@ extern "C" BOOL  WINAPI wglMakeCurrent(HDC hdc, HGLRC hglrc)
 
 				if (nullptr == proc_address)
 				{
-					extern std::filesystem::path get_system_path();
-
 					// Load from the Windows OpenGL DLL if that fails
 					const HMODULE opengl_module = GetModuleHandleW((get_system_path() / L"opengl32.dll").c_str());
 					assert(opengl_module != nullptr);

@@ -191,7 +191,9 @@ void reshade::opengl::state_block::apply() const
 	glEnableOrDisable(GL_FRAMEBUFFER_SRGB, _srgb_enable);
 
 	if (_device->get_compatibility_context())
+	{
 		glEnableOrDisable(GL_ALPHA_TEST, _alpha_test);
+	}
 
 	glEnableOrDisable(GL_SAMPLE_ALPHA_TO_COVERAGE, _sample_alpha_to_coverage);
 

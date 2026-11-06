@@ -471,12 +471,12 @@ bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 		if (VS_FIXEDFILEINFO *fixed_file_version_info = nullptr;
 			VerQueryValueW(version_data.data(), L"\\", reinterpret_cast<LPVOID *>(&fixed_file_version_info), nullptr))
 		{
-			info.version = {
+			info.version = { {
 				HIWORD(fixed_file_version_info->dwFileVersionMS),
 				LOWORD(fixed_file_version_info->dwFileVersionMS),
 				HIWORD(fixed_file_version_info->dwFileVersionLS),
 				LOWORD(fixed_file_version_info->dwFileVersionLS)
-			};
+			} };
 		}
 	}
 

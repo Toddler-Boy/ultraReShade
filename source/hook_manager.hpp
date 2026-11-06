@@ -29,6 +29,21 @@ namespace reshade::hooks
 	/// <param name="replacement">Address of the hook function.</param>
 	/// <returns>Status of the hook installation.</returns>
 	bool install(const char *name, hook::address vtable[], size_t vtable_index, hook::address replacement);
+	template <typename F, std::enable_if_t<std::is_function_v<F>, int> = 0>
+	inline bool install(const char *name, hook::address target, F *replacement, bool queue_enable = false)
+	{
+		return install(name, target, reinterpret_cast<hook::address>(replacement), queue_enable);
+	}
+	template <typename G, typename F, std::enable_if_t<std::is_function_v<G> && std::is_function_v<F>, int> = 0>
+	inline bool install(const char *name, G *target, F *replacement, bool queue_enable = false)
+	{
+		return install(name, reinterpret_cast<hook::address>(target), reinterpret_cast<hook::address>(replacement), queue_enable);
+	}
+	template <typename F, std::enable_if_t<std::is_function_v<F>, int> = 0>
+	inline bool install(const char *name, hook::address vtable[], size_t vtable_index, F *replacement)
+	{
+		return install(name, vtable, vtable_index, reinterpret_cast<hook::address>(replacement));
+	}
 	/// <summary>
 	/// Uninstalls all previously installed hooks.
 	/// Only call this function while the loader lock is held, since it is not thread-safe.
@@ -58,6 +73,11 @@ namespace reshade::hooks
 	/// </summary>
 	/// <param name="target">Original target address of a function.</param>
 	bool is_hooked(hook::address target);
+	template <typename F, std::enable_if_t<std::is_function_v<F>, int> = 0>
+	inline bool is_hooked(F *target)
+	{
+		return is_hooked(reinterpret_cast<hook::address>(target));
+	}
 
 	/// <summary>
 	/// Gets the original/trampoline function for the specified hook.
@@ -70,6 +90,11 @@ namespace reshade::hooks
 	inline T call(T replacement, hook::address target = nullptr)
 	{
 		return reinterpret_cast<T>(call(reinterpret_cast<hook::address>(replacement), target));
+	}
+	template <typename T, typename F, std::enable_if_t<std::is_function_v<F>, int> = 0>
+	inline T call(T replacement, F *target)
+	{
+		return call(replacement, reinterpret_cast<hook::address>(target));
 	}
 
 	/// <summary>

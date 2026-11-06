@@ -5,290 +5,314 @@
 
 #if RESHADE_GUI
 
-#include "ultra_splash.hpp"
-#include "dll_log.hpp"
-#include "dll_resources.hpp"
-#include "reshade_api_device.hpp"
-#include <imgui.h>
-#include <stb_image.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
 
+#include <imgui.h>
+#include <stb_image.h>
+
+#include "dll_log.hpp"
+#include "dll_resources.hpp"
+#include "reshade_api_device.hpp"
+#include "ultra_splash.hpp"
+
+//-----------------------------------------------------------------------------
+
 namespace
 {
 	// Start logo: total time in seconds, then shares of that time, of the logo width and of the screen height
-	constexpr float logo_duration = 1.5f;
-	constexpr float logo_hold = 0.3f;
-	constexpr float logo_edge = 0.25f;
-	constexpr float logo_height = 0.03f;
-	constexpr unsigned char logo_tint[3] = { 0xff, 0x14, 0x93 };
-	constexpr int logo_strips = 48;
+	constexpr float				logoDuration = 1.5f;
+	constexpr float				logoHold = 0.3f;
+	constexpr float				logoEdge = 0.25f;
+	constexpr float				logoHeight = 0.03f;
+	constexpr unsigned char		logoTint[ 3 ] = { 0xff, 0x14, 0x93 };
+	constexpr int				logoStrips = 48;
 
 	// Top-left corner of both the logo and the ring, as shares of the screen width and height
-	constexpr float anchor_x = 0.03f;
-	constexpr float anchor_y = 0.04f;
+	constexpr float	anchorX = 0.03f;
+	constexpr float	anchorY = 0.04f;
 
 	// Compile ring: sizes as shares of the screen height (24 and 2 pixels at 1080p), fades in seconds
-	constexpr float ring_diameter = 24.0f / 1080.0f;
-	constexpr float ring_thickness = 2.0f / 1080.0f;
-	constexpr float ring_track_alpha = 0.15f;
-	constexpr float ring_arc_alpha = 0.7f;
-	constexpr float ring_fade_in = 0.2f;
-	constexpr float ring_fade_out = 0.3f;
+	constexpr float	ringDiameter = 24.0f / 1080.0f;
+	constexpr float	ringThickness = 2.0f / 1080.0f;
+	constexpr float	ringTrackAlpha = 0.15f;
+	constexpr float	ringArcAlpha = 0.7f;
+	constexpr float	ringFadeIn = 0.2f;
+	constexpr float	ringFadeOut = 0.3f;
 
 	// A loading hitch at game start would otherwise play the whole logo within one frame
-	constexpr float max_frame_step = 1.0f / 20.0f;
+	constexpr float	maxFrameStep = 1.0f / 20.0f;
 	// A swap chain that stops presenting while showing the logo must not hold back every other one's ring
-	constexpr std::chrono::milliseconds logo_owner_timeout { 500 };
+	constexpr std::chrono::milliseconds	logoOwnerTimeout { 500 };
 
-	constexpr float pi = 3.14159265f;
+	constexpr float	pi = 3.14159265f;
 
 	// The logo plays once per process; a runtime destroyed or gone quiet while showing it hands the rest to the next one
-	std::atomic<bool> s_logo_done { false };
-	std::atomic<const reshade::ultra::splash_state *> s_logo_owner { nullptr };
-	std::atomic<std::chrono::steady_clock::rep> s_logo_owner_seen { 0 };
-	std::atomic<float> s_logo_elapsed { 0.0f };
+	std::atomic<bool>								logoDone { false };
+	std::atomic<const reshade::ultra::SplashState*>	logoOwner { nullptr };
+	std::atomic<std::chrono::steady_clock::rep>		logoOwnerSeen { 0 };
+	std::atomic<float>								logoElapsed { 0.0f };
 
-	[[nodiscard]] float smoothstep(const float edge0, const float edge1, const float x)
+	[[ nodiscard ]] float smoothstep ( float edge0, float edge1, float x )
 	{
-		const auto t = std::clamp((x - edge0) / (edge1 - edge0), 0.0f, 1.0f);
-		return t * t * (3.0f - 2.0f * t);
+		const auto	t = std::clamp ( ( x - edge0 ) / ( edge1 - edge0 ), 0.0f, 1.0f );
+		return t * t * ( 3.0f - 2.0f * t );
 	}
 
-	[[nodiscard]] float sweep_front(const float phase)
+	[[ nodiscard ]] float sweepFront ( float phase )
 	{
-		return -logo_edge + std::clamp(phase, 0.0f, 1.0f) * (1.0f + 2.0f * logo_edge);
+		return -logoEdge + std::clamp ( phase, 0.0f, 1.0f ) * ( 1.0f + 2.0f * logoEdge );
 	}
 
-	[[nodiscard]] float front_band(const float front, const float x)
+	[[ nodiscard ]] float frontBand ( float front, float x )
 	{
-		const auto band = smoothstep(front - logo_edge, front - logo_edge * 0.5f, x) * (1.0f - smoothstep(front - logo_edge * 0.5f, front, x)) * 4.0f;
-		return std::min(band, 1.0f);
+		const auto	band = smoothstep ( front - logoEdge, front - logoEdge * 0.5f, x ) * ( 1.0f - smoothstep ( front - logoEdge * 0.5f, front, x ) ) * 4.0f;
+		return std::min ( band, 1.0f );
 	}
 
-	[[nodiscard]] ImU32 white(const float alpha)
+	[[ nodiscard ]] ImU32 white ( float alpha )
 	{
-		return IM_COL32(255, 255, 255, static_cast<int>(alpha * 255.0f + 0.5f));
+		return IM_COL32 ( 255, 255, 255, static_cast<int> ( alpha * 255.0f + 0.5f ) );
 	}
 
-	[[nodiscard]] ImU32 logo_color(const float band, const float alpha)
+	[[ nodiscard ]] ImU32 logoColour ( float band, float alpha )
 	{
-		const auto channel = [band](const unsigned char tint) { return static_cast<int>(255.0f + (tint - 255.0f) * band + 0.5f); };
-		return IM_COL32(channel(logo_tint[0]), channel(logo_tint[1]), channel(logo_tint[2]), static_cast<int>(alpha * 255.0f + 0.5f));
+		const auto	channel = [ band ] ( unsigned char tint ) { return static_cast<int> ( 255.0f + ( tint - 255.0f ) * band + 0.5f ); };
+		return IM_COL32 ( channel ( logoTint[ 0 ] ), channel ( logoTint[ 1 ] ), channel ( logoTint[ 2 ] ), static_cast<int> ( alpha * 255.0f + 0.5f ) );
 	}
 
-	[[nodiscard]] std::chrono::steady_clock::rep now_ticks()
+	[[ nodiscard ]] std::chrono::steady_clock::rep nowTicks ()
 	{
-		return std::chrono::steady_clock::now().time_since_epoch().count();
+		return std::chrono::steady_clock::now ().time_since_epoch ().count ();
 	}
 
-	[[nodiscard]] bool is_logo_owner_gone(const std::chrono::steady_clock::rep now)
+	[[ nodiscard ]] bool isLogoOwnerGone ( std::chrono::steady_clock::rep now )
 	{
-		return now - s_logo_owner_seen.load() > std::chrono::duration_cast<std::chrono::steady_clock::duration>(logo_owner_timeout).count();
+		return now - logoOwnerSeen.load () > std::chrono::duration_cast<std::chrono::steady_clock::duration> ( logoOwnerTimeout ).count ();
 	}
 
-	[[nodiscard]] bool claim_logo(const reshade::ultra::splash_state &state)
+	[[ nodiscard ]] bool claimLogo ( const reshade::ultra::SplashState& state )
 	{
-		if (s_logo_done)
+		if ( logoDone )
 			return false;
 
-		const auto now = now_ticks();
-		const reshade::ultra::splash_state *expected = nullptr;
-		const auto is_owner = s_logo_owner.compare_exchange_strong(expected, &state) || expected == &state ||
-			(is_logo_owner_gone(now) && s_logo_owner.compare_exchange_strong(expected, &state));
-		if (is_owner)
-			s_logo_owner_seen = now;
-		return is_owner;
+		const auto							now = nowTicks ();
+		const reshade::ultra::SplashState*	expected = nullptr;
+		const auto							isOwner = logoOwner.compare_exchange_strong ( expected, &state ) || expected == &state
+													  || ( isLogoOwnerGone ( now ) && logoOwner.compare_exchange_strong ( expected, &state ) );
+
+		if ( isOwner )
+			logoOwnerSeen = now;
+
+		return isOwner;
 	}
 
-	[[nodiscard]] bool is_logo_pending_for(const reshade::ultra::splash_state &state)
+	[[ nodiscard ]] bool isLogoPendingFor ( const reshade::ultra::SplashState& state )
 	{
-		if (s_logo_done)
+		if ( logoDone )
 			return false;
 
-		const auto owner = s_logo_owner.load();
-		return owner == nullptr || owner == &state || is_logo_owner_gone(now_ticks());
+		const auto	owner = logoOwner.load ();
+		return owner == nullptr || owner == &state || isLogoOwnerGone ( nowTicks () );
 	}
 
-	[[nodiscard]] bool load_logo(reshade::ultra::splash_state &state, reshade::api::device *const device)
+	[[ nodiscard ]] bool loadLogo ( reshade::ultra::SplashState& state, reshade::api::device* device )
 	{
-		if (state.logo_view != 0)
+		if ( state.logoView != 0 )
 			return true;
 
-		const auto png = reshade::resources::load_data_resource(IDB_ULTRA_LOGO);
-		if (png.data == nullptr || png.data_size == 0)
+		const auto	png = reshade::resources::load_data_resource ( IDB_ULTRA_LOGO );
+
+		if ( png.data == nullptr || png.data_size == 0 )
 		{
-			reshade::log::message(reshade::log::level::error, "Failed to find the ultraReShade logo in the DLL resources.");
+			reshade::log::message ( reshade::log::level::error, "Failed to find the ultraReShade logo in the DLL resources." );
 			return false;
 		}
 
-		int width = 0, height = 0, channels = 0;
-		stbi_uc *const pixels = stbi_load_from_memory(static_cast<const stbi_uc *>(png.data), static_cast<int>(png.data_size), &width, &height, &channels, STBI_rgb_alpha);
-		if (pixels == nullptr)
+		auto		width = 0;
+		auto		height = 0;
+		auto		channels = 0;
+		const auto	pixels = stbi_load_from_memory ( static_cast<const stbi_uc*> ( png.data ), static_cast<int> ( png.data_size ), &width, &height, &channels, STBI_rgb_alpha );
+
+		if ( pixels == nullptr )
 		{
-			reshade::log::message(reshade::log::level::error, "Failed to decode the ultraReShade logo (%s).", stbi_failure_reason());
+			reshade::log::message ( reshade::log::level::error, "Failed to decode the ultraReShade logo (%s).", stbi_failure_reason () );
 			return false;
 		}
 
-		const auto row_pitch = static_cast<uint32_t>(width) * 4;
-		const reshade::api::subresource_data initial_data = { pixels, row_pitch, row_pitch * static_cast<uint32_t>(height) };
-		const auto is_created = device->create_resource(
-			reshade::api::resource_desc(static_cast<uint32_t>(width), static_cast<uint32_t>(height), 1, 1, reshade::api::format::r8g8b8a8_unorm, 1, reshade::api::memory_heap::default_, reshade::api::resource_usage::shader_resource | reshade::api::resource_usage::copy_dest),
-			&initial_data, reshade::api::resource_usage::shader_resource, &state.logo_texture);
-		stbi_image_free(pixels);
+		const auto								rowPitch = static_cast<uint32_t> ( width ) * 4;
+		const reshade::api::subresource_data	initialData { pixels, rowPitch, rowPitch * static_cast<uint32_t> ( height ) };
+		const auto								isCreated = device->create_resource (
+			reshade::api::resource_desc ( static_cast<uint32_t> ( width ), static_cast<uint32_t> ( height ), 1, 1, reshade::api::format::r8g8b8a8_unorm, 1, reshade::api::memory_heap::default_,
+										  reshade::api::resource_usage::shader_resource | reshade::api::resource_usage::copy_dest ),
+			&initialData, reshade::api::resource_usage::shader_resource, &state.logoTexture );
 
-		if (!is_created)
+		stbi_image_free ( pixels );
+
+		if ( ! isCreated )
 		{
-			reshade::log::message(reshade::log::level::error, "Failed to create the ultraReShade logo texture.");
-			state.logo_texture = {};
+			reshade::log::message ( reshade::log::level::error, "Failed to create the ultraReShade logo texture." );
+			state.logoTexture = {};
 			return false;
 		}
 
-		if (!device->create_resource_view(state.logo_texture, reshade::api::resource_usage::shader_resource, reshade::api::resource_view_desc(reshade::api::format::r8g8b8a8_unorm), &state.logo_view))
+		if ( ! device->create_resource_view ( state.logoTexture, reshade::api::resource_usage::shader_resource, reshade::api::resource_view_desc ( reshade::api::format::r8g8b8a8_unorm ),
+											  &state.logoView ) )
 		{
-			reshade::log::message(reshade::log::level::error, "Failed to create the ultraReShade logo texture view.");
-			device->destroy_resource(state.logo_texture);
-			state.logo_texture = {};
-			state.logo_view = {};
+			reshade::log::message ( reshade::log::level::error, "Failed to create the ultraReShade logo texture view." );
+			device->destroy_resource ( state.logoTexture );
+			state.logoTexture = {};
+			state.logoView = {};
 			return false;
 		}
 
-		state.logo_width = static_cast<float>(width);
-		state.logo_height = static_cast<float>(height);
+		state.logoWidth = static_cast<float> ( width );
+		state.logoHeight = static_cast<float> ( height );
 		return true;
 	}
 
 	// Vertical strips with per-vertex colour carry the sweeping edges; the tint is exact for white artwork
-	void draw_logo(const reshade::ultra::splash_state &state, const reshade::ultra::splash_frame &frame, const float time)
+	void drawLogo ( const reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float time )
 	{
-		const auto height = frame.height * logo_height;
-		const auto width = height * state.logo_width / state.logo_height;
-		const auto left = frame.width * anchor_x;
-		const auto top = frame.height * anchor_y;
+		const auto	height = frame.height * logoHeight;
+		const auto	width = height * state.logoWidth / state.logoHeight;
+		const auto	left = frame.width * anchorX;
+		const auto	top = frame.height * anchorY;
 
-		const auto sweep = (1.0f - logo_hold) * 0.5f;
-		const auto front_in = sweep_front(time / sweep);
-		const auto front_out = sweep_front((time - sweep - logo_hold) / sweep);
+		const auto	sweep = ( 1.0f - logoHold ) * 0.5f;
+		const auto	frontIn = sweepFront ( time / sweep );
+		const auto	frontOut = sweepFront ( ( time - sweep - logoHold ) / sweep );
 
-		ImDrawList *const draw_list = frame.draw_list;
-		draw_list->PushTexture(ImTextureRef(state.logo_view.handle));
-		draw_list->PrimReserve(logo_strips * 6, (logo_strips + 1) * 2);
+		const auto	drawList = frame.drawList;
+		drawList->PushTexture ( ImTextureRef ( state.logoView.handle ) );
+		drawList->PrimReserve ( logoStrips * 6, ( logoStrips + 1 ) * 2 );
 
-		const auto first = static_cast<int>(draw_list->_VtxCurrentIdx);
-		for (int i = 0; i <= logo_strips; ++i)
+		const auto	first = static_cast<int> ( drawList->_VtxCurrentIdx );
+
+		for ( auto i = 0; i <= logoStrips; ++i )
 		{
-			const auto u = static_cast<float>(i) / logo_strips;
-			const auto alpha = (1.0f - smoothstep(front_in - logo_edge, front_in, u)) * smoothstep(front_out - logo_edge, front_out, u);
-			const auto color = logo_color(std::max(front_band(front_in, u), front_band(front_out, u)), alpha);
-			const auto x = left + u * width;
+			const auto	u = static_cast<float> ( i ) / logoStrips;
+			const auto	alpha = ( 1.0f - smoothstep ( frontIn - logoEdge, frontIn, u ) ) * smoothstep ( frontOut - logoEdge, frontOut, u );
+			const auto	colour = logoColour ( std::max ( frontBand ( frontIn, u ), frontBand ( frontOut, u ) ), alpha );
+			const auto	x = left + u * width;
 
-			draw_list->PrimWriteVtx(ImVec2(x, top), ImVec2(u, 0.0f), color);
-			draw_list->PrimWriteVtx(ImVec2(x, top + height), ImVec2(u, 1.0f), color);
-		}
-		for (int i = 0; i < logo_strips; ++i)
-		{
-			const auto v = first + i * 2;
-			draw_list->PrimWriteIdx(static_cast<ImDrawIdx>(v));
-			draw_list->PrimWriteIdx(static_cast<ImDrawIdx>(v + 2));
-			draw_list->PrimWriteIdx(static_cast<ImDrawIdx>(v + 3));
-			draw_list->PrimWriteIdx(static_cast<ImDrawIdx>(v));
-			draw_list->PrimWriteIdx(static_cast<ImDrawIdx>(v + 3));
-			draw_list->PrimWriteIdx(static_cast<ImDrawIdx>(v + 1));
+			drawList->PrimWriteVtx ( ImVec2 ( x, top ), ImVec2 ( u, 0.0f ), colour );
+			drawList->PrimWriteVtx ( ImVec2 ( x, top + height ), ImVec2 ( u, 1.0f ), colour );
 		}
 
-		draw_list->PopTexture();
+		for ( auto i = 0; i < logoStrips; ++i )
+		{
+			const auto	v = first + i * 2;
+			drawList->PrimWriteIdx ( static_cast<ImDrawIdx> ( v ) );
+			drawList->PrimWriteIdx ( static_cast<ImDrawIdx> ( v + 2 ) );
+			drawList->PrimWriteIdx ( static_cast<ImDrawIdx> ( v + 3 ) );
+			drawList->PrimWriteIdx ( static_cast<ImDrawIdx> ( v ) );
+			drawList->PrimWriteIdx ( static_cast<ImDrawIdx> ( v + 3 ) );
+			drawList->PrimWriteIdx ( static_cast<ImDrawIdx> ( v + 1 ) );
+		}
+
+		drawList->PopTexture ();
 	}
 
-	void draw_ring(ImDrawList *const draw_list, const ImVec2 center, const float screen_height, const float progress, const float alpha)
+	void drawRing ( ImDrawList* drawList, ImVec2 center, float screenHeight, float progress, float alpha )
 	{
-		const auto thickness = std::max(1.0f, screen_height * ring_thickness);
-		const auto radius = (screen_height * ring_diameter - thickness) * 0.5f;
+		const auto	thickness = std::max ( 1.0f, screenHeight * ringThickness );
+		const auto	radius = ( screenHeight * ringDiameter - thickness ) * 0.5f;
 
-		draw_list->AddCircle(center, radius, white(ring_track_alpha * alpha), 0, thickness);
+		drawList->AddCircle ( center, radius, white ( ringTrackAlpha * alpha ), 0, thickness );
 
-		if (progress > 0.0f)
+		if ( progress > 0.0f )
 		{
-			const auto twelve_o_clock = -0.5f * pi;
-			draw_list->PathArcTo(center, radius, twelve_o_clock, twelve_o_clock + 2.0f * pi * progress);
-			draw_list->PathStroke(white(ring_arc_alpha * alpha), ImDrawFlags_None, thickness);
+			const auto	twelveOClock = -0.5f * pi;
+			drawList->PathArcTo ( center, radius, twelveOClock, twelveOClock + 2.0f * pi * progress );
+			drawList->PathStroke ( white ( ringArcAlpha * alpha ), ImDrawFlags_None, thickness );
 		}
 	}
 
-	void advance_logo(reshade::ultra::splash_state &state, const reshade::ultra::splash_frame &frame, const float step)
+	void advanceLogo ( reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float step )
 	{
-		if (!claim_logo(state))
+		if ( ! claimLogo ( state ) )
 			return;
 
-		if (!load_logo(state, frame.device))
+		if ( ! loadLogo ( state, frame.device ) )
 		{
-			s_logo_done = true;
-			return;
-		}
-
-		const auto elapsed = s_logo_elapsed.load();
-		if (elapsed >= logo_duration)
-		{
-			s_logo_done = true;
+			logoDone = true;
 			return;
 		}
 
-		draw_logo(state, frame, elapsed / logo_duration);
-		s_logo_elapsed = elapsed + step;
+		const auto	elapsed = logoElapsed.load ();
+
+		if ( elapsed >= logoDuration )
+		{
+			logoDone = true;
+			return;
+		}
+
+		drawLogo ( state, frame, elapsed / logoDuration );
+		logoElapsed = elapsed + step;
 	}
 
-	void advance_ring(reshade::ultra::splash_state &state, const reshade::ultra::splash_frame &frame, const float step)
+	[[ nodiscard ]] bool isRingWanted ( const reshade::ultra::SplashFrame& frame )
 	{
-		const auto is_ring_wanted = frame.is_loading && !frame.is_overlay_open && s_logo_done;
-		state.ring_alpha = is_ring_wanted ?
-			std::min(1.0f, state.ring_alpha + step / ring_fade_in) :
-			std::max(0.0f, state.ring_alpha - step / ring_fade_out);
-		state.ring_progress = frame.is_loading ? reshade::ultra::compile_progress(frame.effect_count, frame.remaining_effects) : 1.0f;
+		return frame.isLoading && ! frame.isOverlayOpen && logoDone;
+	}
 
-		if (state.ring_alpha <= 0.0f)
+	void advanceRing ( reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float step )
+	{
+		state.ringAlpha = isRingWanted ( frame ) ? std::min ( 1.0f, state.ringAlpha + step / ringFadeIn ) : std::max ( 0.0f, state.ringAlpha - step / ringFadeOut );
+		state.ringProgress = frame.isLoading ? reshade::ultra::compileProgress ( frame.effectCount, frame.remainingEffects ) : 1.0f;
+
+		if ( state.ringAlpha <= 0.0f )
 			return;
 
-		const auto radius = frame.height * ring_diameter * 0.5f;
-		const ImVec2 center(frame.width * anchor_x + radius, frame.height * anchor_y + radius);
-		draw_ring(frame.draw_list, center, frame.height, state.ring_progress, state.ring_alpha);
+		const auto	radius = frame.height * ringDiameter * 0.5f;
+		const auto	center = ImVec2 ( frame.width * anchorX + radius, frame.height * anchorY + radius );
+		drawRing ( frame.drawList, center, frame.height, state.ringProgress, state.ringAlpha );
 	}
 }
+//-----------------------------------------------------------------------------
 
-bool reshade::ultra::wants_splash_frame(const splash_state &state, const bool is_loading)
+bool reshade::ultra::wantsSplashFrame ( const SplashState& state, bool isLoading )
 {
-	return is_loading || state.ring_alpha > 0.0f || is_logo_pending_for(state);
+	return isLoading || state.ringAlpha > 0.0f || isLogoPendingFor ( state );
 }
+//-----------------------------------------------------------------------------
 
-void reshade::ultra::draw_splash(splash_state &state, const splash_frame &frame)
+void reshade::ultra::drawSplash ( SplashState& state, const SplashFrame& frame )
 {
-	const auto step = std::clamp(frame.delta_time, 0.0f, max_frame_step);
-	advance_logo(state, frame, step);
-	advance_ring(state, frame, step);
+	const auto	step = std::clamp ( frame.deltaTime, 0.0f, maxFrameStep );
+	advanceLogo ( state, frame, step );
+	advanceRing ( state, frame, step );
 }
+//-----------------------------------------------------------------------------
 
-void reshade::ultra::destroy_splash(splash_state &state, api::device *const device)
+void reshade::ultra::destroySplash ( SplashState& state, api::device* device )
 {
-	const splash_state *expected = &state;
-	s_logo_owner.compare_exchange_strong(expected, nullptr);
+	const SplashState*	expected = &state;
+	logoOwner.compare_exchange_strong ( expected, nullptr );
 
-	device->destroy_resource_view(state.logo_view);
-	device->destroy_resource(state.logo_texture);
-	state = splash_state();
+	device->destroy_resource_view ( state.logoView );
+	device->destroy_resource ( state.logoTexture );
+	state = SplashState ();
 }
+//-----------------------------------------------------------------------------
 
-float reshade::ultra::compile_progress(const size_t effect_count, const size_t remaining_effects)
+float reshade::ultra::compileProgress ( size_t effectCount, size_t remainingEffects )
 {
-	if (effect_count == 0 || remaining_effects > effect_count)
+	if ( effectCount == 0 || remainingEffects > effectCount )
 		return 1.0f;
 
-	return static_cast<float>(effect_count - remaining_effects) / static_cast<float>(effect_count);
+	return static_cast<float> ( effectCount - remainingEffects ) / static_cast<float> ( effectCount );
 }
+//-----------------------------------------------------------------------------
 
-void reshade::ultra::draw_window_progress_ring(const float progress)
+void reshade::ultra::drawWindowProgressRing ( float progress )
 {
-	const auto pos = ImGui::GetWindowPos();
-	const auto size = ImGui::GetWindowSize();
-	draw_ring(ImGui::GetWindowDrawList(), ImVec2(pos.x + size.x * 0.5f, pos.y + size.y * 0.5f), ImGui::GetIO().DisplaySize.y, progress, 1.0f);
+	const auto	pos = ImGui::GetWindowPos ();
+	const auto	size = ImGui::GetWindowSize ();
+	drawRing ( ImGui::GetWindowDrawList (), ImVec2 ( pos.x + size.x * 0.5f, pos.y + size.y * 0.5f ), ImGui::GetIO ().DisplaySize.y, progress, 1.0f );
 }
+//-----------------------------------------------------------------------------
 
 #endif

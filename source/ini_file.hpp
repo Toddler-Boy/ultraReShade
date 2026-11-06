@@ -285,7 +285,7 @@ namespace reshade
 		static const T convert(const std::vector<std::string> &values, size_t i)
 		{
 			if constexpr (std::is_same_v<T, bool>)
-				return convert<int>(values, i) != 0 || i < values.size() && (values[i] == "true" || values[i] == "True" || values[i] == "TRUE");
+				return convert<int>(values, i) != 0 || (i < values.size() && (values[i] == "true" || values[i] == "True" || values[i] == "TRUE"));
 			if constexpr (std::is_same_v<T, int>)
 				return static_cast<int>(convert<long>(values, i));
 			if constexpr (std::is_same_v<T, unsigned int>)

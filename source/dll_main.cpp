@@ -330,7 +330,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_dxgi, L"d3d11.dll"));
 
 						// On Windows 7 the d3d12on7 module is not in the system path, so register to hook any d3d12.dll loaded instead
-						reshade::hooks::register_module(get_target_path(is_windows7() && _wcsicmp(module_name.c_str(), L"d3d12") != 0 || (!export_module_path.empty() && is_dxgi), L"d3d12.dll"));
+						reshade::hooks::register_module(get_target_path((is_windows7() && _wcsicmp(module_name.c_str(), L"d3d12") != 0) || (!export_module_path.empty() && is_dxgi), L"d3d12.dll"));
 
 						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_d3d && !is_dxgi, L"dxgi.dll"));
 					}

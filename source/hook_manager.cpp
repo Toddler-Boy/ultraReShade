@@ -40,7 +40,7 @@ static std::shared_mutex s_hooks_mutex;
 static std::vector<named_hook> s_hooks;
 static std::shared_mutex s_delayed_hook_paths_mutex;
 static std::vector<std::filesystem::path> s_delayed_hook_paths;
-static PVOID s_dll_notification_cookie = nullptr;
+[[maybe_unused]] static PVOID s_dll_notification_cookie = nullptr;
 
 static std::vector<module_export> enumerate_module_exports(HMODULE handle)
 {
@@ -209,7 +209,7 @@ static bool install_internal(HMODULE target_module, HMODULE replacement_module, 
 		reshade::hook hook;
 #ifdef RESHADE_TEST_APPLICATION
 		// RenderDoc hooks the IAT, so get an updated function pointer via its 'GetProcAddress' hook
-		hook.target = GetProcAddress(target_module, std::get<0>(match));
+		hook.target = reinterpret_cast<reshade::hook::address>(GetProcAddress(target_module, std::get<0>(match)));
 #else
 		hook.target = std::get<1>(match);
 #endif

@@ -50,11 +50,11 @@ reshade::openvr::swapchain_impl::swapchain_impl(api::device *device, api::comman
 	create_effect_runtime(this, graphics_queue, true);
 }
 
+extern thread_local reshade::opengl::device_context_impl *g_opengl_context;
+extern lockfree_linear_map<void *, reshade::vulkan::device_impl *, 8> g_vulkan_devices;
+
 reshade::openvr::swapchain_impl::~swapchain_impl()
 {
-	extern thread_local reshade::opengl::device_context_impl *g_opengl_context;
-	extern lockfree_linear_map<void *, reshade::vulkan::device_impl *, 8> g_vulkan_devices;
-
 	// Do not access '_device' object to check the device API, in case it was already destroyed
 	if (g_opengl_context == nullptr && (_direct3d_device == nullptr && g_vulkan_devices.at(_device) == nullptr))
 	{

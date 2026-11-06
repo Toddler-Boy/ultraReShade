@@ -35,6 +35,14 @@
 #include <stb_image_write_hdr_png.h>
 #include <stb_image_resize2.h>
 
+#ifdef __clang__
+__attribute__((target("f16c")))
+#endif
+static __m128 cvtph_ps(__m128i value)
+{
+	return _mm_cvtph_ps(value);
+}
+
 std::string expand_macro_string(const std::string &input, std::vector<std::pair<std::string_view, std::string>> macros = {})
 {
 	std::string result;
@@ -294,12 +302,12 @@ reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphic
 	_device(swapchain->get_device()),
 	_graphics_queue(graphics_queue),
 	_is_vr(is_vr),
+	_config_path(config_path),
+	_last_frame_duration(std::chrono::milliseconds(1)),
 	_start_time(std::chrono::high_resolution_clock::now()),
 	_last_present_time(_start_time),
-	_last_frame_duration(std::chrono::milliseconds(1)),
 	_effect_search_paths({ L".\\" }),
 	_texture_search_paths({ L".\\" }),
-	_config_path(config_path),
 	_screenshot_path(L".\\"),
 	_screenshot_name("%AppName% %Date% %Time%_%Count%"), // Ensure unique naming with screenshot count because users may request more than one screenshot per second
 	_screenshot_post_save_command_arguments("\"%TargetPath%\""),
@@ -748,6 +756,9 @@ void reshade::runtime::on_present()
 
 	if (_should_save_screenshot)
 		save_screenshot(_screenshot_save_before ? "After" : nullptr);
+
+	if (ultra_after_effects != nullptr)
+		ultra_after_effects(this);
 
 	_frame_count++;
 	const auto current_time = std::chrono::high_resolution_clock::now();
@@ -3695,7 +3706,7 @@ void reshade::runtime::update_effects()
 
 				_reload_remaining_effects += 1;
 
-				_worker_threads.emplace_back([this, effect_index, permutation_index]() {
+				_worker_threads.emplace_back([this, effect_index = effect_index, permutation_index = permutation_index]() {
 						load_effect(_effects[effect_index].source_file, ini_file::load_cache(_current_preset_path), effect_index, permutation_index, true);
 					});
 			}
@@ -4904,7 +4915,7 @@ void reshade::runtime::save_screenshot(const char *postfix_in)
 							alignas(16) uint16_t result[4] = { pixel[0], pixel[1], pixel[2] };
 
 							// Convert 16-bit floating point values to 32-bit floating point
-							auto rgba_float_srgb = _mm_cvtph_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(result)));
+							auto rgba_float_srgb = cvtph_ps(_mm_loadl_epi64(reinterpret_cast<const __m128i *>(result)));
 
 							// Convert BT.709/sRGB to BT.2020 primaries
 							auto rgba_float_bt2100 = _mm_max_ps(_mm_setzero_ps(),

@@ -415,11 +415,11 @@ namespace reshade::api
 	{
 		constexpr resource_view_desc() : texture({ 0, 0, 0, 0 }) {}
 		constexpr resource_view_desc(format format, uint64_t offset, uint64_t size) :
-			type(resource_view_type::buffer), format(format), buffer({ offset, size }) {}
+			type(resource_view_type::buffer), format(format), buffer({ offset, { size } }) {}
 		constexpr resource_view_desc(format format, uint32_t first_level, uint32_t levels, uint32_t first_layer, uint32_t layers) :
 			type(resource_view_type::texture_2d), format(format), texture({ first_level, levels, first_layer, layers }) {}
 		constexpr resource_view_desc(resource_view_type type, format format, uint64_t offset, uint64_t size) :
-			type(type), format(format), buffer({ offset, size }) {}
+			type(type), format(format), buffer({ offset, { size } }) {}
 		constexpr resource_view_desc(resource_view_type type, format format, uint32_t first_level, uint32_t levels, uint32_t first_layer, uint32_t layers) :
 			type(type), format(format), texture({ first_level, levels, first_layer, layers }) {}
 		constexpr explicit resource_view_desc(format format) : type(resource_view_type::texture_2d), format(format), texture({ 0, 1, 0, 1 }) {}
@@ -729,7 +729,7 @@ namespace reshade::api
 	struct acceleration_structure_build_input
 	{
 		constexpr acceleration_structure_build_input() : triangles() {}
-		constexpr acceleration_structure_build_input(resource vertex_buffer, uint64_t vertex_offset, uint32_t vertex_count, uint64_t vertex_stride, format vertex_format, resource index_buffer, uint64_t index_offset, uint32_t index_count, format index_format, uint64_t transform_address = 0) : type(acceleration_structure_build_input_type::triangles), triangles({ vertex_buffer, vertex_offset, vertex_count, vertex_stride, vertex_format, index_buffer, index_offset, index_count, index_format, transform_address }) {}
+		constexpr acceleration_structure_build_input(resource vertex_buffer, uint64_t vertex_offset, uint32_t vertex_count, uint64_t vertex_stride, format vertex_format, resource index_buffer, uint64_t index_offset, uint32_t index_count, format index_format, uint64_t transform_address = 0) : type(acceleration_structure_build_input_type::triangles), triangles({ vertex_buffer, vertex_offset, vertex_count, vertex_stride, vertex_format, index_buffer, index_offset, index_count, index_format, { transform_address } }) {}
 		constexpr acceleration_structure_build_input(resource aabb_buffer, uint64_t aabb_offset, uint32_t aabb_count, uint64_t aabb_stride) : type(acceleration_structure_build_input_type::aabbs), aabbs({ aabb_buffer, aabb_offset, aabb_count, aabb_stride }) {}
 		constexpr acceleration_structure_build_input(resource instance_buffer, uint64_t instance_offset, uint32_t instance_count, bool array_of_pointers = false) : type(acceleration_structure_build_input_type::instances), instances({ instance_buffer, instance_offset, instance_count, array_of_pointers }) {}
 
