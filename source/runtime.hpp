@@ -8,6 +8,7 @@
 #include "reshade_api.hpp"
 #include "state_block.hpp"
 #include "imgui_code_editor.hpp"
+#include "ultra_splash.hpp"
 #include <atomic>
 #include <thread>
 #include <chrono>
@@ -451,6 +452,9 @@ namespace reshade
 
 		api::resource _vr_overlay_tex = {};
 		api::resource_view _vr_overlay_target = {};
+
+		ultra::splash_state _ultra_splash;
+		bool _ultra_tab_placed = false;
 		#pragma endregion
 
 		#pragma region Overlay Home
@@ -463,7 +467,7 @@ namespace reshade
 		bool _was_preprocessor_popup_edited = false;
 		size_t _focused_effect = std::numeric_limits<size_t>::max();
 		size_t _selected_technique = std::numeric_limits<size_t>::max();
-		unsigned int _tutorial_index = 0;
+		unsigned int _tutorial_index = 4;
 		unsigned int _effects_expanded_state = 2;
 		float _variable_editor_height = 200.0f;
 		#pragma endregion

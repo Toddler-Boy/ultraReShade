@@ -66,6 +66,8 @@ MAIN_ICON               ICON                    "main_icon.ico"
 #if !defined(RESHADE_FXC)
 IDB_MAIN_ICON           RCDATA                  "main_icon_small.png"
 
+IDB_ULTRA_LOGO          RCDATA                  "ultra_logo.png"
+
 IDR_COPY_PS             RCDATA                  "shaders\\copy_ps.cso"
 
 IDR_FULLSCREEN_VS       RCDATA                  "shaders\\fullscreen_vs.cso"

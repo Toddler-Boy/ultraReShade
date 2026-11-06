@@ -1,0 +1,85 @@
+name: ultraReShade upstream sync
+
+# Daily: merges crosire's main into the upstream-sync branch and opens a pull request into main, so every
+# batch of upstream changes is looked at before it ships. A conflict opens an issue instead.
+on:
+  schedule:
+    - cron: '17 6 * * *'
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency: upstream-sync
+
+jobs:
+  merge:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    outputs:
+      merged: ${{ steps.merge.outputs.merged }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Merge upstream main
+        id: merge
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote add upstream https://github.com/crosire/reshade.git
+          git fetch upstream main --tags
+
+          # The version number comes from upstream's tags
+          git push origin --tags
+
+          if git merge-base --is-ancestor upstream/main main; then
+            echo "main already contains upstream main"
+            exit 0
+          fi
+
+          if git ls-remote --exit-code --heads origin upstream-sync > /dev/null; then
+            git fetch origin upstream-sync
+            git checkout -B upstream-sync origin/upstream-sync
+            git merge --no-edit main
+          else
+            git checkout -B upstream-sync main
+          fi
+
+          if ! git merge --no-edit upstream/main; then
+            files=$(git diff --name-only --diff-filter=U)
+            git merge --abort
+            title="Upstream merge conflict"
+            if [ -z "$(gh issue list --state open --search "in:title \"$title\"" --json number --jq '.[0].number')" ]; then
+              gh issue create --title "$title" --body "Merging crosire/reshade main into upstream-sync conflicts in:"$'\n\n'"$files"
+            fi
+            exit 1
+          fi
+
+          git push origin upstream-sync
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+
+          if [ -z "$(gh pr list --head upstream-sync --state open --json number --jq '.[0].number')" ]; then
+            gh pr create --base main --head upstream-sync --title "Upstream changes" \
+              --body "New commits from crosire/reshade main. Look them over for risk before merging; the build of this branch runs in the same workflow."
+          fi
+
+  build:
+    needs: merge
+    if: needs.merge.outputs.merged == 'true'
+    uses: ./.github/workflows/ultra-build.yml
+    with:
+      ref: upstream-sync
+    permissions:
+      contents: read

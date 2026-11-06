@@ -80,6 +80,10 @@ set(RESHADE_SOURCE
   source/runtime_update_check.cpp
   source/state_block.cpp
   source/state_block.hpp
+  source/ultra_overlay.cpp
+  source/ultra_overlay.hpp
+  source/ultra_splash.cpp
+  source/ultra_splash.hpp
 )
 set(RESHADE_SOURCE_DIRECTX
   source/d2d1/d2d1.cpp

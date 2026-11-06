@@ -1,0 +1,38 @@
+name: ultraReShade release
+
+on:
+  push:
+    tags:
+      - 'v*-ug*'
+
+permissions: {}
+
+jobs:
+  build:
+    uses: ./.github/workflows/ultra-build.yml
+    with:
+      ref: ${{ github.ref_name }}
+    permissions:
+      contents: read
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download
+        uses: actions/download-artifact@v7
+        with:
+          name: ultraReShade
+          path: dist
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cd dist
+          sha256sum * > SHA256SUMS
+          gh release create "${{ github.ref_name }}" * --repo "${{ github.repository }}" --title "${{ github.ref_name }}" --notes "ultraReShade ${{ github.ref_name }}"

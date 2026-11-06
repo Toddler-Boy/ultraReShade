@@ -16,6 +16,7 @@
 #include "imgui_widgets.hpp"
 #include "localization.hpp"
 #include "platform_utils.hpp"
+#include "ultra_overlay.hpp"
 #include "fonts/forkawesome.inl"
 #include <cmath> // std::abs, std::ceil, std::floor
 #include <cctype> // std::tolower
@@ -803,7 +804,7 @@ void reshade::runtime::draw_gui()
 	if (show_overlay != _show_overlay)
 		open_overlay(show_overlay, show_overlay_source);
 
-	const bool show_splash_window = _show_splash && (is_loading() || (_reload_count <= 1 && (_last_present_time - _last_reload_time) < std::chrono::seconds(5)) || (!_show_overlay && _tutorial_index == 0 && _input != nullptr));
+	const bool show_splash_window = false;
 
 	// Do not show this message in the same frame the screenshot is taken (so that it won't show up on the GUI screenshot)
 	const bool show_screenshot_message = (_show_screenshot_message || !_last_screenshot_save_successful) && !_should_save_screenshot && (_last_present_time - _last_screenshot_time) < std::chrono::seconds(_last_screenshot_save_successful ? 3 : 5);
@@ -837,6 +838,7 @@ void reshade::runtime::draw_gui()
 #if RESHADE_ADDON
 		&& !has_addon_event<addon_event::reshade_overlay>()
 #endif
+		&& !ultra::wants_splash_frame(_ultra_splash, is_loading())
 		)
 	{
 		if (_primary_input_handler && _input != nullptr)
@@ -1043,6 +1045,9 @@ void reshade::runtime::draw_gui()
 
 	ImVec2 viewport_offset = ImVec2(0, 0);
 	const bool show_spinner = _reload_count > 1 && _tutorial_index != 0;
+
+	ultra::draw_splash(_ultra_splash, { _device, ImGui::GetBackgroundDrawList(), imgui_io.DisplaySize.x, imgui_io.DisplaySize.y, imgui_io.DeltaTime, _effects.size(), _reload_remaining_effects.load(), is_loading(), _show_overlay });
+
 
 	// Create ImGui widgets and windows
 	if (show_splash_window && !(show_spinner && show_overlay))
@@ -1435,8 +1440,13 @@ void reshade::runtime::draw_gui()
 				if (widget.title == "OSD" ? show_splash_window : !_show_overlay)
 					continue;
 
+				if (widget.title != "OSD")
+					ultra::dock_new_addon_window();
+
 				if (ImGui::Begin(widget.title.c_str(), nullptr, ImGuiWindowFlags_NoFocusOnAppearing))
 					widget.callback(this);
+				if (widget.title == "ultraGame")
+					ultra::place_ultragame_tab(_ultra_tab_placed);
 				ImGui::End();
 			}
 		}
@@ -1444,6 +1454,9 @@ void reshade::runtime::draw_gui()
 		invoke_addon_event<addon_event::reshade_overlay>(this);
 	}
 #endif
+
+	if (_show_overlay)
+		ultra::undock_dragged_node();
 
 	if (_effects_enabled &&
 		_preview_texture < _textures.size() &&
@@ -1822,8 +1835,7 @@ void reshade::runtime::draw_gui_home()
 
 	if (_reload_remaining_effects != std::numeric_limits<size_t>::max())
 	{
-		ImGui::SetCursorPos(ImGui::GetWindowSize() * 0.5f - ImVec2(21, 21));
-		imgui::spinner((_effects.size() - _reload_remaining_effects) / float(_effects.size()), 16.0f * ImGui::GetFontSize() / 13, 10.0f * ImGui::GetFontSize() / 13);
+		ultra::draw_window_progress_ring(ultra::compile_progress(_effects.size(), _reload_remaining_effects.load()));
 		return; // Cannot show techniques and variables while effects are loading, since they are being modified in other threads during that time
 	}
 
@@ -1915,7 +1927,9 @@ void reshade::runtime::draw_gui_home()
 			_performance_mode ? 0 : (17 /* splitter */ + (bottom_height + (_tutorial_index == 3 ? 175 : 0))));
 		bottom_height = std::min(bottom_height, ImGui::GetContentRegionAvail().y - 20.0f);
 
-		if (ImGui::BeginChild("##techniques", ImVec2(0, -bottom_height), ImGuiChildFlags_Borders))
+		// The list only takes the height its techniques need, so the variables below get the rest of the window
+		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, ImGui::GetContentRegionAvail().y - bottom_height));
+		if (ImGui::BeginChild("##techniques", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY))
 		{
 			if (_effect_load_skipping && _show_force_load_effects_button)
 			{
@@ -5102,6 +5116,8 @@ void reshade::runtime::destroy_imgui_resources()
 	_imgui_pipeline = {};
 	_device->destroy_pipeline_layout(_imgui_pipeline_layout);
 	_imgui_pipeline_layout = {};
+
+	ultra::destroy_splash(_ultra_splash, _device);
 }
 
 bool reshade::runtime::open_overlay(bool open, api::input_source source)

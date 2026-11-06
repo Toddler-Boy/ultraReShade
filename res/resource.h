@@ -15,6 +15,7 @@
 #define IDR_MIPMAP_CS                   111
 #define IDR_MIPMAP_CS_GLSL              112
 #define IDB_MAIN_ICON                   600
+#define IDB_ULTRA_LOGO                  601
 #define IDR_LICENSE_GLAD                701
 #define IDR_LICENSE_IMGUI               702
 #define IDR_LICENSE_MINHOOK             703

@@ -1,0 +1,58 @@
+name: ultraReShade build
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Branch or tag to build
+        type: string
+        default: main
+
+permissions: {}
+
+jobs:
+  build:
+    runs-on: windows-2025
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+          persist-credentials: false
+          submodules: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.x'
+
+      - name: Set up MSBuild
+        uses: microsoft/setup-msbuild@v3
+
+      - name: Build ReShade (32-bit)
+        run: msbuild ReShade.sln -t:ReShade /p:Configuration=Release /p:Platform=32-bit -m
+
+      - name: Build ReShade (64-bit)
+        run: msbuild ReShade.sln -t:ReShade /p:Configuration=Release /p:Platform=64-bit -m
+
+      - name: Collect files
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item bin/Win32/Release/ReShade32.dll, bin/x64/Release/ReShade64.dll, setup/ReShade32.json, setup/ReShade64.json, LICENSE.md dist/
+
+      - name: Upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: ultraReShade
+          path: dist/
