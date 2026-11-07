@@ -12,6 +12,7 @@
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
 #include "ultra_test_check.hpp"
+#include "ultra_test_display.hpp"
 #include "ultra_test_run.hpp"
 #include "ultra_test_scene.hpp"
 #include <shellapi.h>
@@ -116,6 +117,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	reshade::hooks::install("D3DKMTQueryAdapterInfo", GetProcAddress(GetModuleHandleW(L"gdi32.dll"), "D3DKMTQueryAdapterInfo"), HookD3DKMTQueryAdapterInfo);
 
 	static UINT s_resize_w = 0, s_resize_h = 0;
+	static bool s_background = false;
 
 	// Register window class
 	WNDCLASS wc = { sizeof(wc) };
@@ -127,6 +129,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		[](HWND hWnd, UINT Msg, WPARAM wParam, LPARAM lParam) -> LRESULT {
 			switch (Msg)
 			{
+			case WM_CLOSE:
+				reshade::ultra::leaveTestFullscreen();
+				break;
+			// A background window stays below every other window and is never activated, not even by a click
+			case WM_WINDOWPOSCHANGING:
+				if (s_background)
+				{
+					WINDOWPOS *const pos = reinterpret_cast<WINDOWPOS *>(lParam);
+					pos->hwndInsertAfter = HWND_BOTTOM;
+					pos->flags = (pos->flags & ~SWP_NOZORDER) | SWP_NOACTIVATE;
+				}
+				break;
+			case WM_MOUSEACTIVATE:
+				if (s_background)
+					return MA_NOACTIVATE;
+				break;
 			case WM_DESTROY:
 				PostQuitMessage(EXIT_SUCCESS);
 				break;
@@ -144,6 +162,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	const reshade::ultra::TestOptions options = reshade::ultra::parseTestOptions();
 	if (!options.isValid)
 		return EXIT_FAILURE;
+	s_background = options.isBackground;
 
 	const std::optional<std::filesystem::path> model_folder = reshade::ultra::testModelFolder();
 	const std::filesystem::path head_folder = model_folder.value_or(g_reshade_dll_path.parent_path() / L"test_scene" / L"head");
@@ -170,8 +189,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	AdjustWindowRect(&window_rect, window_x > 0 && window_y > 0 ? WS_OVERLAPPEDWINDOW : WS_POPUP, FALSE);
 
 	// Create and show window instance
-	const HWND window_handle = CreateWindow(
-		wc.lpszClassName, TEXT("ReShade ") TEXT(VERSION_STRING_PRODUCT), window_x > 0 && window_y > 0 ? WS_OVERLAPPEDWINDOW : WS_POPUP,
+	const HWND window_handle = CreateWindowEx(
+		options.isBackground ? WS_EX_NOACTIVATE : 0, wc.lpszClassName, TEXT("ReShade ") TEXT(VERSION_STRING_PRODUCT), window_x > 0 && window_y > 0 ? WS_OVERLAPPEDWINDOW : WS_POPUP,
 		window_rect.left, window_rect.top, window_rect.right - window_rect.left, window_rect.bottom - window_rect.top, nullptr, nullptr, hInstance, nullptr);
 
 	if (window_handle == nullptr)
@@ -183,6 +202,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	// Agents run several of these at once while someone works: never take the focus
 	ShowWindow(window_handle, nCmdShow == SW_HIDE ? SW_HIDE : SW_SHOWNOACTIVATE);
+	if (options.isBackground)
+		SetWindowPos(window_handle, HWND_BOTTOM, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
 
 	// Avoid resize caused by 'ShowWindow' call
 	s_resize_w = 0;
@@ -354,6 +375,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		reshade::ultra::TestSceneD3d11 scene(device.get(), *model, options.scene);
 		scene.resize(back_buffer.get());
 
+		reshade::ultra::TestDisplay display(swapchain.get(), window_handle);
+
 		while (true)
 		{
 			while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) && msg.message != WM_QUIT)
@@ -364,6 +387,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			{
 				msg.wParam = EXIT_SUCCESS;
 				break;
+			}
+
+			if (const std::optional<SIZE> size = display.apply(frames.takeSwitch()))
+			{
+				s_resize_w = size->cx;
+				s_resize_h = size->cy;
 			}
 
 			if (s_resize_w != 0)
@@ -471,6 +500,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			scene->resize(desc.Width, desc.Height);
 		}
 
+		std::unique_ptr<reshade::ultra::TestDisplay> display;
+		if (!is_d3d12on7)
+			display = std::make_unique<reshade::ultra::TestDisplay>(swapchain.get(), window_handle);
+
 		// The frame that resized comes back through the loop's start after the goto and must not count twice
 		bool is_frame_started = false;
 
@@ -537,6 +570,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			}
 			is_frame_started = false;
 
+			if (display != nullptr)
+			{
+				if (const std::optional<SIZE> size = display->apply(frames.takeSwitch()))
+				{
+					s_resize_w = size->cx;
+					s_resize_h = size->cy;
+				}
+			}
+
 			if (s_resize_w != 0)
 			{
 				// Clean up current resources referencing the back buffer
@@ -581,7 +623,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			else
 			{
 				// Synchronization is handled in 'swapchain_impl::on_present'
-				HR_CHECK(swapchain->Present(vsync ? 1 : 0, vsync ? 0 : DXGI_PRESENT_ALLOW_TEARING));
+				// Tearing is for windows only, exclusive fullscreen refuses the flag
+				HR_CHECK(swapchain->Present(vsync ? 1 : 0, vsync || display->isFullscreen() ? 0 : DXGI_PRESENT_ALLOW_TEARING));
 			}
 		}
 	}

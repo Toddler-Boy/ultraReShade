@@ -19,6 +19,8 @@ extern void unregister_addon_effect_runtime_sync();
 extern void register_addon_constant_buffers();
 extern void unregister_addon_constant_buffers();
 extern void track_constant_buffers(bool is_tracking);
+extern void register_addon_resource_ids();
+extern void unregister_addon_resource_ids();
 
 extern HMODULE g_module_handle;
 
@@ -191,6 +193,7 @@ void reshade::load_addons()
 		}
 	}
 	register_addon_constant_buffers();
+	register_addon_resource_ids();
 #endif
 
 	// Initialize any add-ons that were registered externally
@@ -387,6 +390,7 @@ void reshade::unload_addons()
 	unregister_addon_depth();
 	unregister_addon_effect_runtime_sync();
 	unregister_addon_constant_buffers();
+	unregister_addon_resource_ids();
 #endif
 
 	ultra::stopAddonReload();

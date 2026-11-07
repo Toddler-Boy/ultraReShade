@@ -188,6 +188,7 @@ function(ultra_add_test_app)
   list(FILTER sources EXCLUDE REGEX "\\.hlsl$|ultra_dll_entry\\.cpp$")
   target_sources(ReShadeTest PRIVATE ${sources} source/dll_main_test_app.cpp source/ultra_test_scene.cpp source/ultra_test_scene.hpp
     source/ultra_test_model.cpp source/ultra_test_model.hpp source/ultra_test_check.cpp source/ultra_test_check.hpp source/ultra_test_run.cpp source/ultra_test_run.hpp
+    source/ultra_test_display.cpp source/ultra_test_display.hpp
     source/ultra_test_environment.cpp source/ultra_test_environment.hpp)
 
   foreach(property INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_LIBRARIES LINK_OPTIONS CXX_STANDARD CXX_STANDARD_REQUIRED)

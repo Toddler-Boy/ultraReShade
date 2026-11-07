@@ -10,6 +10,7 @@
 #include <cstring>
 #include <cwchar>
 #include <fstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -17,6 +18,7 @@
 #include <shellapi.h>
 
 #include <reshade.hpp>
+#include <reshade_ultra.hpp>
 #include <stb_image.h>
 #include <stb_image_write.h>
 #include <stb_image_write_hdr_png.h>
@@ -74,6 +76,89 @@ namespace
 			std::snprintf ( line, sizeof ( line ), i % 4 == 3 || i + 1 == size / 4 ? "%10.5f\n" : "%10.5f ", floats[ i ] );
 			dump.text += line;
 		}
+	}
+
+	// -dump-resource-ids <file.txt>: each frame the stable IDs (and handles) of the back buffer presented and of the
+	// render targets and depth buffer bound, and every ultra_resource_recreated event. Once a resource was recreated,
+	// a frame that binds a target with an ID not seen before is an error
+	struct ResourceIdsDump
+	{
+		std::filesystem::path	path;
+		std::ofstream			file;
+		std::set<uint64_t>		knownIds;
+		std::string				targets;
+		std::string				depth;
+		bool					isListening = false;
+		bool					hasRecreated = false;
+	};
+
+	ResourceIdsDump	ids;
+
+	[[ nodiscard ]] size_t frameIndex ()
+	{
+		return state.frames != nullptr ? state.frames->index () : 0;
+	}
+
+	[[ nodiscard ]] std::string describe ( reshade::api::device* device, reshade::api::resource resource )
+	{
+		const auto	id = reshade::get_resource_stable_id ( device, resource );
+		char		text[ 48 ];
+		std::snprintf ( text, sizeof ( text ), " %llu:%llx", id, resource.handle );
+
+		if ( id == 0 )
+			reshade::log::message ( reshade::log::level::error, "Test application: resource %llx has no stable ID.", resource.handle );
+		else if ( ids.hasRecreated && ! ids.knownIds.contains ( id ) )
+			reshade::log::message ( reshade::log::level::error, "Test application: resource %llx has the new stable ID %llu after a recreation.", resource.handle, id );
+		else
+			ids.knownIds.insert ( id );
+
+		return text;
+	}
+
+	void addOnce ( std::string& list, const std::string& entry )
+	{
+		if ( list.find ( entry ) == std::string::npos )
+			list += entry;
+	}
+
+	void onBindTargets ( reshade::api::command_list* cmdList, uint32_t count, const reshade::api::resource_view* rtvs, reshade::api::resource_view dsv )
+	{
+		const auto	device = cmdList->get_device ();
+
+		for ( uint32_t i = 0; i < count; ++i )
+			if ( rtvs[ i ] != 0 )
+				addOnce ( ids.targets, describe ( device, device->get_resource_from_view ( rtvs[ i ] ) ) );
+
+		if ( dsv != 0 )
+			addOnce ( ids.depth, describe ( device, device->get_resource_from_view ( dsv ) ) );
+	}
+
+	void onResourceRecreated ( reshade::api::device*, uint64_t id, reshade::api::resource oldResource, reshade::api::resource newResource )
+	{
+		ids.hasRecreated = true;
+		ids.file << "recreated " << id << ": " << std::hex << oldResource.handle << " -> " << newResource.handle << std::dec << " in frame " << frameIndex () << '\n';
+	}
+
+	void writeResourceIds ( reshade::runtime* runtime )
+	{
+		if ( ! ids.isListening )
+		{
+			ids.isListening = true;
+			ids.file.open ( ids.path );
+
+			if ( ! ids.file.good () )
+				reshade::log::message ( reshade::log::level::error, "Test application: failed to open '%s' for the resource IDs.", ids.path.u8string ().c_str () );
+
+			reshade::register_event<reshade::addon_event::bind_render_targets_and_depth_stencil> ( onBindTargets );
+			reshade::register_event<reshade::addon_event::ultra_resource_recreated> ( onResourceRecreated );
+			return;
+		}
+
+		const auto	backBuffer = describe ( runtime->get_device (), runtime->get_swapchain ()->get_current_back_buffer () );
+		ids.file << "frame " << frameIndex () << " back buffer" << backBuffer << " targets" << ids.targets << " depth" << ids.depth << '\n';
+		ids.file.flush ();
+		ids.targets.clear ();
+		ids.depth.clear ();
 	}
 
 	void writeToStream ( void* file, void* data, int size )
@@ -227,6 +312,9 @@ namespace
 		if ( dump.frame.has_value () && ! dump.isListening )
 			dump.isListening = true, reshade::register_event<reshade::addon_event::ultra_constant_buffer> ( onConstantBuffer );
 
+		if ( ! ids.path.empty () )
+			writeResourceIds ( runtime );
+
 		if ( dump.frame.has_value () && state.frames != nullptr && dump.frame == state.frames->index () && ! dump.isWritten )
 		{
 			std::ofstream	file ( dump.path );
@@ -258,6 +346,19 @@ reshade::ultra::TestCheck::TestCheck ()
 
 	for ( auto i = 1; argv != nullptr && i < argc; ++i )
 	{
+		if ( _wcsicmp ( argv[ i ], L"-dump-resource-ids" ) == 0 )
+		{
+			if ( i + 1 >= argc )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: -dump-resource-ids needs a file." );
+				isCommandLineValid = false;
+				break;
+			}
+
+			ids.path = std::filesystem::absolute ( argv[ ++i ] );
+			continue;
+		}
+
 		const auto	isCapture = _wcsicmp ( argv[ i ], L"-capture" ) == 0;
 
 		if ( ! isCapture && _wcsicmp ( argv[ i ], L"-dump-constants" ) != 0 )

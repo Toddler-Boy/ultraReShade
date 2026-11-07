@@ -1828,8 +1828,23 @@ namespace reshade
 		/// </remarks>
 		ultra_constant_buffer = 101,
 
+		/// <summary>
+		/// ultraReShade: called when a render target, depth-stencil or unordered access texture, or a swap chain back
+		/// buffer, was created again in the role of one destroyed before: same device, same description apart from
+		/// size (and mipmap count, when both have a full chain), back buffers by their index. The new resource keeps the
+		/// stable ID of the old one (see <c>reshade::get_resource_stable_id</c> in reshade_ultra.hpp).
+		/// <para>Callback function signature: <c>void (api::device *device, uint64_t stable_id, api::resource old_resource, api::resource new_resource)</c></para>
+		/// </summary>
+		/// <remarks>
+		/// Called during the creation of <paramref name="new_resource"/>, before later add-ons get its init_resource, or
+		/// from init_swapchain for back buffers. <paramref name="old_resource"/> is destroyed already, unless the game
+		/// created the new resource first and destroyed the old one shortly after; then this is called on that destruction.
+		/// When several destroyed resources share a role, they are taken in the order they were first created.
+		/// </remarks>
+		ultra_resource_recreated = 102,
+
 #if RESHADE_ADDON
-		max = 102 // Last value used internally by ReShade to determine number of events in this enum
+		max = 103 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
 
@@ -1979,4 +1994,5 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::reshade_overlay_technique, bool, api::effect_runtime *runtime, api::effect_technique technique);
 
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_constant_buffer, void, api::command_list *cmd_list, api::shader_stage stages, api::pipeline_layout layout, uint32_t layout_param, uint32_t binding, const void *data, uint64_t size, api::resource buffer, uint64_t offset);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_resource_recreated, void, api::device *device, uint64_t stable_id, api::resource old_resource, api::resource new_resource);
 }
