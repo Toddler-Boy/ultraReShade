@@ -52,7 +52,7 @@ namespace reshade::ultra
 		std::optional<api::device_api>	api;				// -api dx11|dx12
 		TestSceneSettings				scene;				// -scene cube|head, -jitter on|off, -sss on|off, -env <file.hdr>, -fov <degrees>,
 															// -hdr off|scrgb|pq, -paper-white <nits>, -peak <nits>,
-															// -constants root|cbv|table; -model makes it a head
+															// -constants root|cbv|table
 		LONG							width = 0;			// -size <w>x<h>, client area; 0: two thirds of the screen
 		LONG							height = 0;
 		size_t							frames = 0;			// -frames <n>: quit after n frames, each 1/60 s apart; 0: run until closed

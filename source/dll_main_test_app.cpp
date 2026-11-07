@@ -177,10 +177,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		return EXIT_FAILURE;
 	s_background = options.isBackground;
 
-	const std::optional<std::filesystem::path> model_folder = reshade::ultra::testModelFolder();
-	const std::filesystem::path head_folder = model_folder.value_or(g_reshade_dll_path.parent_path() / L"test_scene" / L"head");
+	const std::filesystem::path head_folder = g_reshade_dll_path.parent_path() / L"test_scene" / L"head";
 	const std::optional<reshade::ultra::TestModel> model =
-		model_folder.has_value() ? reshade::ultra::loadMetaHumanHead(head_folder) :
 		options.scene.kind == reshade::ultra::TestSceneKind::head ? reshade::ultra::loadTestHead(head_folder) : reshade::ultra::makeTestCube();
 	if (!model.has_value())
 	{

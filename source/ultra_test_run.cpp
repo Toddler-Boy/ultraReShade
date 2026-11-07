@@ -513,10 +513,6 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		options.isValid = false;
 	}
 
-	// A model from -model turns like the built-in head, framed by everything it draws
-	if ( testModelFolder ().has_value () )
-		options.scene.kind = TestSceneKind::model;
-
 	return options;
 }
 //-----------------------------------------------------------------------------

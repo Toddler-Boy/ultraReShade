@@ -49,15 +49,10 @@ cbuffer Scene : register ( b0 )
 	float2				viewSize;
 };
 
-cbuffer Part : register ( b1 )
+cbuffer Material : register ( b1 )
 {
-	float	alphaCutoff;		// colour alpha below this is no surface; 0 draws every pixel
 	uint	shading;
 	float	roughnessOverride;	// below 0: the specular map's green
-	float	specularOverride;	// below 0: the specular map's red
-	float4	hairRoot;			// rgb; a: where along the strand the ombre is complete
-	float4	hairOmbre;			// rgb; a: how far the tips go towards it
-	float4	hairHighlight;		// rgb; a: how much of it where the strips mask is set
 };
 
 cbuffer Lighting : register ( b2 )
@@ -84,21 +79,12 @@ SamplerState	linearWrap : register ( s0 );
 static const float	pi = 3.14159265;
 static const uint	standardShading = 0;
 static const uint	skinShading = 1;
-static const uint	eyeOcclusionShading = 2;
-static const uint	tearLineShading = 3;
-static const uint	hairShading = 4;
-static const float	multipleScattering = 2.5;
-
-// The view's z flip mirrors the mesh, so a bitangent built from the cross product points the other way
-static const float	mirrored = -1;
 
 struct VsIn
 {
 	float3	position : POSITION;
 	float3	normal : NORMAL;
 	float2	uv : TEXCOORD;
-	float4	tangent : TANGENT;
-	float3	previousPosition : PREVIOUS;	// where the vertex was the frame before, the same for a still mesh
 };
 
 struct VsOut
@@ -109,7 +95,6 @@ struct VsOut
 	float2	uv : TEXCOORD;
 	float4	currentClip : TEXCOORD1;
 	float4	previousClip : TEXCOORD2;
-	float4	tangent : TANGENT;
 };
 
 struct PsOut
@@ -122,13 +107,12 @@ VsOut vsMain ( VsIn i )
 {
 	VsOut	o;
 	o.currentClip = mul ( float4 ( i.position, 1 ), worldViewProj );
-	o.previousClip = mul ( float4 ( i.previousPosition, 1 ), previousWorldViewProj );
+	o.previousClip = mul ( float4 ( i.position, 1 ), previousWorldViewProj );
 	o.position = o.currentClip;
 	o.position.xy += jitterNdc * o.position.w;
 	o.viewPosition = mul ( float4 ( i.position, 1 ), world ).xyz;
 	o.normal = mul ( i.normal, ( float3x3 ) world );
 	o.uv = i.uv;
-	o.tangent = float4 ( mul ( i.tangent.xyz, ( float3x3 ) world ), i.tangent.w );
 	return o;
 }
 
@@ -238,52 +222,6 @@ float3 lambert ( float3 albedo, float3 n )
 	return albedo / pi * ( saturate ( dot ( n, keyDirection.xyz ) ) * keyIrradiance.rgb + irradianceAt ( n ) );
 }
 
-// Interleaved gradient noise (Jimenez 2014): a threshold per pixel that turns coverage into a dither
-float dither ( float2 pixel )
-{
-	return frac ( 52.9829189 * frac ( dot ( pixel, float2 ( 0.06711056, 0.00583715 ) ) ) );
-}
-
-// Kajiya and Kay's strand highlight, sin to the power of the shininess, fading behind the strand; normalized like
-// Blinn-Phong so a broad highlight spreads its light instead of adding it everywhere
-float strandHighlight ( float3 t, float3 h, float shininess )
-{
-	const float	toh = dot ( t, h );
-	return pow ( sqrt ( saturate ( 1 - toh * toh ) ), shininess ) * smoothstep ( -1, 0, toh ) * ( shininess + 2 ) / ( 8 * pi );
-}
-
-// Hair cards: the strand's direction from the tangent atlas, two highlights shifted along the strand as Marschner
-// observed (the first white, the second tinted by the hair), Kajiya and Kay's diffuse
-float3 hair ( VsOut i, float3 n, float3 v, float4 attributes )
-{
-	const float4	strand = normalMap.Sample ( linearWrap, i.uv );
-	const float		highlightMask = specularMap.Sample ( linearWrap, i.uv ).r;
-	const float		seed = attributes.b;
-
-	float3	colour = lerp ( hairRoot.rgb, hairOmbre.rgb, hairOmbre.a * smoothstep ( 0, hairRoot.a, strand.a ) );
-	colour = lerp ( colour, hairHighlight.rgb, saturate ( hairHighlight.a * highlightMask ) );
-	colour *= 0.85 + 0.3 * seed;
-
-	const float3	t = normalize ( i.tangent.xyz );
-	const float3	b = cross ( n, t ) * i.tangent.w * mirrored;
-	const float3	card = strand.rgb * 2 - 1;
-	const float3	along = normalize ( t * card.x + b * card.y + n * card.z );
-
-	const float		roughness = clamp ( roughnessOverride, 0.05, 1 );
-	const float		shininess = 2 / max ( roughness * roughness * roughness * roughness, 1e-3 );
-	const float		shift = ( seed - 0.5 ) * 0.1;
-	const float3	l = keyDirection.xyz;
-	const float3	h = normalize ( l + v );
-	const float		f0 = 0.08 * specularOverride;
-	const float		first = strandHighlight ( normalize ( along + n * ( shift - 0.08 ) ), h, shininess );
-	const float		second = strandHighlight ( normalize ( along + n * ( shift + 0.12 ) ), h, shininess * 0.25 );
-	const float3	key = keyIrradiance.rgb * saturate ( 0.75 * dot ( n, l ) + 0.25 );
-	const float3	highlights = keyIrradiance.rgb * ( first * f0 + second * colour ) * saturate ( dot ( n, l ) + 0.3 );
-	const float3	reflection = environmentAt ( reflect ( -v, n ), roughness ) * environmentBrdf ( f0, roughness, saturate ( dot ( n, v ) ) );
-	// The colour is one strand's albedo; light scattering through many strands brightens it
-	return colour * multipleScattering / pi * ( key + irradianceAt ( n ) ) + highlights + reflection;
-}
-
 // ACES filmic curve, Narkowicz' fit
 float3 toneMap ( float3 x )
 {
@@ -328,74 +266,30 @@ float3 encodeOutput ( float3 light )
 	return encodeSrgb ( toneMap ( light ) );
 }
 
-// What the encoded picture is multiplied by to darken it about as much as f darkens light (exact in scRGB, at half
-// paper white in PQ)
-float3 encodeFactor ( float f )
-{
-	if ( outputMode == scRgbOutput )
-		return f;
-
-	if ( outputMode == pqOutput )
-		return encodePq ( f * 0.5 * paperWhite ) / encodePq ( 0.5 * paperWhite );
-
-	return pow ( f, 1 / 2.2 );
-}
-
 PsOut psMain ( VsOut i )
 {
-	const float4	colour = colourMap.Sample ( linearWrap, i.uv );
-	const float3	v = normalize ( -i.viewPosition );
-	float3			geometric = normalize ( i.normal );
-	const bool		isThin = alphaCutoff > 0 || shading == hairShading;
+	const float4		colour = colourMap.Sample ( linearWrap, i.uv );
+	const float3		v = normalize ( -i.viewPosition );
+	const float3		geometric = normalize ( i.normal );
+	const float4		material = specularMap.Sample ( linearWrap, i.uv );
+	const float			roughness = clamp ( roughnessOverride >= 0 ? roughnessOverride : material.g, 0.03, 1 );
+	const float3		f0 = 0.08 * material.r;
+	const SurfaceFrame	frame = surfaceFrame ( i.viewPosition, i.uv, geometric );
+	const float3		n = detailNormal ( frame, normalMap.Sample ( linearWrap, i.uv ) );
+	float3				lit;
 
-	// Thin two-sided parts face the camera from either side
-	if ( isThin && dot ( geometric, v ) < 0 )
-		geometric = -geometric;
-
-	// Opaque parts write the picture; eye occlusion multiplies it, the tear line adds to it
-	float3	output;
-
-	if ( shading == hairShading )
+	// Unreal's skin: two specular lobes, the sharper one carrying most of the light
+	if ( shading == skinShading )
 	{
-		clip ( colour.r - lerp ( 0.25, 0.75, dither ( i.position.xy ) ) );
-		output = encodeOutput ( hair ( i, geometric, v, colour ) * exposure );
-	}
-	else if ( shading == eyeOcclusionShading )
-	{
-		const float	edge = min ( min ( i.uv.x, 1 - i.uv.x ), min ( i.uv.y, 1 - i.uv.y ) );
-		const float	darkening = 0.5 * ( 1 - smoothstep ( 0, 0.3, edge ) );
-		output = encodeFactor ( 1 - darkening );
-	}
-	else if ( shading == tearLineShading )
-	{
-		const float	edge = min ( min ( i.uv.x, 1 - i.uv.x ), min ( i.uv.y, 1 - i.uv.y ) );
-		const float	wet = smoothstep ( 0, 0.2, edge );
-		output = encodeOutput ( specular ( geometric, v, 0.02, 0.05 ) * exposure ) * wet;
+		const float3	smooth = detailNormal ( frame, normalMap.SampleBias ( linearWrap, i.uv, 3 ) );
+		const float3	diffuse = scattering > 0 ? skinDiffuse ( colour.rgb, n, smooth, geometric, i.viewPosition ) : lambert ( colour.rgb, n );
+		lit = diffuse + 0.85 * specular ( n, v, f0, roughness * 0.75 )
+			  + 0.15 * specular ( n, v, f0, min ( roughness * 1.3, 1 ) );
 	}
 	else
-	{
-		clip ( colour.a - alphaCutoff );
+		lit = lambert ( colour.rgb, n ) + specular ( n, v, f0, roughness );
 
-		const float4		material = specularMap.Sample ( linearWrap, i.uv );
-		const float			roughness = clamp ( roughnessOverride >= 0 ? roughnessOverride : material.g, 0.03, 1 );
-		const float3		f0 = 0.08 * ( specularOverride >= 0 ? specularOverride : material.r );
-		const SurfaceFrame	frame = surfaceFrame ( i.viewPosition, i.uv, geometric );
-		const float3		n = detailNormal ( frame, normalMap.Sample ( linearWrap, i.uv ) );
-		float3				lit;
-
-		// Unreal's skin: two specular lobes, the sharper one carrying most of the light
-		if ( shading == skinShading )
-		{
-			const float3	smooth = detailNormal ( frame, normalMap.SampleBias ( linearWrap, i.uv, 3 ) );
-			const float3	diffuse = scattering > 0 ? skinDiffuse ( colour.rgb, n, smooth, geometric, i.viewPosition ) : lambert ( colour.rgb, n );
-			lit = diffuse + 0.85 * specular ( n, v, f0, roughness * 0.75 )
-				  + 0.15 * specular ( n, v, f0, min ( roughness * 1.3, 1 ) );
-		}
-		else
-			lit = lambert ( colour.rgb, n ) + specular ( n, v, f0, roughness );
-
-		output = encodeOutput ( lit * exposure );
-	}
+	const float3	output = encodeOutput ( lit * exposure );
 
 	// In pixels, this frame's position minus the last one's, both without jitter (x right, y down)
 	const float2	currentNdc = i.currentClip.xy / i.currentClip.w;
@@ -409,7 +303,7 @@ PsOut psMain ( VsOut i )
 )";
 
 	// The shader's shading values
-	enum class Shading : uint32_t { standard, skin, eyeOcclusion, tearLine, hair };
+	enum class Shading : uint32_t { standard, skin };
 
 	// The shader's third constant buffer
 	struct LightingConstants
@@ -449,9 +343,8 @@ PsOut psMain ( VsOut i )
 		return { 0.02f, 0.02f, 0.025f, 1.0f };
 	}
 	constexpr UINT		textureCount = 3;
-	constexpr UINT		tableSize = textureCount + 1;		// the part's maps, then the panorama
+	constexpr UINT		tableSize = textureCount + 1;		// the model's maps, then the panorama
 	constexpr UINT		maxAnisotropy = 8;
-	constexpr float		alphaTestCutoff = 0.5f;
 	constexpr float		scanRoughness = 0.45f;				// the scan's specular map has no roughness
 	constexpr float		pi = 3.14159265f;
 
@@ -464,6 +357,7 @@ PsOut psMain ( VsOut i )
 	constexpr DXGI_FORMAT	environmentFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 	constexpr float			noMotion[ 4 ] {};
 	constexpr size_t		jitterPhases = 8;
+	constexpr size_t		constantsAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
 	constexpr char			depthName[] = "Depth buffer";
 	constexpr char			motionName[] = "Motion vectors";
 
@@ -519,85 +413,14 @@ PsOut psMain ( VsOut i )
 			case reshade::ultra::TestSceneKind::cube:
 				return multiply ( rotationX ( seconds * 0.5f ), rotationY ( seconds * 0.8f ) );
 			case reshade::ultra::TestSceneKind::head:
-			case reshade::ultra::TestSceneKind::model:
 				return rotationY ( std::sin ( seconds * 0.6f ) * 0.9f );
 		}
 
 		return rotationY ( 0.0f );
 	}
 
-	// The sphere the view fits into the unit sphere: the model's own, or for -model the head from the top of its hair
-	// down to the chin, half that height as the radius
-	struct Bounds
-	{
-		float	center[ 3 ] {};
-		float	radius = 1.0f;
-	};
-
-	struct Box
-	{
-		float	low[ 3 ] { FLT_MAX, FLT_MAX, FLT_MAX };
-		float	high[ 3 ] { -FLT_MAX, -FLT_MAX, -FLT_MAX };
-
-		void add ( const reshade::ultra::TestModel& model, uint32_t firstIndex, uint32_t indexCount )
-		{
-			for ( auto i = firstIndex; i < firstIndex + indexCount; ++i )
-				for ( auto axis = 0; axis < 3; ++axis )
-				{
-					low[ axis ] = std::min ( low[ axis ], model.vertices[ model.indices[ i ] ].position[ axis ] );
-					high[ axis ] = std::max ( high[ axis ], model.vertices[ model.indices[ i ] ].position[ axis ] );
-				}
-		}
-
-		[[ nodiscard ]] bool isEmpty () const
-		{
-			return low[ 1 ] > high[ 1 ];
-		}
-	};
-
-	[[ nodiscard ]] Bounds viewBounds ( const reshade::ultra::TestModel& model, reshade::ultra::TestSceneKind kind )
-	{
-		using reshade::ultra::TestPartKind;
-
-		Bounds	bounds;
-		std::copy ( std::begin ( model.center ), std::end ( model.center ), bounds.center );
-		bounds.radius = model.radius;
-
-		if ( kind != reshade::ultra::TestSceneKind::model )
-			return bounds;
-
-		Box	all;
-		Box	skin;
-		Box	eyes;
-
-		for ( const auto& part : model.parts )
-			if ( size_t ( part.firstIndex ) + part.indexCount <= model.indices.size () )
-			{
-				all.add ( model, part.firstIndex, part.indexCount );
-
-				if ( part.kind == TestPartKind::skin )
-					skin.add ( model, part.firstIndex, part.indexCount );
-				else if ( part.kind == TestPartKind::eye )
-					eyes.add ( model, part.firstIndex, part.indexCount );
-			}
-
-		if ( all.isEmpty () || skin.isEmpty () || eyes.isEmpty () )
-			return bounds;
-
-		// The eyes sit halfway between the top of the skull and the chin
-		const auto	eyeHeight = ( eyes.low[ 1 ] + eyes.high[ 1 ] ) * 0.5f;
-		const auto	chin = eyeHeight - ( skin.high[ 1 ] - eyeHeight );
-		const auto	top = all.high[ 1 ];
-
-		bounds.center[ 0 ] = ( all.low[ 0 ] + all.high[ 0 ] ) * 0.5f;
-		bounds.center[ 1 ] = ( top + chin ) * 0.5f;
-		bounds.center[ 2 ] = ( all.low[ 2 ] + all.high[ 2 ] ) * 0.5f;
-		bounds.radius = std::max ( ( top - chin ) * 0.5f, 1e-3f );
-		return bounds;
-	}
-
 	// Where the camera looks, in units of the model's bounding sphere: the cube whole, the scan's head without the
-	// shoulders, a -model head with its hair at 70 % of the height
+	// shoulders
 	struct Framing
 	{
 		float	lift = 0.0f;		// the point turned around and looked at, above the sphere's center
@@ -613,14 +436,12 @@ PsOut psMain ( VsOut i )
 				return {};
 			case reshade::ultra::TestSceneKind::head:
 				return { 0.3f, 1.39f, 0.0f };
-			case reshade::ultra::TestSceneKind::model:
-				return { 0.0f, 2.0f / 0.7f, 1.0f };
 		}
 
 		return {};
 	}
 
-	// Vertical field of view in radians: -fov, or wide for the cube and a portrait lens for the heads
+	// Vertical field of view in radians: -fov, or wide for the cube and a portrait lens for the head
 	[[ nodiscard ]] float fieldOfView ( const reshade::ultra::TestSceneSettings& settings )
 	{
 		constexpr float	degrees = 3.14159265f / 180.0f;
@@ -669,7 +490,7 @@ PsOut psMain ( VsOut i )
 		return { 1, 1, { r, g, b, 255 } };
 	}
 
-	// What a slot shows when the part brings no image for it: white, flat, and Unreal's default specular and roughness
+	// What a slot shows when the model brings no image for it: white, flat, and Unreal's default specular and roughness
 	[[ nodiscard ]] const reshade::ultra::TestModelImage& imageOrDefault ( const reshade::ultra::TestModelImage& image, size_t slot )
 	{
 		if ( image.width != 0 && image.height != 0 && image.rgba.size () == size_t ( image.width ) * image.height * 4 )
@@ -741,7 +562,7 @@ PsOut psMain ( VsOut i )
 
 		constants.irradiance = environment.irradiance;
 		constants.environmentMips = static_cast<float> ( environment.levels.size () - 1 );
-		constants.unitLength = viewBounds ( model, settings.kind ).radius;
+		constants.unitLength = model.radius;
 
 		for ( auto c = 0; c < 3; ++c )
 		{
@@ -753,195 +574,40 @@ PsOut psMain ( VsOut i )
 		return constants;
 	}
 
-	// Hair colour from melanin (d'Eon et al. 2011): eumelanin and pheomelanin absorb per channel, a dye adds its own
-	// absorption; absorption and colour convert with Chiang et al. 2016's fit for an azimuthal roughness of 0.3
-	[[ nodiscard ]] float absorptionScale ()
+	// The model's maps with their mips and how its surface is shaded: the scan is skin, the cube a plain surface
+	struct MaterialSource
 	{
-		const auto	b = 0.3f;
-		return 5.969f - 0.215f * b + 2.532f * b * b - 10.73f * b * b * b + 5.574f * b * b * b * b + 0.245f * b * b * b * b * b;
-	}
-
-	[[ nodiscard ]] std::array<float, 3> hairColour ( float melanin, float redness, const float ( &dye )[ 3 ] )
-	{
-		constexpr float	eumelaninAbsorption[ 3 ] = { 0.506f, 0.841f, 1.653f };
-		constexpr float	pheomelaninAbsorption[ 3 ] = { 0.343f, 0.733f, 1.924f };
-
-		const auto				amount = -std::log ( std::max ( 1.0f - std::clamp ( melanin, 0.0f, 1.0f ), 1e-4f ) );
-		const auto				eumelanin = amount * ( 1.0f - std::clamp ( redness, 0.0f, 1.0f ) );
-		const auto				pheomelanin = amount * std::clamp ( redness, 0.0f, 1.0f );
-		std::array<float, 3>	colour {};
-
-		for ( auto c = 0; c < 3; ++c )
-		{
-			const auto	dyeAbsorption = std::pow ( std::log ( std::clamp ( dye[ c ], 1e-4f, 1.0f ) ) / absorptionScale (), 2.0f );
-			const auto	absorption = eumelanin * eumelaninAbsorption[ c ] + pheomelanin * pheomelaninAbsorption[ c ] + dyeAbsorption;
-			colour[ c ] = std::exp ( -std::sqrt ( absorption ) * absorptionScale () );
-		}
-
-		return colour;
-	}
-
-	void setHairColours ( reshade::ultra::TestPartConstants& constants, const reshade::ultra::TestHairColour& hair )
-	{
-		const auto	root = hairColour ( hair.melanin, hair.redness, hair.dye );
-		const auto	ombre = hairColour ( hair.ombreMelanin, hair.ombreRedness, hair.ombreDye );
-		const auto	highlight = hairColour ( hair.highlightsMelanin, hair.highlightsRedness, hair.highlightsDye );
-
-		std::copy ( root.begin (), root.end (), constants.hairRoot );
-		std::copy ( ombre.begin (), ombre.end (), constants.hairOmbre );
-		std::copy ( highlight.begin (), highlight.end (), constants.hairHighlight );
-		constants.hairRoot[ 3 ] = hair.ombreShift;
-		constants.hairOmbre[ 3 ] = hair.ombre;
-		constants.hairHighlight[ 3 ] = hair.highlights * hair.highlightsIntensity;
-		constants.roughness = hair.roughness;
-		constants.specular = hair.specular;
-	}
-
-	// One draw call: a range of indices, its images and how it is shaded
-	struct DrawSource
-	{
-		UINT														firstIndex = 0;
-		UINT														indexCount = 0;
-		reshade::ultra::TestBlend									blend = reshade::ultra::TestBlend::opaque;
-		reshade::ultra::TestPartConstants							constants;
-		std::array<const reshade::ultra::TestModelImage*, textureCount>	images {};
-
-		// Hair atlases hold data, not colour
-		[[ nodiscard ]] DXGI_FORMAT format ( size_t slot ) const
-		{
-			const auto	isColour = slot == 0 && constants.shading != uint32_t ( Shading::hair );
-			return isColour ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
-		}
-
-		// Hair without a highlight strips mask has no highlight strands
-		[[ nodiscard ]] std::array<std::vector<reshade::ultra::TestModelImage>, textureCount> chains () const
-		{
-			static const auto	noMask = solidImage ( 0, 0, 0 );
-			const auto			isHair = constants.shading == uint32_t ( Shading::hair );
-			const auto			hasMask = &imageOrDefault ( *images[ 2 ], 2 ) == images[ 2 ];
-			const auto&			third = isHair && ! hasMask ? noMask : imageOrDefault ( *images[ 2 ], 2 );
-
-			return { mipChain ( imageOrDefault ( *images[ 0 ], 0 ) ), mipChain ( imageOrDefault ( *images[ 1 ], 1 ) ), mipChain ( third ) };
-		}
+		reshade::ultra::TestMaterialConstants										constants;
+		std::array<std::vector<reshade::ultra::TestModelImage>, textureCount>	chains;
 	};
 
-	[[ nodiscard ]] DrawSource partSource ( const reshade::ultra::TestModelPart& part )
+	[[ nodiscard ]] MaterialSource materialSource ( const reshade::ultra::TestModel& model, const reshade::ultra::TestSceneSettings& settings )
 	{
-		using reshade::ultra::TestPartKind;
+		MaterialSource	source { {}, { mipChain ( imageOrDefault ( model.colour, 0 ) ), mipChain ( imageOrDefault ( model.normalMap, 1 ) ), mipChain ( imageOrDefault ( model.specular, 2 ) ) } };
 
-		DrawSource	source { part.firstIndex, part.indexCount, reshade::ultra::TestBlend::opaque, {}, { &part.colour, &part.normalMap, &part.specular } };
-		auto&		constants = source.constants;
-		constants.alphaCutoff = part.alphaTest ? alphaTestCutoff : 0.0f;
-
-		switch ( part.kind )
+		if ( settings.kind == reshade::ultra::TestSceneKind::head )
 		{
-			case TestPartKind::skin:
-				constants.shading = uint32_t ( Shading::skin );
-				break;
-			case TestPartKind::eyeOcclusion:
-				constants.shading = uint32_t ( Shading::eyeOcclusion );
-				source.blend = reshade::ultra::TestBlend::multiply;
-				break;
-			case TestPartKind::tearLine:
-				constants.shading = uint32_t ( Shading::tearLine );
-				source.blend = reshade::ultra::TestBlend::add;
-				break;
-			case TestPartKind::hair:
-			case TestPartKind::eyebrows:
-				constants.shading = uint32_t ( Shading::hair );
-				setHairColours ( constants, part.hairColour );
-				break;
-			case TestPartKind::surface:
-			case TestPartKind::teeth:
-			case TestPartKind::eye:
-			case TestPartKind::eyelashes:
-				break;
+			source.constants.shading = uint32_t ( Shading::skin );
+			source.constants.roughness = scanRoughness;
 		}
 
 		return source;
 	}
 
-	// Opaque parts first, then the ones blended over them. A model without parts is one draw of every index with the
-	// model's own images: the scan is skin, the cube a plain surface
-	[[ nodiscard ]] std::vector<DrawSource> drawSources ( const reshade::ultra::TestModel& model, const reshade::ultra::TestSceneSettings& settings )
+	[[ nodiscard ]] DXGI_FORMAT textureFormat ( size_t slot )
 	{
-		std::vector<DrawSource>	sources;
-
-		if ( model.parts.empty () )
-		{
-			DrawSource	source { 0, static_cast<UINT> ( model.indices.size () ), reshade::ultra::TestBlend::opaque, {}, { &model.colour, &model.normalMap, &model.specular } };
-
-			if ( settings.kind == reshade::ultra::TestSceneKind::head )
-			{
-				source.constants.shading = uint32_t ( Shading::skin );
-				source.constants.roughness = scanRoughness;
-			}
-
-			sources.push_back ( source );
-		}
-
-		for ( const auto& part : model.parts )
-			if ( part.indexCount != 0 && size_t ( part.firstIndex ) + part.indexCount <= model.indices.size () )
-				sources.push_back ( partSource ( part ) );
-
-		std::ranges::stable_sort ( sources, [] ( const DrawSource& a, const DrawSource& b ) { return a.blend < b.blend; } );
-		return sources;
-	}
-
-	// Every vertex's tangent, zeros where the model has none
-	[[ nodiscard ]] std::vector<std::array<float, 4>> vertexTangents ( const reshade::ultra::TestModel& model )
-	{
-		if ( model.tangents.size () == model.vertices.size () )
-			return model.tangents;
-
-		return std::vector<std::array<float, 4>> ( model.vertices.size () );
+		return slot == 0 ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
 	}
 
 	constexpr D3D11_INPUT_ELEMENT_DESC	inputElementsD3d11[] = {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, position ), D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, normal ), D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, uv ), D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "PREVIOUS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 2, offsetof ( reshade::ultra::TestModelVertex, position ), D3D11_INPUT_PER_VERTEX_DATA, 0 } };
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, uv ), D3D11_INPUT_PER_VERTEX_DATA, 0 } };
 
 	constexpr D3D12_INPUT_ELEMENT_DESC	inputElementsD3d12[] = {
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, position ), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, normal ), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, uv ), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "PREVIOUS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 2, offsetof ( reshade::ultra::TestModelVertex, position ), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 } };
-
-	// The model's vertices at that time: posed by its rig, or as loaded; a failed pose keeps the loaded ones
-	void poseVertices ( const reshade::ultra::TestModel& model, float seconds, std::vector<reshade::ultra::TestModelVertex>& vertices )
-	{
-		if ( ! reshade::ultra::poseTestModel ( model, seconds, vertices ) || vertices.size () != model.vertices.size () )
-			vertices = model.vertices;
-	}
-
-	// Per blend: the picture's blend (source and destination factors) and whether depth is written; the blended parts
-	// leave the motion vectors and depth of what is under them
-	struct BlendSetup
-	{
-		bool	isBlended = false;
-		int		source = 0;
-		int		destination = 0;
-	};
-
-	[[ nodiscard ]] BlendSetup blendSetup ( reshade::ultra::TestBlend blend )
-	{
-		switch ( blend )
-		{
-			case reshade::ultra::TestBlend::multiply:
-				return { true, D3D11_BLEND_ZERO, D3D11_BLEND_SRC_COLOR };
-			case reshade::ultra::TestBlend::add:
-				return { true, D3D11_BLEND_ONE, D3D11_BLEND_ONE };
-			case reshade::ultra::TestBlend::opaque:
-			case reshade::ultra::TestBlend::count:
-				break;
-		}
-
-		return {};
-	}
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, offsetof ( reshade::ultra::TestModelVertex, uv ), D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 } };
 
 	[[ nodiscard ]] Microsoft::WRL::ComPtr<ID3DBlob> compile ( const char* entryPoint, const char* profile )
 	{
@@ -1095,9 +761,8 @@ reshade::ultra::TestModel reshade::ultra::makeTestCube ()
 
 reshade::ultra::TestSceneView::TestSceneView ( const TestModel& model, const TestSceneSettings& settings ) : settings ( settings )
 {
-	const auto	bounds = viewBounds ( model, settings.kind );
-	std::copy ( std::begin ( bounds.center ), std::end ( bounds.center ), center );
-	radius = bounds.radius;
+	std::copy ( std::begin ( model.center ), std::end ( model.center ), center );
+	radius = model.radius;
 }
 //-----------------------------------------------------------------------------
 
@@ -1142,26 +807,10 @@ reshade::ultra::TestSceneD3d11::TestSceneD3d11 ( ID3D11Device* device, const Tes
 	device->CreateVertexShader ( vsCode->GetBufferPointer (), vsCode->GetBufferSize (), nullptr, &vs );
 	device->CreatePixelShader ( psCode->GetBufferPointer (), psCode->GetBufferSize (), nullptr, &ps );
 	device->CreateInputLayout ( inputElementsD3d11, UINT ( std::size ( inputElementsD3d11 ) ), vsCode->GetBufferPointer (), vsCode->GetBufferSize (), &inputLayout );
+	indexCount = static_cast<UINT> ( model.indices.size () );
 
-	const auto	tangents = vertexTangents ( model );
 	vertexBuffer = createBufferD3d11 ( device, model.vertices.data (), model.vertices.size () * sizeof ( TestModelVertex ), D3D11_BIND_VERTEX_BUFFER );
-	tangentBuffer = createBufferD3d11 ( device, tangents.data (), tangents.size () * sizeof ( tangents[ 0 ] ), D3D11_BIND_VERTEX_BUFFER );
 	indexBuffer = createBufferD3d11 ( device, model.indices.data (), model.indices.size () * sizeof ( uint32_t ), D3D11_BIND_INDEX_BUFFER );
-
-	// A rigged model is posed each frame into one of two buffers; the other keeps the frame before
-	if ( model.rig != nullptr )
-	{
-		animated = &model;
-
-		D3D11_BUFFER_DESC	poseDesc {};
-		poseDesc.Usage = D3D11_USAGE_DYNAMIC;
-		poseDesc.ByteWidth = static_cast<UINT> ( model.vertices.size () * sizeof ( TestModelVertex ) );
-		poseDesc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-		poseDesc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
-
-		for ( auto& buffer : poseBuffers )
-			device->CreateBuffer ( &poseDesc, nullptr, &buffer );
-	}
 
 	D3D11_BUFFER_DESC	constantsDesc {};
 	constantsDesc.Usage = D3D11_USAGE_DEFAULT;
@@ -1174,18 +823,11 @@ reshade::ultra::TestSceneD3d11::TestSceneD3d11 ( ID3D11Device* device, const Tes
 	lighting = createBufferD3d11 ( device, &lightingData, sizeof ( lightingData ), D3D11_BIND_CONSTANT_BUFFER );
 	environment = createTextureD3d11 ( device, environmentTexture ( panorama ) );
 
-	for ( const auto& source : drawSources ( model, settings ) )
-	{
-		auto&		draw = draws.emplace_back ();
-		const auto	chains = source.chains ();
-		draw.firstIndex = source.firstIndex;
-		draw.indexCount = source.indexCount;
-		draw.blend = source.blend;
-		draw.partConstants = createBufferD3d11 ( device, &source.constants, sizeof ( source.constants ), D3D11_BIND_CONSTANT_BUFFER );
+	const auto	material = materialSource ( model, settings );
+	materialConstants = createBufferD3d11 ( device, &material.constants, sizeof ( material.constants ), D3D11_BIND_CONSTANT_BUFFER );
 
-		for ( size_t slot = 0; slot < textureCount; ++slot )
-			draw.textures[ slot ] = createTextureD3d11 ( device, imageTexture ( chains[ slot ], source.format ( slot ) ) );
-	}
+	for ( size_t slot = 0; slot < textureCount; ++slot )
+		textures[ slot ] = createTextureD3d11 ( device, imageTexture ( material.chains[ slot ], textureFormat ( slot ) ) );
 
 	D3D11_SAMPLER_DESC	samplerDesc {};
 	samplerDesc.Filter = D3D11_FILTER_ANISOTROPIC;
@@ -1201,39 +843,21 @@ reshade::ultra::TestSceneD3d11::TestSceneD3d11 ( ID3D11Device* device, const Tes
 	rasterizerDesc.DepthClipEnable = TRUE;
 	device->CreateRasterizerState ( &rasterizerDesc, &rasterizer );
 
-	for ( size_t blend = 0; blend < blendCount; ++blend )
-	{
-		const auto	setup = blendSetup ( TestBlend ( blend ) );
-
-		D3D11_DEPTH_STENCIL_DESC	depthDesc {};
-		depthDesc.DepthEnable = TRUE;
-		depthDesc.DepthWriteMask = setup.isBlended ? D3D11_DEPTH_WRITE_MASK_ZERO : D3D11_DEPTH_WRITE_MASK_ALL;
-		depthDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
-		device->CreateDepthStencilState ( &depthDesc, &depthStates[ blend ] );
-
-		D3D11_BLEND_DESC	blendDesc {};
-		blendDesc.IndependentBlendEnable = TRUE;
-		blendDesc.RenderTarget[ 0 ] = { setup.isBlended, D3D11_BLEND ( setup.isBlended ? setup.source : D3D11_BLEND_ONE ), D3D11_BLEND ( setup.isBlended ? setup.destination : D3D11_BLEND_ZERO ),
-										D3D11_BLEND_OP_ADD, D3D11_BLEND_ZERO, D3D11_BLEND_ONE, D3D11_BLEND_OP_ADD, D3D11_COLOR_WRITE_ENABLE_ALL };
-		blendDesc.RenderTarget[ 1 ] = { FALSE, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_OP_ADD, D3D11_BLEND_ONE, D3D11_BLEND_ZERO, D3D11_BLEND_OP_ADD,
-										UINT8 ( setup.isBlended ? 0 : D3D11_COLOR_WRITE_ENABLE_ALL ) };
-		device->CreateBlendState ( &blendDesc, &blendStates[ blend ] );
-	}
+	D3D11_DEPTH_STENCIL_DESC	depthDesc {};
+	depthDesc.DepthEnable = TRUE;
+	depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
+	depthDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
+	device->CreateDepthStencilState ( &depthDesc, &depthState );
 }
 //-----------------------------------------------------------------------------
 
 bool reshade::ultra::TestSceneD3d11::isReady () const
 {
-	const auto	isDrawReady = [] ( const Draw& draw ) {
-		return draw.partConstants != nullptr && std::ranges::all_of ( draw.textures, [] ( const auto& t ) { return t != nullptr; } );
-	};
-	const auto	hasDraws = ! draws.empty () && std::ranges::all_of ( draws, isDrawReady );
-	const auto	hasPoseBuffers = animated == nullptr || std::ranges::all_of ( poseBuffers, [] ( const auto& b ) { return b != nullptr; } );
-	const auto	hasStates = std::ranges::all_of ( depthStates, [] ( const auto& s ) { return s != nullptr; } )
-						 && std::ranges::all_of ( blendStates, [] ( const auto& s ) { return s != nullptr; } );
+	const auto	hasTextures = std::ranges::all_of ( textures, [] ( const auto& t ) { return t != nullptr; } );
 
-	return vs != nullptr && ps != nullptr && inputLayout != nullptr && vertexBuffer != nullptr && tangentBuffer != nullptr && indexBuffer != nullptr && constants != nullptr
-		   && lighting != nullptr && environment != nullptr && hasDraws && hasPoseBuffers && hasStates && sampler != nullptr && rasterizer != nullptr && dsv != nullptr && motionRtv != nullptr;
+	return vs != nullptr && ps != nullptr && inputLayout != nullptr && vertexBuffer != nullptr && indexBuffer != nullptr && constants != nullptr && lighting != nullptr
+		   && materialConstants != nullptr && environment != nullptr && hasTextures && depthState != nullptr && sampler != nullptr && rasterizer != nullptr && dsv != nullptr
+		   && motionRtv != nullptr;
 }
 //-----------------------------------------------------------------------------
 
@@ -1296,59 +920,24 @@ void reshade::ultra::TestSceneD3d11::render ( ID3D11DeviceContext* context, ID3D
 	context->RSSetViewports ( 1, &viewport );
 	context->RSSetState ( rasterizer.Get () );
 
-	auto	current = vertexBuffer.Get ();
-	auto	before = vertexBuffer.Get ();
-
-	if ( animated != nullptr )
-	{
-		const auto	isFirst = poseCount == 0;
-		const auto	next = poseCount % 2;
-		poseVertices ( *animated, seconds, posed );
-
-		for ( size_t i = 0; i < ( isFirst ? 2u : 1u ); ++i )
-		{
-			const auto					target = poseBuffers[ ( next + i ) % 2 ].Get ();
-			D3D11_MAPPED_SUBRESOURCE	mapped {};
-
-			if ( SUCCEEDED ( context->Map ( target, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped ) ) )
-			{
-				std::memcpy ( mapped.pData, posed.data (), posed.size () * sizeof ( TestModelVertex ) );
-				context->Unmap ( target, 0 );
-			}
-		}
-
-		current = poseBuffers[ next ].Get ();
-		before = poseBuffers[ ( next + 1 ) % 2 ].Get ();
-		++poseCount;
-	}
-
-	ID3D11Buffer* const	vertexBuffers[] { current, tangentBuffer.Get (), before };
-	const UINT			strides[] { sizeof ( TestModelVertex ), sizeof ( float ) * 4, sizeof ( TestModelVertex ) };
-	const UINT			offsets[] { 0, 0, 0 };
+	const auto	stride = UINT ( sizeof ( TestModelVertex ) );
+	const auto	offset = 0u;
 	context->IASetInputLayout ( inputLayout.Get () );
 	context->IASetPrimitiveTopology ( D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
-	context->IASetVertexBuffers ( 0, UINT ( std::size ( vertexBuffers ) ), vertexBuffers, strides, offsets );
+	context->IASetVertexBuffers ( 0, 1, vertexBuffer.GetAddressOf (), &stride, &offset );
 	context->IASetIndexBuffer ( indexBuffer.Get (), DXGI_FORMAT_R32_UINT, 0 );
 
-	ID3D11Buffer* const	sharedConstants[] { constants.Get (), nullptr, lighting.Get () };
+	ID3D11Buffer* const				pixelConstants[] { constants.Get (), materialConstants.Get (), lighting.Get () };
+	ID3D11ShaderResourceView* const	views[ tableSize ] { textures[ 0 ].Get (), textures[ 1 ].Get (), textures[ 2 ].Get (), environment.Get () };
 	context->VSSetConstantBuffers ( 0, 1, constants.GetAddressOf () );
 	context->VSSetShader ( vs.Get (), nullptr, 0 );
 	context->PSSetShader ( ps.Get (), nullptr, 0 );
-	context->PSSetConstantBuffers ( 0, UINT ( std::size ( sharedConstants ) ), sharedConstants );
+	context->PSSetConstantBuffers ( 0, UINT ( std::size ( pixelConstants ) ), pixelConstants );
+	context->PSSetShaderResources ( 0, tableSize, views );
 	context->PSSetSamplers ( 0, 1, sampler.GetAddressOf () );
-
-	for ( const auto& draw : draws )
-	{
-		ID3D11ShaderResourceView* const	views[ tableSize ] { draw.textures[ 0 ].Get (), draw.textures[ 1 ].Get (), draw.textures[ 2 ].Get (), environment.Get () };
-		const auto						blend = size_t ( draw.blend );
-		context->OMSetBlendState ( blendStates[ blend ].Get (), nullptr, UINT_MAX );
-		context->OMSetDepthStencilState ( depthStates[ blend ].Get (), 0 );
-		context->PSSetConstantBuffers ( 1, 1, draw.partConstants.GetAddressOf () );
-		context->PSSetShaderResources ( 0, tableSize, views );
-		context->DrawIndexed ( draw.indexCount, draw.firstIndex, 0 );
-	}
-
 	context->OMSetBlendState ( nullptr, nullptr, UINT_MAX );
+	context->OMSetDepthStencilState ( depthState.Get (), 0 );
+	context->DrawIndexed ( indexCount, 0, 0 );
 }
 //-----------------------------------------------------------------------------
 
@@ -1366,7 +955,7 @@ reshade::ultra::TestSceneD3d12::TestSceneD3d12 ( ID3D12Device* device, ID3D12Com
 	range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	range.NumDescriptors = tableSize;
 
-	// The frame's constants (b0, as -constants says), the part's table, the part's constants (b1), the lighting (b2)
+	// The frame's constants (b0, as -constants says), the model's table, the material (b1), the lighting (b2)
 	D3D12_DESCRIPTOR_RANGE	constantsRange {};
 	constantsRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
 	constantsRange.NumDescriptors = 1;
@@ -1421,36 +1010,27 @@ reshade::ultra::TestSceneD3d12::TestSceneD3d12 ( ID3D12Device* device, ID3D12Com
 		 || FAILED ( device->CreateRootSignature ( 0, rootBlob->GetBufferPointer (), rootBlob->GetBufferSize (), IID_PPV_ARGS ( &rootSignature ) ) ) )
 		return;
 
-	for ( size_t blend = 0; blend < blendCount; ++blend )
-	{
-		const auto	setup = blendSetup ( TestBlend ( blend ) );
-
-		D3D12_GRAPHICS_PIPELINE_STATE_DESC	pipelineDesc {};
-		pipelineDesc.pRootSignature = rootSignature.Get ();
-		pipelineDesc.VS = { vsCode->GetBufferPointer (), vsCode->GetBufferSize () };
-		pipelineDesc.PS = { psCode->GetBufferPointer (), psCode->GetBufferSize () };
-		pipelineDesc.BlendState.IndependentBlendEnable = TRUE;
-		pipelineDesc.BlendState.RenderTarget[ 0 ] = { setup.isBlended, FALSE, D3D12_BLEND ( setup.isBlended ? setup.source : D3D12_BLEND_ONE ),
-													   D3D12_BLEND ( setup.isBlended ? setup.destination : D3D12_BLEND_ZERO ), D3D12_BLEND_OP_ADD, D3D12_BLEND_ZERO, D3D12_BLEND_ONE,
-													   D3D12_BLEND_OP_ADD, D3D12_LOGIC_OP_NOOP, D3D12_COLOR_WRITE_ENABLE_ALL };
-		pipelineDesc.BlendState.RenderTarget[ 1 ] = { FALSE, FALSE, D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD, D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
-													   D3D12_LOGIC_OP_NOOP, UINT8 ( setup.isBlended ? 0 : D3D12_COLOR_WRITE_ENABLE_ALL ) };
-		pipelineDesc.SampleMask = UINT_MAX;
-		pipelineDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
-		pipelineDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
-		pipelineDesc.RasterizerState.DepthClipEnable = TRUE;
-		pipelineDesc.DepthStencilState.DepthEnable = TRUE;
-		pipelineDesc.DepthStencilState.DepthWriteMask = setup.isBlended ? D3D12_DEPTH_WRITE_MASK_ZERO : D3D12_DEPTH_WRITE_MASK_ALL;
-		pipelineDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
-		pipelineDesc.InputLayout = { inputElementsD3d12, UINT ( std::size ( inputElementsD3d12 ) ) };
-		pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-		pipelineDesc.NumRenderTargets = 2;
-		pipelineDesc.RTVFormats[ 0 ] = backBufferFormat;
-		pipelineDesc.RTVFormats[ 1 ] = motionFormat;
-		pipelineDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
-		pipelineDesc.SampleDesc = { 1, 0 };
-		device->CreateGraphicsPipelineState ( &pipelineDesc, IID_PPV_ARGS ( &pipelines[ blend ] ) );
-	}
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC	pipelineDesc {};
+	pipelineDesc.pRootSignature = rootSignature.Get ();
+	pipelineDesc.VS = { vsCode->GetBufferPointer (), vsCode->GetBufferSize () };
+	pipelineDesc.PS = { psCode->GetBufferPointer (), psCode->GetBufferSize () };
+	pipelineDesc.BlendState.RenderTarget[ 0 ] = { FALSE, FALSE, D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD, D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
+												   D3D12_LOGIC_OP_NOOP, D3D12_COLOR_WRITE_ENABLE_ALL };
+	pipelineDesc.SampleMask = UINT_MAX;
+	pipelineDesc.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	pipelineDesc.RasterizerState.CullMode = D3D12_CULL_MODE_NONE;
+	pipelineDesc.RasterizerState.DepthClipEnable = TRUE;
+	pipelineDesc.DepthStencilState.DepthEnable = TRUE;
+	pipelineDesc.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+	pipelineDesc.DepthStencilState.DepthFunc = D3D12_COMPARISON_FUNC_LESS_EQUAL;
+	pipelineDesc.InputLayout = { inputElementsD3d12, UINT ( std::size ( inputElementsD3d12 ) ) };
+	pipelineDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	pipelineDesc.NumRenderTargets = 2;
+	pipelineDesc.RTVFormats[ 0 ] = backBufferFormat;
+	pipelineDesc.RTVFormats[ 1 ] = motionFormat;
+	pipelineDesc.DSVFormat = DXGI_FORMAT_D32_FLOAT;
+	pipelineDesc.SampleDesc = { 1, 0 };
+	device->CreateGraphicsPipelineState ( &pipelineDesc, IID_PPV_ARGS ( &pipeline ) );
 
 	for ( auto& allocator : allocators )
 		device->CreateCommandAllocator ( D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS ( &allocator ) );
@@ -1556,15 +1136,13 @@ Microsoft::WRL::ComPtr<ID3D12Resource> reshade::ultra::TestSceneD3d12::uploadTex
 }
 //-----------------------------------------------------------------------------
 
-// Vertices, indices and constants stay in upload memory, the textures are copied to the GPU one by one. Each part's
-// table holds its three maps, then the panorama
+// Vertices, indices and constants stay in upload memory, the textures are copied to the GPU one by one. The table
+// holds the model's three maps, then the panorama
 bool reshade::ultra::TestSceneD3d12::upload ( const TestModel& model, const TestSceneSettings& settings )
 {
 	const auto	hasAllocators = std::ranges::all_of ( allocators, [] ( const auto& a ) { return a != nullptr; } );
-	const auto	hasPipelines = std::ranges::all_of ( pipelines, [] ( const auto& p ) { return p != nullptr; } );
-	const auto	sources = drawSources ( model, settings );
 
-	if ( ! hasPipelines || ! hasAllocators || cmdList == nullptr || fence == nullptr || fenceEvent == nullptr || sources.empty () )
+	if ( pipeline == nullptr || ! hasAllocators || cmdList == nullptr || fence == nullptr || fenceEvent == nullptr )
 		return false;
 
 	const D3D12_HEAP_PROPERTIES	uploadHeap { D3D12_HEAP_TYPE_UPLOAD };
@@ -1589,37 +1167,22 @@ bool reshade::ultra::TestSceneD3d12::upload ( const TestModel& model, const Test
 		return true;
 	};
 
-	// Constant buffer views start on 256 bytes: the lighting first, then one slot per part
-	constexpr size_t	constantsAlignment = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-	const auto			panorama = makeTestEnvironment ( settings.environment );
-	const auto			lightingData = lightingConstants ( panorama, model, settings );
-	std::vector<uint8_t>	constantsData ( ( sources.size () + 1 ) * constantsAlignment );
+	// Constant buffer views start on 256 bytes: the lighting, then the material
+	const auto				panorama = makeTestEnvironment ( settings.environment );
+	const auto				lightingData = lightingConstants ( panorama, model, settings );
+	const auto				material = materialSource ( model, settings );
+	std::vector<uint8_t>	constantsData ( 2 * constantsAlignment );
 	std::memcpy ( constantsData.data (), &lightingData, sizeof ( lightingData ) );
-
-	for ( size_t i = 0; i < sources.size (); ++i )
-		std::memcpy ( constantsData.data () + ( i + 1 ) * constantsAlignment, &sources[ i ].constants, sizeof ( TestPartConstants ) );
-
-	const auto	tangents = vertexTangents ( model );
+	std::memcpy ( constantsData.data () + constantsAlignment, &material.constants, sizeof ( material.constants ) );
+	indexCount = static_cast<UINT> ( model.indices.size () );
 
 	if ( ! makeUploadBuffer ( model.vertices.data (), model.vertices.size () * sizeof ( TestModelVertex ), vertexBuffer )
-		 || ! makeUploadBuffer ( tangents.data (), tangents.size () * sizeof ( tangents[ 0 ] ), tangentBuffer )
 		 || ! makeUploadBuffer ( model.indices.data (), model.indices.size () * sizeof ( uint32_t ), indexBuffer )
 		 || ! makeUploadBuffer ( constantsData.data (), constantsData.size (), lighting ) )
 		return false;
 
-	// A rigged model is posed each frame into the next buffer, mapped for good
-	if ( model.rig != nullptr )
-	{
-		animated = &model;
-
-		for ( size_t i = 0; i < poseBufferCount; ++i )
-			if ( ! makeUploadBuffer ( model.vertices.data (), model.vertices.size () * sizeof ( TestModelVertex ), poseBuffers[ i ] )
-				 || FAILED ( poseBuffers[ i ]->Map ( 0, nullptr, &poseMapped[ i ] ) ) )
-				return false;
-	}
-
-	// Each part's table, then (-constants table) one view per frame in flight
-	frameConstantsViews = static_cast<UINT> ( sources.size () ) * tableSize;
+	// The table, then (-constants table) one view per frame in flight
+	frameConstantsViews = tableSize;
 	const auto	constantsViewCount = constantsPath == TestConstantsPath::table ? frameCount : 0;
 
 	const D3D12_DESCRIPTOR_HEAP_DESC	srvHeapDesc { D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, frameConstantsViews + constantsViewCount, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE };
@@ -1645,25 +1208,17 @@ bool reshade::ultra::TestSceneD3d12::upload ( const TestModel& model, const Test
 	const auto	srvSize = device->GetDescriptorHandleIncrementSize ( D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV );
 	auto		srvHandle = srvHeap->GetCPUDescriptorHandleForHeapStart ();
 
-	for ( size_t i = 0; i < sources.size (); ++i )
+	for ( size_t slot = 0; slot < tableSize; ++slot, srvHandle.ptr += srvSize )
 	{
-		const auto&	source = sources[ i ];
-		const auto	chains = source.chains ();
+		const auto	texture = slot < textureCount ? uploadTexture ( imageTexture ( material.chains[ slot ], textureFormat ( slot ) ) ) : environmentResource;
 
-		for ( size_t slot = 0; slot < tableSize; ++slot, srvHandle.ptr += srvSize )
-		{
-			const auto	texture = slot < textureCount ? uploadTexture ( imageTexture ( chains[ slot ], source.format ( slot ) ) ) : environmentResource;
+		if ( texture == nullptr )
+			return false;
 
-			if ( texture == nullptr )
-				return false;
+		if ( slot < textureCount )
+			textures.push_back ( texture );
 
-			if ( slot < textureCount )
-				textures.push_back ( texture );
-
-			device->CreateShaderResourceView ( texture.Get (), nullptr, srvHandle );
-		}
-
-		draws.push_back ( { source.firstIndex, source.indexCount, source.blend, lighting->GetGPUVirtualAddress () + ( i + 1 ) * constantsAlignment } );
+		device->CreateShaderResourceView ( texture.Get (), nullptr, srvHandle );
 	}
 
 	return true;
@@ -1673,24 +1228,22 @@ bool reshade::ultra::TestSceneD3d12::upload ( const TestModel& model, const Test
 // The frame slot index is free: the frame that last used it has finished on the GPU
 void reshade::ultra::TestSceneD3d12::setFrameConstants ( const TestSceneConstants& data, UINT index )
 {
-	constexpr size_t	slotSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
-
 	switch ( constantsPath )
 	{
 		case TestConstantsPath::root:
 			cmdList->SetGraphicsRoot32BitConstants ( 0, sizeof ( data ) / 4, &data, 0 );
 			break;
 		case TestConstantsPath::cbv:
-			std::memcpy ( frameConstantsMapped + index * slotSize, &data, sizeof ( data ) );
-			cmdList->SetGraphicsRootConstantBufferView ( 0, frameConstants->GetGPUVirtualAddress () + index * slotSize );
+			std::memcpy ( frameConstantsMapped + index * constantsAlignment, &data, sizeof ( data ) );
+			cmdList->SetGraphicsRootConstantBufferView ( 0, frameConstants->GetGPUVirtualAddress () + index * constantsAlignment );
 			break;
 		// The slot's view is written every frame, as engines do with their per-frame descriptors
 		case TestConstantsPath::table:
 		{
-			std::memcpy ( frameConstantsMapped + index * slotSize, &data, sizeof ( data ) );
+			std::memcpy ( frameConstantsMapped + index * constantsAlignment, &data, sizeof ( data ) );
 
 			const auto								descriptorSize = device->GetDescriptorHandleIncrementSize ( D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV );
-			const D3D12_CONSTANT_BUFFER_VIEW_DESC	viewDesc { frameConstants->GetGPUVirtualAddress () + index * slotSize, static_cast<UINT> ( slotSize ) };
+			const D3D12_CONSTANT_BUFFER_VIEW_DESC	viewDesc { frameConstants->GetGPUVirtualAddress () + index * constantsAlignment, static_cast<UINT> ( constantsAlignment ) };
 			auto									cpuHandle = srvHeap->GetCPUDescriptorHandleForHeapStart ();
 			auto									gpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart ();
 			cpuHandle.ptr += SIZE_T ( frameConstantsViews + index ) * descriptorSize;
@@ -1786,7 +1339,7 @@ bool reshade::ultra::TestSceneD3d12::render ( ID3D12Resource* backBuffer, D3D12_
 	const auto	index = frameIndex;
 	waitFor ( fenceValues[ index ] );
 
-	if ( FAILED ( allocators[ index ]->Reset () ) || FAILED ( cmdList->Reset ( allocators[ index ].Get (), pipelines[ 0 ].Get () ) ) )
+	if ( FAILED ( allocators[ index ]->Reset () ) || FAILED ( cmdList->Reset ( allocators[ index ].Get (), pipeline.Get () ) ) )
 		return false;
 
 	D3D12_RESOURCE_BARRIER	barrier { D3D12_RESOURCE_BARRIER_TYPE_TRANSITION };
@@ -1816,41 +1369,14 @@ bool reshade::ultra::TestSceneD3d12::render ( ID3D12Resource* backBuffer, D3D12_
 	cmdList->RSSetViewports ( 1, &viewport );
 	cmdList->RSSetScissorRects ( 1, &scissor );
 
-	// The frame slot waited for above covers the frame three back, the last one that used the oldest pose buffer
-	auto	current = vertexBuffer.Get ();
-	auto	before = vertexBuffer.Get ();
-
-	if ( animated != nullptr )
-	{
-		const auto	next = poseCount % poseBufferCount;
-		poseVertices ( *animated, seconds, posed );
-		std::memcpy ( poseMapped[ next ], posed.data (), posed.size () * sizeof ( TestModelVertex ) );
-
-		current = poseBuffers[ next ].Get ();
-		before = poseCount == 0 ? current : poseBuffers[ ( next + poseBufferCount - 1 ) % poseBufferCount ].Get ();
-		++poseCount;
-	}
-
-	const D3D12_VERTEX_BUFFER_VIEW	vertexViews[] {
-		{ current->GetGPUVirtualAddress (), static_cast<UINT> ( current->GetDesc ().Width ), sizeof ( TestModelVertex ) },
-		{ tangentBuffer->GetGPUVirtualAddress (), static_cast<UINT> ( tangentBuffer->GetDesc ().Width ), sizeof ( float ) * 4 },
-		{ before->GetGPUVirtualAddress (), static_cast<UINT> ( before->GetDesc ().Width ), sizeof ( TestModelVertex ) } };
+	const D3D12_VERTEX_BUFFER_VIEW	vertexView { vertexBuffer->GetGPUVirtualAddress (), static_cast<UINT> ( vertexBuffer->GetDesc ().Width ), sizeof ( TestModelVertex ) };
 	const D3D12_INDEX_BUFFER_VIEW	indexView { indexBuffer->GetGPUVirtualAddress (), static_cast<UINT> ( indexBuffer->GetDesc ().Width ), DXGI_FORMAT_R32_UINT };
 	cmdList->IASetPrimitiveTopology ( D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST );
-	cmdList->IASetVertexBuffers ( 0, UINT ( std::size ( vertexViews ) ), vertexViews );
+	cmdList->IASetVertexBuffers ( 0, 1, &vertexView );
 	cmdList->IASetIndexBuffer ( &indexView );
-
-	const auto	srvSize = device->GetDescriptorHandleIncrementSize ( D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV );
-	auto		tableHandle = srvHeap->GetGPUDescriptorHandleForHeapStart ();
-
-	for ( const auto& draw : draws )
-	{
-		cmdList->SetPipelineState ( pipelines[ size_t ( draw.blend ) ].Get () );
-		cmdList->SetGraphicsRootDescriptorTable ( 1, tableHandle );
-		cmdList->SetGraphicsRootConstantBufferView ( 2, draw.partConstants );
-		cmdList->DrawIndexedInstanced ( draw.indexCount, 1, draw.firstIndex, 0, 0 );
-		tableHandle.ptr += UINT64 ( srvSize ) * tableSize;
-	}
+	cmdList->SetGraphicsRootDescriptorTable ( 1, srvHeap->GetGPUDescriptorHandleForHeapStart () );
+	cmdList->SetGraphicsRootConstantBufferView ( 2, lighting->GetGPUVirtualAddress () + constantsAlignment );
+	cmdList->DrawIndexedInstanced ( indexCount, 1, 0, 0, 0 );
 
 	barrier.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
 	barrier.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
