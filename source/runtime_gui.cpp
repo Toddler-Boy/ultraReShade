@@ -16,6 +16,7 @@
 #include "imgui_widgets.hpp"
 #include "localization.hpp"
 #include "platform_utils.hpp"
+#include "ultra_config.hpp"
 #include "ultra_log.hpp"
 #include "ultra_overlay.hpp"
 #include "fonts/forkawesome.inl"
@@ -1709,7 +1710,7 @@ void reshade::runtime::draw_gui_home()
 		ImGui::EndDisabled();
 
 		ImGui::SetNextWindowPos(browse_button_pos + ImVec2(-_imgui_context->Style.WindowPadding.x, ImGui::GetFrameHeightWithSpacing()));
-		if (imgui::file_dialog("##browse", _file_selection_path, std::max(browse_button_width, 450.0f), { L".ini", L".txt" }, { _config_path, g_reshade_base_path / L"ReShade.ini" }))
+		if (imgui::file_dialog("##browse", _file_selection_path, std::max(browse_button_width, 450.0f), { L".ini", L".txt" }, { _config_path, g_reshade_base_path / L"ReShade.ini", ultra::isConfigLayered() ? ultra::userConfigPath(_config_path) : std::filesystem::path() }))
 		{
 			std::error_code ec;
 			resolve_path(_file_selection_path, ec);
@@ -3074,12 +3075,9 @@ void reshade::runtime::draw_gui_log()
 
 	ImGui::SameLine();
 
-	// Only on a click: 'global_config' checks the file's time
 	if (ImGui::Button(ICON_FK_FOLDER, ImVec2(ImGui::GetFrameHeight(), 0.0f)))
 	{
-		std::filesystem::path log_path = global_config().path();
-		log_path.replace_extension(L".log");
-		utils::open_explorer(log_path);
+		utils::open_explorer(ultra::logPath());
 	}
 	ImGui::SetItemTooltip(_("Open folder in explorer"));
 

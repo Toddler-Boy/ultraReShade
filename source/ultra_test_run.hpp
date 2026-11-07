@@ -37,6 +37,16 @@ namespace reshade::ultra
 		LONG			height = 0;
 	};
 
+	// Through the add-on API on the global config, then read back into the log
+	struct TestConfigAccess
+	{
+		size_t						frame = 0;
+		std::string					section;
+		std::string					key;
+		bool						isWrite = false;
+		std::optional<std::string>	value;		// a write without one removes the key
+	};
+
 	struct TestOptions
 	{
 		std::optional<api::device_api>	api;				// -api dx11|dx12
@@ -58,6 +68,7 @@ namespace reshade::ultra
 		bool							isLoggingThroughAddons = false;	// -log-addons: in frame 1 a line through the add-on API for each loaded add-on, and one for dxgi.dll
 		bool							isCheckingLogLines = false;	// -check-log-lines: in frame 2 the Log tab's copy of new lines, also past the lines kept
 		size_t							handledFaults = 0;	// -handled-faults <n>: n access violations caught in every frame, the frame times every 120 frames
+		std::vector<TestConfigAccess>	configAccesses;		// -set-config <frame> <section> <key> <value|->, -get-config <frame> <section> <key>
 		bool							isValid = true;		// false: an option was malformed, the log says which
 	};
 
@@ -102,6 +113,7 @@ namespace reshade::ultra
 		bool									isLoggingThroughAddons;
 		bool									isCheckingLogLines;
 		size_t									handledFaults;
+		std::vector<TestConfigAccess>			configAccesses;
 		std::chrono::steady_clock::time_point	frameStart;
 		std::chrono::duration<double, std::milli>	framesTime {};
 		std::chrono::duration<double, std::milli>	faultsTime {};

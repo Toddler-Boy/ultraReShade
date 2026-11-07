@@ -236,6 +236,20 @@ namespace
 		return caught;
 	}
 
+	void accessConfig ( const reshade::ultra::TestConfigAccess& access )
+	{
+		if ( access.isWrite )
+			ReShadeSetConfigValue ( g_module_handle, nullptr, access.section.c_str (), access.key.c_str (), access.value.has_value () ? access.value->c_str () : nullptr );
+
+		char		value[ 1024 ] {};
+		auto		size = sizeof ( value );
+		const auto	isFound = ReShadeGetConfigValue ( g_module_handle, nullptr, access.section.c_str (), access.key.c_str (), value, &size );
+		const auto	what = ! access.isWrite ? "read" : access.value.has_value () ? "set to '" + *access.value + "'" : std::string ( "removed" );
+
+		reshade::log::message ( reshade::log::level::info, "Test application: config [%s] %s %s through the add-on API, reads back %s%s%s.", access.section.c_str (), access.key.c_str (),
+								what.c_str (), isFound ? "'" : "nothing", isFound ? value : "", isFound ? "'" : "" );
+	}
+
 	void crash ( size_t frame )
 	{
 		const auto	filter = SetUnhandledExceptionFilter ( nullptr );
@@ -319,6 +333,30 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 
 			isRandomFullscreen = i + 2 < argc && isOption ( argv[ i + 2 ], L"fullscreen" );
 			i += isRandomFullscreen ? 2 : 1;
+			continue;
+		}
+
+		if ( isOption ( arg, L"-set-config" ) || isOption ( arg, L"-get-config" ) )
+		{
+			TestConfigAccess	access;
+			access.isWrite = isOption ( arg, L"-set-config" );
+			const auto			count = access.isWrite ? 4 : 3;
+			const auto			frame = i + count < argc ? parseCount ( argv[ i + 1 ] ) : std::nullopt;
+
+			if ( ! frame.has_value () )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: %s needs a frame, a section and a key%s.", narrow ( arg ).c_str (), access.isWrite ? " and a value (- removes it)" : "" );
+				options.isValid = false;
+				break;
+			}
+
+			access.frame = *frame;
+			access.section = narrow ( argv[ i + 2 ] );
+			access.key = narrow ( argv[ i + 3 ] );
+			if ( access.isWrite && ! isOption ( argv[ i + 4 ], L"-" ) )
+				access.value = narrow ( argv[ i + 4 ] );
+			options.configAccesses.push_back ( access );
+			i += count;
 			continue;
 		}
 
@@ -552,7 +590,7 @@ void reshade::ultra::shareEffectCache ( const std::filesystem::path& cache )
 reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window )
 	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), stressLines ( options.stressLines ),
 	  stressThreads ( options.stressThreads ), isLoggingFrames ( options.isLoggingFrames ), isLoggingThroughAddons ( options.isLoggingThroughAddons ),
-	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
+	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), configAccesses ( options.configAccesses ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
 	  holdsClock ( options.frames != 0 || options.resizeAt.has_value () || options.reloadEvery != 0 || options.crashAt.has_value () || ! options.switches.empty () )
 {
 }
@@ -622,6 +660,10 @@ bool reshade::ultra::TestFrames::next ()
 
 	if ( current == 2 && isCheckingLogLines )
 		checkLogLines ();
+
+	for ( const auto& access : configAccesses )
+		if ( access.frame == current )
+			accessConfig ( access );
 
 	if ( crashAt == current )
 		crash ( current );

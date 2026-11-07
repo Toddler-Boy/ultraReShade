@@ -4,6 +4,8 @@
  */
 
 #include "ini_file.hpp"
+#include "dll_log.hpp"
+#include "ultra_config.hpp"
 #include <mutex>
 #include <shared_mutex>
 #include <cctype> // std::toupper
@@ -13,33 +15,133 @@
 
 static std::shared_mutex s_ini_cache_mutex;
 static std::unordered_map<std::filesystem::path::string_type, std::unique_ptr<reshade::ini_file>> s_ini_cache;
+static thread_local bool s_is_recording_defaults = false;
 
 reshade::ini_file &reshade::global_config()
 {
-	return ini_file::load_cache(g_reshade_base_path / L"ReShade.ini");
+	return ini_file::load_cache(g_reshade_base_path / std::filesystem::u8path(ultra::configBaseName() + ".ini"));
 }
 
 reshade::ini_file::ini_file(const std::filesystem::path &path) : _path(path)
 {
 	load();
 }
-
-bool reshade::ini_file::load()
+reshade::ini_file::ini_file(const std::filesystem::path &path, const std::filesystem::path &user_path) : _path(path), _user_path(user_path)
 {
-	std::error_code ec;
-	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(_path, ec);
-	if (!ec && _modified_at >= modified_at)
-		return true; // Skip loading if there was no modification to the file since it was last loaded
+	load();
+}
 
-	// Clear when file does not exist too
-	_sections.clear();
+reshade::ini_file::defaults_scope::defaults_scope()
+{
+	s_is_recording_defaults = true;
+}
+reshade::ini_file::defaults_scope::~defaults_scope()
+{
+	s_is_recording_defaults = false;
+}
 
-	FILE *const file = _wfsopen(_path.c_str(), L"r", SH_DENYWR);
+static const std::vector<std::string> *find_in(const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> &sections, const std::string &section, const std::string &key)
+{
+	const auto it1 = sections.find(section);
+	if (it1 == sections.end())
+		return nullptr;
+	const auto it2 = it1->second.find(key);
+	return it2 != it1->second.end() ? &it2->second : nullptr;
+}
+
+// As 'save' writes the value: elements that differ only there are the same value
+static std::string serialize(const std::vector<std::string> &elements)
+{
+	std::string value;
+	for (const std::string &element : elements)
+	{
+		// Empty elements mess with escaped commas, so simply skip them
+		if (element.empty())
+			continue;
+
+		value.reserve(value.size() + element.size() + 1);
+		for (const char c : element)
+			value.append(c == ',' ? 2 : 1, c);
+		value += ','; // Separate multiple values with a comma
+	}
+
+	// Remove the last comma
+	if (!value.empty())
+	{
+		assert(value.back() == ',');
+		value.pop_back();
+	}
+
+	return value;
+}
+
+const std::vector<std::string> *reshade::ini_file::find(const std::string &section, const std::string &key) const
+{
+	if (const value_type *const value = find_in(_sections, section, key))
+		return value;
+	return is_layered() ? find_in(_curated, section, key) : nullptr;
+}
+
+void reshade::ini_file::assign(const std::string &section, const std::string &key, value_type &&value)
+{
+	if (!is_layered())
+	{
+		if (s_is_recording_defaults)
+			return;
+		_sections[section][key] = std::move(value);
+		mark_modified();
+		return;
+	}
+
+	const value_type *const curated = find_in(_curated, section, key);
+	const value_type *const user = find_in(_sections, section, key);
+
+	if (s_is_recording_defaults)
+	{
+		if (curated == nullptr && user == nullptr)
+			_defaults[section][key] = std::move(value);
+		return;
+	}
+
+	const std::string serialized = serialize(value);
+
+	if (const value_type *const fallback = curated != nullptr ? curated : find_in(_defaults, section, key);
+		fallback != nullptr && serialize(*fallback) == serialized)
+	{
+		if (user != nullptr)
+			remove_key(section, key);
+		return;
+	}
+
+	if (user != nullptr && serialize(*user) == serialized)
+		return;
+
+	_sections[section][key] = std::move(value);
+	mark_modified();
+}
+
+void reshade::ini_file::remove_key(const std::string &section, const std::string &key)
+{
+	if (s_is_recording_defaults)
+		return;
+
+	const auto it1 = _sections.find(section);
+	if (it1 == _sections.end())
+		return;
+	const auto it2 = it1->second.find(key);
+	if (it2 == it1->second.end())
+		return;
+	it1->second.erase(it2);
+	if (it1->second.empty() && is_layered())
+		_sections.erase(it1);
+	mark_modified();
+}
+
+bool reshade::ini_file::read(const std::filesystem::path &path, int share_flag, sections_type &sections)
+{
+	FILE *const file = _wfsopen(path.c_str(), L"r", share_flag);
 	if (file == nullptr)
 		return false;
-
-	_modified = false;
-	_modified_at = modified_at;
 
 	// Remove BOM (0xefbbbf means 0xfeff)
 	if (fgetc(file) != utf8::bom[0] || fgetc(file) != utf8::bom[1] || fgetc(file) != utf8::bom[2])
@@ -78,12 +180,12 @@ bool reshade::ini_file::load()
 
 			if (value.empty())
 			{
-				_sections[section].insert({ std::string(key), {} });
+				sections[section].insert({ std::string(key), {} });
 				continue;
 			}
 
 			// Append to key if it already exists
-			ini_file::value_type &elements = _sections[section][std::string(key)];
+			std::vector<std::string> &elements = sections[section][std::string(key)];
 			for (size_t offset = 0, base = 0, len = value.size(); offset <= len;)
 			{
 				// Treat ",," as an escaped comma and only split on single ","
@@ -112,7 +214,7 @@ bool reshade::ini_file::load()
 		}
 		else
 		{
-			_sections[section].insert({ std::string(line), {} });
+			sections[section].insert({ std::string(line), {} });
 		}
 	}
 
@@ -120,6 +222,61 @@ bool reshade::ini_file::load()
 
 	return true;
 }
+
+bool reshade::ini_file::load()
+{
+	if (is_layered())
+		load_curated();
+
+	const std::filesystem::path &path = is_layered() ? _user_path : _path;
+
+	std::error_code ec;
+	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(path, ec);
+	if (!ec && _modified_at >= modified_at)
+		return true; // Skip loading if there was no modification to the file since it was last loaded
+
+	// Clear when file does not exist too
+	_sections.clear();
+
+	if (!read(path, SH_DENYWR, _sections))
+	{
+		// A user file that cannot be read is left out, the curated file still applies
+		if (is_layered() && !ec && !_is_user_file_broken)
+			log::message(log::level::error, "Failed to read '%s', the changes in it are ignored!", path.u8string().c_str());
+		_is_user_file_broken = is_layered() && !ec;
+		return false;
+	}
+
+	_is_user_file_broken = false;
+	_modified = false;
+	_modified_at = modified_at;
+
+	return true;
+}
+
+// Without share restrictions, so the add-on's own writes into it never fail while ReShade reads
+bool reshade::ini_file::load_curated()
+{
+	std::error_code ec;
+	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(_path, ec);
+	// A missing one is an empty layer (only the global one must exist), one gone meanwhile keeps what it had
+	if (ec)
+		return false;
+	if (_curated_modified_at >= modified_at)
+		return true;
+
+	sections_type sections;
+	if (!read(_path, _SH_DENYNO, sections))
+	{
+		log::message(log::level::error, "Failed to read '%s', the settings read from it before stay in use!", _path.u8string().c_str());
+		return false;
+	}
+
+	_curated = std::move(sections);
+	_curated_modified_at = modified_at;
+	return true;
+}
+
 bool reshade::ini_file::save()
 {
 	if (!_modified)
@@ -128,10 +285,16 @@ bool reshade::ini_file::save()
 	// Reset state even on failure to avoid 'flush_cache' repeatedly trying and failing to save
 	_modified = false;
 
+	const std::filesystem::path &path = is_layered() ? _user_path : _path;
+
 	std::error_code ec;
-	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(_path, ec);
+	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(path, ec);
 	if (!ec && (modified_at - _modified_at) > std::chrono::seconds(2))
+	{
+		if (is_layered())
+			log::message(log::level::error, "'%s' changed on disk since it was read, so the changes made since are not saved!", path.u8string().c_str());
 		return false; // File exists and was modified on disk and therefore may have different data, so cannot save
+	}
 
 	std::string data;
 	std::vector<std::string> section_names, key_names;
@@ -171,32 +334,7 @@ bool reshade::ini_file::save()
 			for (const std::string &key_name : key_names)
 			{
 				data += key_name + '=';
-
-				if (const ini_file::value_type &elements = keys.at(key_name); !elements.empty())
-				{
-					std::string value;
-					for (const std::string &element : elements)
-					{
-						// Empty elements mess with escaped commas, so simply skip them
-						if (element.empty())
-							continue;
-
-						value.reserve(value.size() + element.size() + 1);
-						for (const char c : element)
-							value.append(c == ',' ? 2 : 1, c);
-						value += ','; // Separate multiple values with a comma
-					}
-
-					// Remove the last comma
-					if (!value.empty())
-					{
-						assert(value.back() == ',');
-						value.pop_back();
-					}
-
-					data += value;
-				}
-
+				data += serialize(keys.at(key_name));
 				data += '\n';
 			}
 
@@ -204,18 +342,30 @@ bool reshade::ini_file::save()
 		}
 	}
 
-	FILE *const file = _wfsopen(_path.c_str(), L"w", SH_DENYWR);
+	// No user file while there is no change
+	if (is_layered() && data.empty() && ec)
+		return true;
+
+	FILE *const file = _wfsopen(path.c_str(), L"w", SH_DENYWR);
 	if (file == nullptr)
+	{
+		if (is_layered())
+			log::message(log::level::error, "Failed to open '%s' for writing, the changes are not saved!", path.u8string().c_str());
 		return false;
+	}
 	const size_t file_size_written = fwrite(data.data(), 1, data.size(), file);
 	fclose(file);
 	if (file_size_written != data.size())
+	{
+		if (is_layered())
+			log::message(log::level::error, "Failed to write '%s' completely!", path.u8string().c_str());
 		return false;
+	}
 
 	// Flush stream to disk before updating last write time
-	_modified_at = std::filesystem::last_write_time(_path, ec);
+	_modified_at = std::filesystem::last_write_time(path, ec);
 
-	assert(!ec && std::filesystem::file_size(_path, ec) > 0);
+	assert(!ec && (is_layered() || std::filesystem::file_size(path, ec) > 0));
 
 	return true;
 }
@@ -279,7 +429,7 @@ reshade::ini_file &reshade::ini_file::load_cache(const std::filesystem::path &pa
 
 	// Only construct when actually adding a new entry to the cache, since the 'ini_file' constructor performs a costly load of the file
 	if (insert.second)
-		it->second = std::make_unique<ini_file>(path);
+		it->second = ultra::isCuratedConfig(path) ? std::make_unique<ini_file>(path, ultra::userConfigPath(path)) : std::make_unique<ini_file>(path);
 	// Don't reload file when it was just loaded or there are still modifications pending
 	else if (!it->second->_modified)
 		it->second->load();

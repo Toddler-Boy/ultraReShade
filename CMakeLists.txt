@@ -83,6 +83,8 @@ set(RESHADE_SOURCE
   source/state_block.hpp
   source/ultra_addon_reload.cpp
   source/ultra_addon_reload.hpp
+  source/ultra_config.cpp
+  source/ultra_config.hpp
   source/ultra_constant_buffers.cpp
   source/ultra_file_watch.cpp
   source/ultra_file_watch.hpp

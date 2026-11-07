@@ -177,6 +177,7 @@ endfunction()
 # runtime with overlay and add-ons in a resizable window. Base path is its own folder (ReShade.ini, shaders, add-ons).
 # Command line: -d3d9, -d3d10, -d3d11 (default), -d3d12, -opengl, -vulkan, -width N, -height N, -vsync, -validation,
 # -work-dir <folder> (base path for that run: ini and preset seeded from the exe folder's, log, screenshots, shader cache),
+# -config-layered (the seeded ini is an ultragame.ini with [INSTALL] UltraGameConfig=1, read with ultragame-user.ini on top),
 # -capture <frame> <file.png> (that frame after the effects, without the overlay); exit codes in source/ultra_test_check.hpp
 function(ultra_add_test_app)
   add_executable(ReShadeTest WIN32)

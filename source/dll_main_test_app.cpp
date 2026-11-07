@@ -11,6 +11,7 @@
 #include "addon_manager.hpp"
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
+#include "ultra_config.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_display.hpp"
 #include "ultra_test_run.hpp"
@@ -79,11 +80,15 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	std::error_code ec;
 
 	std::filesystem::path work_dir;
+	bool is_config_layered = false;
 	{	int argc = 0;
 		LPWSTR *const argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-		for (int i = 1; argv != nullptr && i + 1 < argc; ++i)
-			if (_wcsicmp(argv[i], L"-work-dir") == 0)
+		for (int i = 1; argv != nullptr && i < argc; ++i)
+		{
+			if (_wcsicmp(argv[i], L"-work-dir") == 0 && i + 1 < argc)
 				work_dir = std::filesystem::absolute(argv[i + 1], ec);
+			is_config_layered |= _wcsicmp(argv[i], L"-config-layered") == 0;
+		}
 		LocalFree(argv);
 	}
 
@@ -93,13 +98,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		std::filesystem::create_directories(work_dir / L"cache", ec);
 		if (!std::filesystem::is_directory(work_dir / L"cache", ec))
 			return EXIT_FAILURE;
-		if (!std::filesystem::exists(work_dir / L"ReShade.ini", ec))
+		// -config-layered: a curated ultragame.ini instead, from the exe folder's when it has one, else from its ReShade.ini
+		if (!std::filesystem::exists(work_dir / L"ReShade.ini", ec) && !reshade::ultra::isCuratedConfigFile(work_dir / L"ultragame.ini"))
 		{
-			std::filesystem::copy_file(g_reshade_dll_path.parent_path() / L"ReShade.ini", work_dir / L"ReShade.ini", ec);
-			reshade::ini_file config(work_dir / L"ReShade.ini");
+			const std::filesystem::path exe_folder = g_reshade_dll_path.parent_path();
+			const std::filesystem::path config_path = work_dir / (is_config_layered ? L"ultragame.ini" : L"ReShade.ini");
+			const bool has_curated = is_config_layered && std::filesystem::exists(exe_folder / L"ultragame.ini", ec);
+			std::filesystem::copy_file(exe_folder / (has_curated ? L"ultragame.ini" : L"ReShade.ini"), config_path, ec);
+			reshade::ini_file config(config_path);
 			config.set("GENERAL", "IntermediateCachePath", work_dir / L"cache");
+			if (is_config_layered)
+				config.set("INSTALL", "UltraGameConfig", 1);
 			config.save();
-			std::filesystem::copy_file(g_reshade_dll_path.parent_path() / L"ReShadePreset.ini", work_dir / L"ReShadePreset.ini", ec);
+			std::filesystem::copy_file(exe_folder / L"ReShadePreset.ini", work_dir / L"ReShadePreset.ini", ec);
 		}
 		reshade::ultra::seedEffectCache(work_dir / L"cache");
 		SetEnvironmentVariableW(L"RESHADE_BASE_PATH_OVERRIDE", work_dir.c_str());
@@ -107,7 +118,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	g_reshade_base_path = get_base_path();
 
-	reshade::log::open_log_file(g_reshade_base_path / L"ReShade.log", ec);
+	reshade::log::open_log_file(reshade::ultra::logPath(), ec);
+	reshade::ultra::logConfigLayers();
 
 	reshade::ultra::TestCheck check;
 	if (!check.isValid())

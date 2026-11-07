@@ -8,6 +8,7 @@
 #include "ini_file.hpp"
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
+#include "ultra_config.hpp"
 #include <Windows.h>
 #include <Psapi.h>
 #include <delayimp.h> // Delay-load helpers
@@ -61,7 +62,7 @@ std::filesystem::path get_base_path(bool default_to_target_executable_path = fal
 	std::filesystem::path path_override;
 
 	// Cannot use global config here yet, since it uses base path for look up, so look at config file next to target executable instead
-	if (reshade::ini_file(target_executable_parent_path / L"ReShade.ini").get("INSTALL", "BasePath", path_override) &&
+	if (reshade::ini_file(reshade::ultra::basePathConfig(target_executable_parent_path)).get("INSTALL", "BasePath", path_override) &&
 		resolve_path(path_override, ec, reshade_dll_parent_path) && std::filesystem::is_directory(path_override, ec))
 		return path_override;
 
@@ -157,8 +158,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 
 			if (config.get("INSTALL", "Logging") || (!config.has("INSTALL", "Logging") && !GetEnvironmentVariableW(L"RESHADE_DISABLE_LOGGING", nullptr, 0)))
 			{
-				std::filesystem::path log_path = config.path();
-				log_path.replace_extension(L".log");
+				std::filesystem::path log_path = reshade::ultra::logPath();
 
 				std::error_code ec;
 				if (!reshade::log::open_log_file(log_path, ec))
@@ -195,6 +195,8 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 				g_target_executable_path.u8string().c_str(),
 #endif
 				static_cast<unsigned int>(std::hash<std::string>()(g_target_executable_path.stem().u8string()) & 0xFFFFFFFF));
+
+			reshade::ultra::logConfigLayers();
 
 			// Check if another ReShade instance was already loaded into the process
 			if (HMODULE modules[1024]; K32EnumProcessModules(GetCurrentProcess(), modules, sizeof(modules), &fdwReason)) // Use kernel32 variant which is available in DllMain

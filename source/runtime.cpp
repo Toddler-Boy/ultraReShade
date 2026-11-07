@@ -415,6 +415,13 @@ reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphic
 
 	load_config();
 
+	// Right after loading, saving writes ReShade's defaults for the keys no file has: no change for the user file
+	if (ini_file::load_cache(_config_path).is_layered())
+	{
+		const ini_file::defaults_scope recording_defaults;
+		save_config();
+	}
+
 	fpng::fpng_init();
 }
 reshade::runtime::~runtime()

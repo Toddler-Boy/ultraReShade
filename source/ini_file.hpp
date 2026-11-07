@@ -30,24 +30,35 @@ namespace reshade
 		/// </summary>
 		/// <param name="path">Path to the INI file to access.</param>
 		explicit ini_file(const std::filesystem::path &path);
+		/// <summary>
+		/// Opens the curated INI file at <paramref name="path"/> with the user INI file at <paramref name="user_path"/> on top.
+		/// Reads see both (the user file wins), writes go only into the user file and only where they differ from the curated file.
+		/// </summary>
+		ini_file(const std::filesystem::path &path, const std::filesystem::path &user_path);
 
 		/// <summary>
 		/// Gets the path to this INI file.
 		/// </summary>
 		const std::filesystem::path &path() const { return _path; }
 
+		bool is_layered() const { return !_user_path.empty(); }
+
+		/// <summary>
+		/// While one exists on a thread, writes there to keys no layer has record the value as the default instead (layered files only; other files ignore writes meanwhile).
+		/// </summary>
+		class defaults_scope
+		{
+		public:
+			defaults_scope();
+			~defaults_scope();
+		};
+
 		/// <summary>
 		/// Checks whether the specified <paramref name="section"/> and <paramref name="key"/> currently exist in the INI.
 		/// </summary>
 		bool has(const std::string &section, const std::string &key) const
 		{
-			const auto it1 = _sections.find(section);
-			if (it1 == _sections.end())
-				return false;
-			const auto it2 = it1->second.find(key);
-			if (it2 == it1->second.end())
-				return false;
-			return true;
+			return find(section, key) != nullptr;
 		}
 
 		/// <summary>
@@ -58,47 +69,38 @@ namespace reshade
 		template <typename T>
 		bool get(const std::string &section, const std::string &key, T &value) const
 		{
-			const auto it1 = _sections.find(section);
-			if (it1 == _sections.end())
+			const value_type *const found = find(section, key);
+			if (found == nullptr)
 				return false;
-			const auto it2 = it1->second.find(key);
-			if (it2 == it1->second.end())
-				return false;
-			value = convert<T>(it2->second, 0);
+			value = convert<T>(*found, 0);
 			return true;
 		}
 		template <typename T, size_t SIZE>
 		bool get(const std::string &section, const std::string &key, T(&values)[SIZE]) const
 		{
-			const auto it1 = _sections.find(section);
-			if (it1 == _sections.end())
-				return false;
-			const auto it2 = it1->second.find(key);
-			if (it2 == it1->second.end())
+			const value_type *const found = find(section, key);
+			if (found == nullptr)
 				return false;
 			for (size_t i = 0; i < SIZE; ++i)
-				values[i] = convert<T>(it2->second, i);
+				values[i] = convert<T>(*found, i);
 			return true;
 		}
 		template <typename T>
 		bool get(const std::string &section, const std::string &key, std::vector<T> &values) const
 		{
-			const auto it1 = _sections.find(section);
-			if (it1 == _sections.end())
-				return false;
-			const auto it2 = it1->second.find(key);
-			if (it2 == it1->second.end())
+			const value_type *const found = find(section, key);
+			if (found == nullptr)
 				return false;
 			if constexpr (std::is_same_v<T, std::string>)
 			{
-				values = it2->second;
+				values = *found;
 			}
 			else if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>)
 			{
-				values.resize(it2->second.size());
-				for (size_t i = 0; i < it2->second.size(); ++i)
+				values.resize(found->size());
+				for (size_t i = 0; i < found->size(); ++i)
 				{
-					std::string value = convert<std::string>(it2->second, i);
+					std::string value = convert<std::string>(*found, i);
 					if (const size_t equals_sign = value.find('=');
 						equals_sign != std::string::npos)
 						values[i] = { value.substr(0, equals_sign), value.substr(equals_sign + 1) };
@@ -108,9 +110,9 @@ namespace reshade
 			}
 			else
 			{
-				values.resize(it2->second.size());
-				for (size_t i = 0; i < it2->second.size(); ++i)
-					values[i] = convert<T>(it2->second, i);
+				values.resize(found->size());
+				for (size_t i = 0; i < found->size(); ++i)
+					values[i] = convert<T>(*found, i);
 			}
 			return true;
 		}
@@ -132,7 +134,7 @@ namespace reshade
 		template <typename T>
 		void set(const std::string &section, const std::string &key, const T &value)
 		{
-			auto &v = _sections[section][key];
+			value_type v;
 			if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, const char *>)
 			{
 				v.assign(1, value);
@@ -149,23 +151,20 @@ namespace reshade
 			{
 				v.assign(1, std::to_string(value));
 			}
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
+			assign(section, key, std::move(v));
 		}
 		template <typename T, size_t SIZE>
 		void set(const std::string &section, const std::string &key, const T(&values)[SIZE], const size_t size = SIZE)
 		{
-			auto &v = _sections[section][key];
-			v.resize(size);
+			value_type v(size);
 			for (size_t i = 0; i < size; ++i)
 				v[i] = std::to_string(values[i]);
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
+			assign(section, key, std::move(v));
 		}
 		template <typename T>
 		void set(const std::string &section, const std::string &key, const std::vector<T> &values)
 		{
-			auto &v = _sections[section][key];
+			value_type v;
 			if constexpr (std::is_same_v<T, std::string>)
 			{
 				v = values;
@@ -199,51 +198,31 @@ namespace reshade
 				for (size_t i = 0; i < values.size(); ++i)
 					v[i] = std::to_string(values[i]);
 			}
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
+			assign(section, key, std::move(v));
 		}
 
 		void set(const std::string &section, const std::string &key, std::string &&value)
 		{
-			auto &v = _sections[section][key];
-			v.resize(1);
-			v[0] = std::forward<std::string>(value);
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
+			assign(section, key, value_type(1, std::forward<std::string>(value)));
 		}
 		void set(const std::string &section, const std::string &key, std::vector<std::string> &&values)
 		{
-			auto &v = _sections[section][key];
-			v = std::forward<std::vector<std::string>>(values);
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
+			assign(section, key, std::forward<std::vector<std::string>>(values));
 		}
 
 		/// <summary>
-		/// Removes all values.
+		/// Removes all values (of the user file, when layered).
 		/// </summary>
 		void clear()
 		{
 			_sections.clear();
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
+			mark_modified();
 		}
 
 		/// <summary>
-		/// Removes the specified <paramref name="key"/> from the <paramref name="section"/>.
+		/// Removes the specified <paramref name="key"/> from the <paramref name="section"/> (from the user file, when layered, so the curated value applies again).
 		/// </summary>
-		void remove_key(const std::string &section, const std::string &key)
-		{
-			const auto it1 = _sections.find(section);
-			if (it1 == _sections.end())
-				return;
-			const auto it2 = it1->second.find(key);
-			if (it2 == it1->second.end())
-				return;
-			it1->second.erase(it2);
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
-		}
+		void remove_key(const std::string &section, const std::string &key);
 
 		/// <summary>
 		/// Loads all values from disk.
@@ -308,6 +287,19 @@ namespace reshade
 				return i < values.size() ? std::filesystem::u8path(values[i]) : std::filesystem::path();
 		}
 
+		using sections_type = std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>>;
+
+		const std::vector<std::string> *find(const std::string &section, const std::string &key) const;
+		void assign(const std::string &section, const std::string &key, std::vector<std::string> &&value);
+		void mark_modified()
+		{
+			_modified = true;
+			_modified_at = std::filesystem::file_time_type::clock::now();
+		}
+
+		static bool read(const std::filesystem::path &path, int share_flag, sections_type &sections);
+		bool load_curated();
+
 		/// <summary>
 		/// Describes a single value in an INI file.
 		/// </summary>
@@ -318,9 +310,17 @@ namespace reshade
 		using section_type = std::unordered_map<std::string, value_type>;
 
 		const std::filesystem::path _path;
+		// The user file when layered, else the file itself
 		std::unordered_map<std::string, section_type> _sections;
 		bool _modified = false;
 		std::filesystem::file_time_type _modified_at;
+
+		const std::filesystem::path _user_path;
+		sections_type _curated;
+		std::filesystem::file_time_type _curated_modified_at = std::filesystem::file_time_type::min();
+		// What ReShade writes for keys no file has, recorded in a defaults_scope: writing it again is no change
+		sections_type _defaults;
+		bool _is_user_file_broken = false;
 	};
 
 	/// <summary>
