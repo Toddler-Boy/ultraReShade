@@ -1814,8 +1814,22 @@ namespace reshade
 		/// </remarks>
 		reshade_overlay_technique,
 
+		/// <summary>
+		/// ultraReShade: called before a draw or dispatch for each constant buffer whose binding or contents changed on
+		/// this command list since the previous draw or dispatch: buffers bound through push_descriptors (D3D11 and
+		/// D3D10 constant buffers, D3D12 root constant buffer views, Vulkan push descriptors) and push constants (D3D12
+		/// root constants, Vulkan push constants, D3D9 shader constants).
+		/// <para>Callback function signature: <c>void (api::command_list *cmd_list, api::shader_stage stages, api::pipeline_layout layout, uint32_t layout_param, uint32_t binding, const void *data, uint64_t size, api::resource buffer, uint64_t offset)</c></para>
+		/// </summary>
+		/// <remarks>
+		/// <paramref name="data"/> holds the bytes the GPU reads as far as ReShade sees them when the command is
+		/// recorded: written through Map, UpdateSubresource or a copy, or the persistently mapped memory of an upload
+		/// buffer. <paramref name="buffer"/> is zero for push constants. Costs nothing while no callback is registered.
+		/// </remarks>
+		ultra_constant_buffer = 101,
+
 #if RESHADE_ADDON
-		max = 101 // Last value used internally by ReShade to determine number of events in this enum
+		max = 102 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
 
@@ -1963,4 +1977,6 @@ namespace reshade
 
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::reshade_overlay_uniform_variable, bool, api::effect_runtime *runtime, api::effect_uniform_variable variable);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::reshade_overlay_technique, bool, api::effect_runtime *runtime, api::effect_technique technique);
+
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_constant_buffer, void, api::command_list *cmd_list, api::shader_stage stages, api::pipeline_layout layout, uint32_t layout_param, uint32_t binding, const void *data, uint64_t size, api::resource buffer, uint64_t offset);
 }

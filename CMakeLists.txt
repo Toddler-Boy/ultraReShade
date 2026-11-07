@@ -81,6 +81,9 @@ set(RESHADE_SOURCE
   source/runtime_update_check.cpp
   source/state_block.cpp
   source/state_block.hpp
+  source/ultra_addon_reload.cpp
+  source/ultra_addon_reload.hpp
+  source/ultra_constant_buffers.cpp
   source/ultra_overlay.cpp
   source/ultra_overlay.hpp
   source/ultra_splash.cpp

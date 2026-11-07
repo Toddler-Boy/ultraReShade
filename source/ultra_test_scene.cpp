@@ -1354,7 +1354,7 @@ void reshade::ultra::TestSceneD3d11::render ( ID3D11DeviceContext* context, ID3D
 
 reshade::ultra::TestSceneD3d12::TestSceneD3d12 ( ID3D12Device* device, ID3D12CommandQueue* queue, DXGI_FORMAT backBufferFormat, const TestModel& model,
 												 const TestSceneSettings& settings )
-	: device ( device ), queue ( queue ), view ( model, settings ), background ( backgroundColour ( settings.output ) )
+	: device ( device ), queue ( queue ), view ( model, settings ), background ( backgroundColour ( settings.output ) ), constantsPath ( settings.constantsPath )
 {
 	const auto	vsCode = compile ( "vsMain", "vs_5_0" );
 	const auto	psCode = compile ( "psMain", "ps_5_0" );
@@ -1366,11 +1366,30 @@ reshade::ultra::TestSceneD3d12::TestSceneD3d12 ( ID3D12Device* device, ID3D12Com
 	range.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_SRV;
 	range.NumDescriptors = tableSize;
 
-	// The frame's constants (b0), the part's table, the part's constants (b1), the lighting (b2)
+	// The frame's constants (b0, as -constants says), the part's table, the part's constants (b1), the lighting (b2)
+	D3D12_DESCRIPTOR_RANGE	constantsRange {};
+	constantsRange.RangeType = D3D12_DESCRIPTOR_RANGE_TYPE_CBV;
+	constantsRange.NumDescriptors = 1;
+
 	D3D12_ROOT_PARAMETER	params[ 4 ] {};
-	params[ 0 ].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
-	params[ 0 ].Constants.Num32BitValues = sizeof ( TestSceneConstants ) / 4;
 	params[ 0 ].ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+
+	switch ( constantsPath )
+	{
+		case TestConstantsPath::root:
+			params[ 0 ].ParameterType = D3D12_ROOT_PARAMETER_TYPE_32BIT_CONSTANTS;
+			params[ 0 ].Constants.Num32BitValues = sizeof ( TestSceneConstants ) / 4;
+			break;
+		case TestConstantsPath::cbv:
+			params[ 0 ].ParameterType = D3D12_ROOT_PARAMETER_TYPE_CBV;
+			params[ 0 ].Descriptor = { 0, 0 };
+			break;
+		case TestConstantsPath::table:
+			params[ 0 ].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+			params[ 0 ].DescriptorTable = { 1, &constantsRange };
+			break;
+	}
+
 	params[ 1 ].ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
 	params[ 1 ].DescriptorTable = { 1, &range };
 	params[ 1 ].ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -1599,10 +1618,22 @@ bool reshade::ultra::TestSceneD3d12::upload ( const TestModel& model, const Test
 				return false;
 	}
 
-	const D3D12_DESCRIPTOR_HEAP_DESC	srvHeapDesc { D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, static_cast<UINT> ( sources.size () ) * tableSize, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE };
+	// Each part's table, then (-constants table) one view per frame in flight
+	frameConstantsViews = static_cast<UINT> ( sources.size () ) * tableSize;
+	const auto	constantsViewCount = constantsPath == TestConstantsPath::table ? frameCount : 0;
+
+	const D3D12_DESCRIPTOR_HEAP_DESC	srvHeapDesc { D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, frameConstantsViews + constantsViewCount, D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE };
 
 	if ( FAILED ( device->CreateDescriptorHeap ( &srvHeapDesc, IID_PPV_ARGS ( &srvHeap ) ) ) )
 		return false;
+
+	if ( constantsPath != TestConstantsPath::root )
+	{
+		const std::vector<uint8_t>	empty ( frameCount * constantsAlignment );
+
+		if ( ! makeUploadBuffer ( empty.data (), empty.size (), frameConstants ) || FAILED ( frameConstants->Map ( 0, nullptr, reinterpret_cast<void**> ( &frameConstantsMapped ) ) ) )
+			return false;
+	}
 
 	const auto	environmentResource = uploadTexture ( environmentTexture ( panorama ) );
 
@@ -1636,6 +1667,40 @@ bool reshade::ultra::TestSceneD3d12::upload ( const TestModel& model, const Test
 	}
 
 	return true;
+}
+//-----------------------------------------------------------------------------
+
+// The frame slot index is free: the frame that last used it has finished on the GPU
+void reshade::ultra::TestSceneD3d12::setFrameConstants ( const TestSceneConstants& data, UINT index )
+{
+	constexpr size_t	slotSize = D3D12_CONSTANT_BUFFER_DATA_PLACEMENT_ALIGNMENT;
+
+	switch ( constantsPath )
+	{
+		case TestConstantsPath::root:
+			cmdList->SetGraphicsRoot32BitConstants ( 0, sizeof ( data ) / 4, &data, 0 );
+			break;
+		case TestConstantsPath::cbv:
+			std::memcpy ( frameConstantsMapped + index * slotSize, &data, sizeof ( data ) );
+			cmdList->SetGraphicsRootConstantBufferView ( 0, frameConstants->GetGPUVirtualAddress () + index * slotSize );
+			break;
+		// The slot's view is written every frame, as engines do with their per-frame descriptors
+		case TestConstantsPath::table:
+		{
+			std::memcpy ( frameConstantsMapped + index * slotSize, &data, sizeof ( data ) );
+
+			const auto								descriptorSize = device->GetDescriptorHandleIncrementSize ( D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV );
+			const D3D12_CONSTANT_BUFFER_VIEW_DESC	viewDesc { frameConstants->GetGPUVirtualAddress () + index * slotSize, static_cast<UINT> ( slotSize ) };
+			auto									cpuHandle = srvHeap->GetCPUDescriptorHandleForHeapStart ();
+			auto									gpuHandle = srvHeap->GetGPUDescriptorHandleForHeapStart ();
+			cpuHandle.ptr += SIZE_T ( frameConstantsViews + index ) * descriptorSize;
+			gpuHandle.ptr += UINT64 ( frameConstantsViews + index ) * descriptorSize;
+
+			device->CreateConstantBufferView ( &viewDesc, cpuHandle );
+			cmdList->SetGraphicsRootDescriptorTable ( 0, gpuHandle );
+			break;
+		}
+	}
 }
 //-----------------------------------------------------------------------------
 
@@ -1739,11 +1804,11 @@ bool reshade::ultra::TestSceneD3d12::render ( ID3D12Resource* backBuffer, D3D12_
 	cmdList->ClearDepthStencilView ( dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr );
 	cmdList->OMSetRenderTargets ( UINT ( std::size ( targets ) ), targets, FALSE, &dsv );
 
-	const auto					frameConstants = view.nextFrame ( width, height, seconds );
+	const auto					frameConstantsData = view.nextFrame ( width, height, seconds );
 	ID3D12DescriptorHeap* const	heaps[] { srvHeap.Get () };
 	cmdList->SetGraphicsRootSignature ( rootSignature.Get () );
 	cmdList->SetDescriptorHeaps ( 1, heaps );
-	cmdList->SetGraphicsRoot32BitConstants ( 0, sizeof ( frameConstants ) / 4, &frameConstants, 0 );
+	setFrameConstants ( frameConstantsData, index );
 	cmdList->SetGraphicsRootConstantBufferView ( 3, lighting->GetGPUVirtualAddress () );
 
 	const D3D12_VIEWPORT	viewport { 0.0f, 0.0f, static_cast<float> ( width ), static_cast<float> ( height ), 0.0f, 1.0f };

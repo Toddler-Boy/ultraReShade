@@ -16,6 +16,9 @@ extern void register_addon_depth();
 extern void register_addon_effect_runtime_sync();
 extern void unregister_addon_depth();
 extern void unregister_addon_effect_runtime_sync();
+extern void register_addon_constant_buffers();
+extern void unregister_addon_constant_buffers();
+extern void track_constant_buffers(bool is_tracking);
 
 extern HMODULE g_module_handle;
 
@@ -187,6 +190,7 @@ void reshade::load_addons()
 			register_addon_effect_runtime_sync();
 		}
 	}
+	register_addon_constant_buffers();
 #endif
 
 	// Initialize any add-ons that were registered externally
@@ -222,6 +226,8 @@ void reshade::load_addons()
 		", *.addon64"
 #endif
 		") in '%s' ...", addon_search_path.u8string().c_str());
+
+	ultra::startAddonReload(addon_search_path);
 
 	std::error_code ec;
 	for (std::filesystem::path path : std::filesystem::directory_iterator(addon_search_path, std::filesystem::directory_options::skip_permission_denied, ec))
@@ -270,7 +276,7 @@ void reshade::load_addons()
 		log::message(log::level::info, "Loading add-on from '%s' ...", path.u8string().c_str());
 
 		// Use 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR' to temporarily add add-on search path to the list of directories 'LoadLibraryEx' will use to resolve DLL dependencies
-		const HMODULE module = LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+		const HMODULE module = LoadLibraryExW(ultra::addonLoadPath(path).c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 		if (module == nullptr)
 		{
 			const DWORD error_code = GetLastError();
@@ -317,6 +323,7 @@ void reshade::load_addons()
 		if (addon_info *const registered_info = find_addon(module))
 		{
 			registered_info->external = false;
+			ultra::watchAddon(module, path);
 		}
 		else
 		{
@@ -379,7 +386,10 @@ void reshade::unload_addons()
 #if 1
 	unregister_addon_depth();
 	unregister_addon_effect_runtime_sync();
+	unregister_addon_constant_buffers();
 #endif
+
+	ultra::stopAddonReload();
 
 	// Remove all unloaded add-ons
 	addon_loaded_info.erase(
@@ -584,6 +594,9 @@ void ReShadeRegisterEventForAddon(void *module, reshade::addon_event ev, void *c
 
 	info->event_callbacks.emplace_back(static_cast<uint32_t>(ev), callback);
 
+	if (ev == reshade::addon_event::ultra_constant_buffer && event_list.size() == 1)
+		track_constant_buffers(true);
+
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(reshade::log::level::debug, "Registered event callback %p for event %s.", callback, addon_event_to_string(ev));
 #endif
@@ -612,6 +625,9 @@ void ReShadeUnregisterEventForAddon(void *module, reshade::addon_event ev, void 
 	event_list.erase(std::remove(event_list.begin(), event_list.end(), callback), event_list.end());
 
 	info->event_callbacks.erase(std::remove(info->event_callbacks.begin(), info->event_callbacks.end(), std::make_pair(static_cast<uint32_t>(ev), callback)), info->event_callbacks.end());
+
+	if (ev == reshade::addon_event::ultra_constant_buffer && event_list.empty())
+		track_constant_buffers(false);
 
 #if RESHADE_VERBOSE_LOG
 	reshade::log::message(reshade::log::level::debug, "Unregistered event callback %p for event %s.", callback, addon_event_to_string(ev));

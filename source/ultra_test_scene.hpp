@@ -34,6 +34,10 @@ namespace reshade::ultra
 	[[ nodiscard ]] DXGI_FORMAT backBufferFormat ( TestOutput output );
 	[[ nodiscard ]] DXGI_COLOR_SPACE_TYPE colourSpace ( TestOutput output );
 
+	// How D3D12 hands the frame's constants to the shaders: root constants, a root constant buffer view, or a constant
+	// buffer view in a descriptor table
+	enum class TestConstantsPath { root, cbv, table };
+
 	struct TestSceneSettings
 	{
 		TestSceneKind			kind = TestSceneKind::cube;
@@ -44,6 +48,7 @@ namespace reshade::ultra
 		TestOutput				output = TestOutput::sdr;	// -hdr off|scrgb|pq
 		float					paperWhite = 203.0f;	// -paper-white: nits of a white surface in HDR
 		float					peak = 1000.0f;			// -peak: nits the HDR highlights roll off towards
+		TestConstantsPath		constantsPath = TestConstantsPath::root;	// -constants root|cbv|table (D3D12)
 	};
 
 	// The shaders' constants, 52 floats: they fit D3D12's root constants next to the texture table
@@ -172,6 +177,7 @@ namespace reshade::ultra
 		[[ nodiscard ]] bool isReady () const;
 		[[ nodiscard ]] bool upload ( const TestModel& model, const TestSceneSettings& settings );
 		[[ nodiscard ]] Microsoft::WRL::ComPtr<ID3D12Resource> uploadTexture ( const TestTextureSource& source );
+		void setFrameConstants ( const TestSceneConstants& data, UINT index );
 		void waitFor ( UINT64 value );
 
 		// One pose buffer more than frames in flight: the oldest is free once this frame's slot is, the newest but one is
@@ -202,6 +208,10 @@ namespace reshade::ultra
 		Microsoft::WRL::ComPtr<ID3D12Resource>					tangentBuffer;
 		Microsoft::WRL::ComPtr<ID3D12Resource>					indexBuffer;
 		Microsoft::WRL::ComPtr<ID3D12Resource>					lighting;		// the lighting, then each part's constants, 256 bytes apart
+		TestConstantsPath										constantsPath;
+		Microsoft::WRL::ComPtr<ID3D12Resource>					frameConstants;	// cbv and table: one 256-byte slot per frame in flight
+		uint8_t*												frameConstantsMapped = nullptr;
+		UINT													frameConstantsViews = 0;	// table: the heap index of the first slot's view
 		std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>	textures;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>			srvHeap;
 		Microsoft::WRL::ComPtr<ID3D12DescriptorHeap>			dsvHeap;

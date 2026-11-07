@@ -7,6 +7,7 @@
 
 #include "addon.hpp"
 #include "reshade_events.hpp"
+#include "ultra_addon_reload.hpp"
 
 #if RESHADE_ADDON
 
@@ -115,6 +116,7 @@ namespace reshade
 		if (!addon_enabled)
 			return;
 #endif
+		const ultra::AddonEventGuard reload_guard;
 		const std::vector<void *> &event_list = addon_event_list[static_cast<uint32_t>(ev)];
 		for (size_t cb = 0, count = event_list.size(); cb < count; ++cb) // Generates better code than ranged-based for loop
 		{
@@ -178,6 +180,7 @@ namespace reshade
 		if (!addon_enabled)
 			return false;
 #endif
+		const ultra::AddonEventGuard reload_guard;
 		bool skip = false;
 		const std::vector<void *> &event_list = addon_event_list[static_cast<uint32_t>(ev)];
 		for (size_t cb = 0, count = event_list.size(); cb < count; ++cb)

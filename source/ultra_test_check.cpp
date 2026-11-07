@@ -6,6 +6,7 @@
 #ifdef RESHADE_TEST_APPLICATION
 
 #include <atomic>
+#include <cstdio>
 #include <cstring>
 #include <cwchar>
 #include <fstream>
@@ -15,6 +16,7 @@
 #include <Windows.h>
 #include <shellapi.h>
 
+#include <reshade.hpp>
 #include <stb_image.h>
 #include <stb_image_write.h>
 #include <stb_image_write_hdr_png.h>
@@ -41,6 +43,38 @@ namespace
 	};
 
 	CaptureState	state;
+
+	// -dump-constants <frame> <file.txt>: every constant buffer the frame's draws read, as ultra_constant_buffer hands them over
+	struct ConstantsDump
+	{
+		std::optional<size_t>	frame;
+		std::filesystem::path	path;
+		std::string				text;
+		bool					isListening = false;
+		bool					isWritten = false;
+	};
+
+	ConstantsDump	dump;
+
+	void onConstantBuffer ( reshade::api::command_list*, reshade::api::shader_stage stages, reshade::api::pipeline_layout layout, uint32_t param, uint32_t slot, const void* data,
+							uint64_t size, reshade::api::resource buffer, uint64_t offset )
+	{
+		if ( state.frames == nullptr || dump.frame != state.frames->index () )
+			return;
+
+		char	line[ 160 ];
+		std::snprintf ( line, sizeof ( line ), "stages 0x%x layout %llu param %u slot %u size %llu buffer %llu offset %llu\n", unsigned ( stages ), layout.handle, param, slot, size,
+						buffer.handle, offset );
+		dump.text += line;
+
+		const auto	floats = static_cast<const float*> ( data );
+
+		for ( uint64_t i = 0; i < size / 4; ++i )
+		{
+			std::snprintf ( line, sizeof ( line ), i % 4 == 3 || i + 1 == size / 4 ? "%10.5f\n" : "%10.5f ", floats[ i ] );
+			dump.text += line;
+		}
+	}
 
 	void writeToStream ( void* file, void* data, int size )
 	{
@@ -188,6 +222,19 @@ namespace
 			reshade::log::message ( state.isWritten ? reshade::log::level::info : reshade::log::level::error, "Test application: capture of frame %zu %s '%s'.", *state.frame,
 									state.isWritten ? "written to" : "failed for", state.path.u8string ().c_str () );
 		}
+
+		// Listening starts once ReShade's add-ons are loaded (the event needs their bookkeeping), so from the first present
+		if ( dump.frame.has_value () && ! dump.isListening )
+			dump.isListening = true, reshade::register_event<reshade::addon_event::ultra_constant_buffer> ( onConstantBuffer );
+
+		if ( dump.frame.has_value () && state.frames != nullptr && dump.frame == state.frames->index () && ! dump.isWritten )
+		{
+			std::ofstream	file ( dump.path );
+			file << dump.text;
+			dump.isWritten = file.good ();
+			reshade::log::message ( dump.isWritten ? reshade::log::level::info : reshade::log::level::error, "Test application: constant buffers of frame %zu %s '%s'.", *dump.frame,
+									dump.isWritten ? "written to" : "failed for", dump.path.u8string ().c_str () );
+		}
 	}
 
 	[[ nodiscard ]] bool logHasErrors ()
@@ -211,7 +258,9 @@ reshade::ultra::TestCheck::TestCheck ()
 
 	for ( auto i = 1; argv != nullptr && i < argc; ++i )
 	{
-		if ( _wcsicmp ( argv[ i ], L"-capture" ) != 0 )
+		const auto	isCapture = _wcsicmp ( argv[ i ], L"-capture" ) == 0;
+
+		if ( ! isCapture && _wcsicmp ( argv[ i ], L"-dump-constants" ) != 0 )
 			continue;
 
 		wchar_t*	end = nullptr;
@@ -219,13 +268,22 @@ reshade::ultra::TestCheck::TestCheck ()
 
 		if ( i + 2 >= argc || end == argv[ i + 1 ] || *end != L'\0' )
 		{
-			reshade::log::message ( reshade::log::level::error, "Test application: -capture needs a frame number and a file." );
+			reshade::log::message ( reshade::log::level::error, "Test application: %s needs a frame number and a file.", isCapture ? "-capture" : "-dump-constants" );
 			isCommandLineValid = false;
 			break;
 		}
 
-		captureFrame = static_cast<size_t> ( frame );
-		capturePath = std::filesystem::absolute ( argv[ i + 2 ] );
+		if ( isCapture )
+		{
+			captureFrame = static_cast<size_t> ( frame );
+			capturePath = std::filesystem::absolute ( argv[ i + 2 ] );
+		}
+		else
+		{
+			dump.frame = static_cast<size_t> ( frame );
+			dump.path = std::filesystem::absolute ( argv[ i + 2 ] );
+		}
+
 		i += 2;
 	}
 

@@ -12,6 +12,7 @@
 #include <shellapi.h>
 
 #include "dll_log.hpp"
+#include "ultra_addon_reload.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_run.hpp"
 
@@ -86,7 +87,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 	{
 		const auto	arg = argv[ i ];
 		const auto	isKnown = isOption ( arg, L"-api" ) || isOption ( arg, L"-scene" ) || isOption ( arg, L"-jitter" ) || isOption ( arg, L"-sss" ) || isOption ( arg, L"-env" ) || isOption ( arg, L"-fov" ) || isOption ( arg, L"-hdr" )
-							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" )
+							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) || isOption ( arg, L"-reload-every" )
+							  || isOption ( arg, L"-constants" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" );
 
 		if ( ! isKnown )
@@ -141,6 +143,17 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 			else
 				options.isValid = false;
 		}
+		else if ( isOption ( arg, L"-constants" ) )
+		{
+			if ( isOption ( value, L"root" ) )
+				options.scene.constantsPath = TestConstantsPath::root;
+			else if ( isOption ( value, L"cbv" ) )
+				options.scene.constantsPath = TestConstantsPath::cbv;
+			else if ( isOption ( value, L"table" ) )
+				options.scene.constantsPath = TestConstantsPath::table;
+			else
+				options.isValid = false;
+		}
 		else if ( isOption ( arg, L"-hdr" ) )
 		{
 			if ( isOption ( value, L"off" ) )
@@ -179,6 +192,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		{
 			if ( isOption ( arg, L"-frames" ) )
 				options.frames = *count;
+			else if ( isOption ( arg, L"-reload-every" ) )
+				options.reloadEvery = *count;
 			else
 				options.resizeAt = *count;
 		}
@@ -202,7 +217,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 }
 //-----------------------------------------------------------------------------
 
-reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window ) : frames ( options.frames ), resizeAt ( options.resizeAt ), window ( window )
+reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window )
+	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), window ( window )
 {
 }
 //-----------------------------------------------------------------------------
@@ -239,6 +255,9 @@ bool reshade::ultra::TestFrames::next ()
 
 	if ( resizeAt == current )
 		shrinkWindow ();
+
+	if ( reloadEvery != 0 && current != 0 && current % reloadEvery == 0 )
+		requestAddonReload ();
 
 	return true;
 }

@@ -23,11 +23,13 @@ namespace reshade::ultra
 	{
 		std::optional<api::device_api>	api;				// -api dx11|dx12
 		TestSceneSettings				scene;				// -scene cube|head, -jitter on|off, -sss on|off, -env <file.hdr>, -fov <degrees>,
-															// -hdr off|scrgb|pq, -paper-white <nits>, -peak <nits>; -model makes it a head
+															// -hdr off|scrgb|pq, -paper-white <nits>, -peak <nits>,
+															// -constants root|cbv|table; -model makes it a head
 		LONG							width = 0;			// -size <w>x<h>, client area; 0: two thirds of the screen
 		LONG							height = 0;
 		size_t							frames = 0;			// -frames <n>: quit after n frames, each 1/60 s apart; 0: run until closed
 		std::optional<size_t>			resizeAt;			// -resize-at <frame>: the window shrinks to three quarters before that frame
+		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames ([ADDON] ReloadOnChange=1)
 		bool							isValid = true;		// false: an option was malformed, the log says which
 	};
 
@@ -50,6 +52,7 @@ namespace reshade::ultra
 
 		size_t									frames;
 		std::optional<size_t>					resizeAt;
+		size_t									reloadEvery;
 		HWND									window;
 		size_t									current = 0;
 		size_t									upcoming = 0;

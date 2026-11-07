@@ -701,6 +701,8 @@ void reshade::runtime::on_present()
 		return;
 
 #if RESHADE_ADDON
+	ultra::pollAddonReload();
+
 	_is_in_present_call = true;
 #endif
 
