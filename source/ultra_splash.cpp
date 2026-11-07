@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cmath>
 
 #include <imgui.h>
 #include <stb_image.h>
@@ -29,15 +30,21 @@ namespace
 	constexpr unsigned char		logoTint[ 3 ] = { 0xff, 0x14, 0x93 };
 	constexpr int				logoStrips = 48;
 
-	// Top-left corner of both the logo and the ring, as shares of the screen width and height
+	// Top-left corner of the ring, as shares of the screen width and height; the logo sits to its right, both centred
+	// on one line, so the ring can run while the logo plays
 	constexpr float	anchorX = 0.03f;
 	constexpr float	anchorY = 0.04f;
 
 	// Compile ring: sizes as shares of the screen height (24 and 2 pixels at 1080p), fades in seconds
 	constexpr float	ringDiameter = 24.0f / 1080.0f;
 	constexpr float	ringThickness = 2.0f / 1080.0f;
+	constexpr float	ringGap = 10.0f / 1080.0f;
+	constexpr float	ringShift = -10.0f / 1080.0f;	// the ring sits this much left of the corner; the logo stays
 	constexpr float	ringTrackAlpha = 0.15f;
 	constexpr float	ringArcAlpha = 0.7f;
+	constexpr float	ringTurnsPerSecond = 1.0f;
+	constexpr float	ringMinArc = 0.25f;		// share of the circle at no progress; the gap stays visible until the end
+	constexpr float	ringGlide = 0.25f;		// seconds the arc takes to reach a new length
 	constexpr float	ringFadeIn = 0.2f;
 	constexpr float	ringFadeOut = 0.3f;
 
@@ -177,7 +184,7 @@ namespace
 	{
 		const auto	height = frame.height * logoHeight;
 		const auto	width = height * state.logoWidth / state.logoHeight;
-		const auto	left = frame.width * anchorX;
+		const auto	left = frame.width * anchorX + frame.height * ( ringDiameter + ringGap );
 		const auto	top = frame.height * anchorY;
 
 		const auto	sweep = ( 1.0f - logoHold ) * 0.5f;
@@ -215,19 +222,17 @@ namespace
 		drawList->PopTexture ();
 	}
 
-	void drawRing ( ImDrawList* drawList, ImVec2 center, float screenHeight, float progress, float alpha )
+	// The arc turns all the time, so work shows even while one long effect compiles; its length shows the progress
+	void drawRing ( ImDrawList* drawList, ImVec2 center, float screenHeight, float progress, float turn, float alpha )
 	{
 		const auto	thickness = std::max ( 1.0f, screenHeight * ringThickness );
 		const auto	radius = ( screenHeight * ringDiameter - thickness ) * 0.5f;
+		const auto	length = ringMinArc + ( 1.0f - ringMinArc ) * progress;
+		const auto	start = 2.0f * pi * turn - 0.5f * pi;
 
 		drawList->AddCircle ( center, radius, white ( ringTrackAlpha * alpha ), 0, thickness );
-
-		if ( progress > 0.0f )
-		{
-			const auto	twelveOClock = -0.5f * pi;
-			drawList->PathArcTo ( center, radius, twelveOClock, twelveOClock + 2.0f * pi * progress );
-			drawList->PathStroke ( white ( ringArcAlpha * alpha ), ImDrawFlags_None, thickness );
-		}
+		drawList->PathArcTo ( center, radius, start, start + 2.0f * pi * length );
+		drawList->PathStroke ( white ( ringArcAlpha * alpha ), ImDrawFlags_None, thickness );
 	}
 
 	void advanceLogo ( reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float step )
@@ -255,20 +260,30 @@ namespace
 
 	[[ nodiscard ]] bool isRingWanted ( const reshade::ultra::SplashFrame& frame )
 	{
-		return frame.isLoading && ! frame.isOverlayOpen && logoDone;
+		return frame.isLoading && ! frame.isOverlayOpen;
 	}
 
 	void advanceRing ( reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float step )
 	{
+		// A load starts from no progress; the length then glides to the share of effects done and never goes back, so a
+		// finished effect never snaps it; at the end it closes while the ring fades out
+		if ( state.ringAlpha <= 0.0f )
+			state.ringProgress = 0.0f;
+
 		state.ringAlpha = isRingWanted ( frame ) ? std::min ( 1.0f, state.ringAlpha + step / ringFadeIn ) : std::max ( 0.0f, state.ringAlpha - step / ringFadeOut );
-		state.ringProgress = frame.isLoading ? reshade::ultra::compileProgress ( frame.effectCount, frame.remainingEffects ) : 1.0f;
+
+		const auto	target = frame.isLoading ? reshade::ultra::compileProgress ( frame.effectCount, frame.remainingEffects ) : 1.0f;
+
+		if ( target > state.ringProgress )
+			state.ringProgress += ( target - state.ringProgress ) * std::min ( 1.0f, step / ringGlide );
 
 		if ( state.ringAlpha <= 0.0f )
 			return;
 
 		const auto	radius = frame.height * ringDiameter * 0.5f;
-		const auto	center = ImVec2 ( frame.width * anchorX + radius, frame.height * anchorY + radius );
-		drawRing ( frame.drawList, center, frame.height, state.ringProgress, state.ringAlpha );
+		const auto	center = ImVec2 ( frame.width * anchorX + frame.height * ringShift + radius, frame.height * ( anchorY + logoHeight * 0.5f ) );
+		state.ringTurn = std::fmod ( state.ringTurn + step * ringTurnsPerSecond, 1.0f );
+		drawRing ( frame.drawList, center, frame.height, state.ringProgress, state.ringTurn, state.ringAlpha );
 	}
 }
 //-----------------------------------------------------------------------------
@@ -311,7 +326,8 @@ void reshade::ultra::drawWindowProgressRing ( float progress )
 {
 	const auto	pos = ImGui::GetWindowPos ();
 	const auto	size = ImGui::GetWindowSize ();
-	drawRing ( ImGui::GetWindowDrawList (), ImVec2 ( pos.x + size.x * 0.5f, pos.y + size.y * 0.5f ), ImGui::GetIO ().DisplaySize.y, progress, 1.0f );
+	const auto	turn = static_cast<float> ( std::fmod ( ImGui::GetTime () * ringTurnsPerSecond, 1.0 ) );
+	drawRing ( ImGui::GetWindowDrawList (), ImVec2 ( pos.x + size.x * 0.5f, pos.y + size.y * 0.5f ), ImGui::GetIO ().DisplaySize.y, progress, turn, 1.0f );
 }
 //-----------------------------------------------------------------------------
 

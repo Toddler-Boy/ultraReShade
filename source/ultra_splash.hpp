@@ -16,8 +16,8 @@ namespace reshade::api
 
 //-----------------------------------------------------------------------------
 
-// Top-left corner: the start logo once per game start, then a progress ring while effects compile and the
-// overlay is closed.
+// Top-left corner: a progress ring while effects compile and the overlay is closed, and to its right the start logo
+// once per game start.
 namespace reshade::ultra
 {
 	struct SplashState
@@ -28,6 +28,7 @@ namespace reshade::ultra
 		float				logoHeight = 0.0f;
 		float				ringAlpha = 0.0f;
 		float				ringProgress = 0.0f;
+		float				ringTurn = 0.0f;
 	};
 
 	struct SplashFrame
