@@ -177,6 +177,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	if (window_handle == nullptr)
 		return 0;
 
+	// Whose run this is, in the title
+	if (!options.owner.empty())
+		SetWindowTextW(window_handle, (L"ReShade test: " + options.owner).c_str());
+
 	// Agents run several of these at once while someone works: never take the focus
 	ShowWindow(window_handle, nCmdShow == SW_HIDE ? SW_HIDE : SW_SHOWNOACTIVATE);
 

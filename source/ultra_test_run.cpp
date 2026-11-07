@@ -88,7 +88,7 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		const auto	arg = argv[ i ];
 		const auto	isKnown = isOption ( arg, L"-api" ) || isOption ( arg, L"-scene" ) || isOption ( arg, L"-jitter" ) || isOption ( arg, L"-sss" ) || isOption ( arg, L"-env" ) || isOption ( arg, L"-fov" ) || isOption ( arg, L"-hdr" )
 							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) || isOption ( arg, L"-reload-every" )
-							  || isOption ( arg, L"-constants" )
+							  || isOption ( arg, L"-constants" ) || isOption ( arg, L"-owner" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" );
 
 		if ( ! isKnown )
@@ -134,6 +134,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		}
 		else if ( isOption ( arg, L"-env" ) )
 			options.scene.environment = value;
+		else if ( isOption ( arg, L"-owner" ) )
+			options.owner = value;
 		else if ( isOption ( arg, L"-fov" ) )
 		{
 			const auto	degrees = parseNumber ( value );

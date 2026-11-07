@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstddef>
 #include <optional>
+#include <string>
 
 #include <Windows.h>
 
@@ -30,6 +31,7 @@ namespace reshade::ultra
 		size_t							frames = 0;			// -frames <n>: quit after n frames, each 1/60 s apart; 0: run until closed
 		std::optional<size_t>			resizeAt;			// -resize-at <frame>: the window shrinks to three quarters before that frame
 		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames ([ADDON] ReloadOnChange=1)
+		std::wstring					owner;				// -owner <name>: who started the run, shown in the window title
 		bool							isValid = true;		// false: an option was malformed, the log says which
 	};
 
