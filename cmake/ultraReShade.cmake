@@ -195,6 +195,15 @@ function(ultra_finish_targets)
   target_link_libraries(ReShade PRIVATE delayimp.lib)
 
   ultra_add_test_app()
+  ultra_add_draw_bench()
+endfunction()
+
+# ReShadeDrawBench64.exe / ReShadeDrawBench32.exe: a draw-heavy D3D11/D3D12 loop without ReShade built in, measuring
+# whichever ReShade DLL sits next to it as dxgi.dll (options in source/ultra_draw_bench.cpp)
+function(ultra_add_draw_bench)
+  add_executable(ReShadeDrawBench WIN32 source/ultra_draw_bench.cpp)
+  set_target_properties(ReShadeDrawBench PROPERTIES OUTPUT_NAME ReShadeDrawBench${RESHADE_SUFFIX} CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON VS_DPI_AWARE PerMonitor)
+  target_compile_definitions(ReShadeDrawBench PRIVATE _HAS_EXCEPTIONS=0)
 endfunction()
 
 # ReShadeTest64.exe / ReShadeTest32.exe: upstream's test application (source/dll_main_test_app.cpp), the whole
