@@ -9,14 +9,22 @@
 #include <cwchar>
 #include <random>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include <Windows.h>
 #include <shellapi.h>
 
+#include <reshade.hpp>
+
+#include "addon_manager.hpp"
 #include "dll_log.hpp"
 #include "ultra_addon_reload.hpp"
+#include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_run.hpp"
+
+extern HMODULE g_module_handle;
 
 //-----------------------------------------------------------------------------
 
@@ -120,6 +128,124 @@ namespace
 	{
 		return _wcsicmp ( arg, name ) == 0;
 	}
+
+	// Each call timed on the thread that logs: what a line costs a game thread
+	void logStress ( size_t lines, size_t threads )
+	{
+		struct Timing
+		{
+			std::chrono::duration<double, std::micro>	total {};
+			std::chrono::duration<double, std::micro>	worst {};
+		};
+
+		std::vector<Timing>			timings ( threads );
+		std::vector<std::thread>	workers;
+		const auto					start = std::chrono::steady_clock::now ();
+
+		for ( size_t t = 0; t < threads; ++t )
+			workers.emplace_back ( [ t, lines, threads, &timings ]
+			{
+				for ( auto i = t; i < lines; i += threads )
+				{
+					const auto	before = std::chrono::steady_clock::now ();
+					reshade::log::message ( reshade::log::level::info, "Test application: stress line %zu from thread %zu, about as long as a usual line of the log.", i, t );
+					const std::chrono::duration<double, std::micro>	took = std::chrono::steady_clock::now () - before;
+
+					timings[ t ].total += took;
+					timings[ t ].worst = std::max ( timings[ t ].worst, took );
+				}
+			} );
+
+		for ( auto& worker : workers )
+			worker.join ();
+
+		const std::chrono::duration<double, std::milli>	wall = std::chrono::steady_clock::now () - start;
+		Timing	all;
+
+		for ( const auto& timing : timings )
+		{
+			all.total += timing.total;
+			all.worst = std::max ( all.worst, timing.worst );
+		}
+
+		reshade::log::message ( reshade::log::level::info, "Test application: %zu threads logged %zu lines in %.1f ms; a call took %.2f us on average, %.1f us at most.", threads,
+								lines, wall.count (), lines != 0 ? all.total.count () / double ( lines ) : 0.0, all.worst.count () );
+	}
+
+	void logThroughAddons ()
+	{
+		for ( const auto& info : reshade::addon_loaded_info )
+			if ( info.handle != nullptr && info.handle != g_module_handle )
+				ReShadeLogMessage ( info.handle, static_cast<int> ( reshade::log::level::info ), "Test application: a line through the add-on API." );
+
+		ReShadeLogMessage ( GetModuleHandleW ( L"dxgi.dll" ), static_cast<int> ( reshade::log::level::info ), "Test application: a line through the add-on API from a module that is no add-on." );
+	}
+
+	// As the Log tab copies: the new lines only, every kept line once some went past unseen
+	void checkLogLines ()
+	{
+		const auto	isCheckLine = [] ( const std::string& line ) { return line.find ( "Test application: log line check " ) != std::string::npos; };
+		auto		seen = reshade::ultra::logLineCount ();
+		std::vector<std::string>	lines;
+
+		for ( auto i = 0; i < 3; ++i )
+			reshade::log::message ( reshade::log::level::info, "Test application: log line check %d.", i );
+
+		const auto	isNewOnly = reshade::ultra::copyLogLines ( seen, lines ) && std::ranges::count_if ( lines, isCheckLine ) == 3 && lines.size () < 10;
+		constexpr size_t	unseen = 12000;
+		lines.clear ();
+
+		for ( size_t i = 0; i < unseen; ++i )
+			reshade::log::message ( reshade::log::level::info, "Test application: log line check past the kept lines, %zu.", i );
+
+		const auto	isRebuilt = ! reshade::ultra::copyLogLines ( seen, lines ) && lines.size () < unseen && std::ranges::any_of ( lines, [] ( const std::string& line )
+		{
+			return line.find ( "kept lines, 11999." ) != std::string::npos;
+		} );
+
+		reshade::log::message ( isNewOnly && isRebuilt ? reshade::log::level::info : reshade::log::level::error,
+								"Test application: the Log tab's copy %s: new lines only %s, %zu kept lines after %zu unseen ones %s.", isNewOnly && isRebuilt ? "works" : "failed",
+								isNewOnly ? "yes" : "no", lines.size (), unseen, isRebuilt ? "rebuilt the view" : "did not rebuild it" );
+	}
+
+	// Read through a volatile pointer, so the compiler can't see the null
+	volatile int* volatile	crashTarget = nullptr;
+
+	__declspec ( noinline ) void writeToNull ()
+	{
+		*crashTarget = 0;
+	}
+
+	// The fault inside a call: clang catches synchronous faults only (no /EHa)
+	[[ nodiscard ]] size_t causeFaults ( size_t count )
+	{
+		size_t	caught = 0;
+
+		for ( size_t i = 0; i < count; ++i )
+		{
+			__try
+			{
+				writeToNull ();
+			}
+			__except ( GetExceptionCode () == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH )
+			{
+				++caught;
+			}
+		}
+
+		return caught;
+	}
+
+	void crash ( size_t frame )
+	{
+		const auto	filter = SetUnhandledExceptionFilter ( nullptr );
+		SetUnhandledExceptionFilter ( filter );
+		const auto	owner = reshade::ultra::logModuleName ( reinterpret_cast<const void*> ( filter ) );
+		reshade::log::message ( reshade::log::level::info, "Test application: an access violation in frame %zu, on purpose (the unhandled exception filter on top is %s).", frame,
+								filter == nullptr ? "none" : owner.empty () ? "the test application's" : owner.c_str () );
+		SetErrorMode ( GetErrorMode () | SEM_NOGPFAULTERRORBOX );
+		*crashTarget = 0;
+	}
 }
 //-----------------------------------------------------------------------------
 
@@ -141,6 +267,42 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		if ( isOption ( arg, L"-background" ) )
 		{
 			options.isBackground = true;
+			continue;
+		}
+
+		if ( isOption ( arg, L"-log-frames" ) )
+		{
+			options.isLoggingFrames = true;
+			continue;
+		}
+
+		if ( isOption ( arg, L"-log-addons" ) )
+		{
+			options.isLoggingThroughAddons = true;
+			continue;
+		}
+
+		if ( isOption ( arg, L"-check-log-lines" ) )
+		{
+			options.isCheckingLogLines = true;
+			continue;
+		}
+
+		if ( isOption ( arg, L"-log-stress" ) )
+		{
+			const auto	lines = i + 2 < argc ? parseCount ( argv[ i + 1 ] ) : std::nullopt;
+			const auto	threads = i + 2 < argc ? parseCount ( argv[ i + 2 ] ) : std::nullopt;
+
+			if ( ! lines.has_value () || ! threads.has_value () || *threads == 0 )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: -log-stress needs a number of lines and of threads." );
+				options.isValid = false;
+				break;
+			}
+
+			options.stressLines = *lines;
+			options.stressThreads = *threads;
+			i += 2;
 			continue;
 		}
 
@@ -182,7 +344,7 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) || isOption ( arg, L"-reload-every" )
 							  || isOption ( arg, L"-constants" ) || isOption ( arg, L"-owner" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" )
-							  || isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" );
+							  || isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) || isOption ( arg, L"-crash-at" ) || isOption ( arg, L"-handled-faults" );
 
 		if ( ! isKnown )
 			continue;
@@ -280,6 +442,10 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 				options.frames = *count;
 			else if ( isOption ( arg, L"-reload-every" ) )
 				options.reloadEvery = *count;
+			else if ( isOption ( arg, L"-crash-at" ) )
+				options.crashAt = *count;
+			else if ( isOption ( arg, L"-handled-faults" ) )
+				options.handledFaults = *count;
 			else if ( isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) )
 				options.switches.push_back ( { *count, isOption ( arg, L"-fullscreen-at" ) ? TestSwitchKind::fullscreen : TestSwitchKind::windowed } );
 			else
@@ -318,7 +484,9 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 //-----------------------------------------------------------------------------
 
 reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window )
-	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window )
+	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), stressLines ( options.stressLines ),
+	  stressThreads ( options.stressThreads ), isLoggingFrames ( options.isLoggingFrames ), isLoggingThroughAddons ( options.isLoggingThroughAddons ),
+	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window )
 {
 }
 //-----------------------------------------------------------------------------
@@ -370,7 +538,52 @@ bool reshade::ultra::TestFrames::next ()
 	if ( reloadEvery != 0 && current != 0 && current % reloadEvery == 0 )
 		requestAddonReload ();
 
+	if ( isLoggingFrames )
+		reshade::log::message ( reshade::log::level::info, "Test application: frame %zu.", current );
+
+	if ( current == 1 && stressLines != 0 )
+		logStress ( stressLines, stressThreads );
+
+	if ( current == 1 && isLoggingThroughAddons )
+		logThroughAddons ();
+
+	if ( current == 2 && isCheckingLogLines )
+		checkLogLines ();
+
+	if ( crashAt == current )
+		crash ( current );
+
+	if ( handledFaults != 0 )
+		causeHandledFaults ();
+
 	return true;
+}
+//-----------------------------------------------------------------------------
+
+// The frame time includes the faults' time, every 120 frames into the log
+void reshade::ultra::TestFrames::causeHandledFaults ()
+{
+	constexpr size_t	reportEvery = 120;
+	const auto			now = std::chrono::steady_clock::now ();
+
+	if ( current != 0 )
+		framesTime += now - frameStart;
+
+	frameStart = now;
+	const auto	caught = causeFaults ( handledFaults );
+	faultsTime += std::chrono::steady_clock::now () - now;
+
+	if ( caught != handledFaults )
+		reshade::log::message ( reshade::log::level::error, "Test application: %zu of %zu access violations were caught.", caught, handledFaults );
+
+	if ( current == 0 || current % reportEvery != 0 )
+		return;
+
+	reshade::log::message ( reshade::log::level::info, "Test application: frames %zu to %zu took %.3f ms each, %.3f ms of it for %zu caught access violations (%.2f us each).",
+							current - reportEvery, current, framesTime.count () / reportEvery, faultsTime.count () / reportEvery, handledFaults,
+							faultsTime.count () * 1000.0 / double ( reportEvery * handledFaults ) );
+	framesTime = {};
+	faultsTime = {};
 }
 //-----------------------------------------------------------------------------
 

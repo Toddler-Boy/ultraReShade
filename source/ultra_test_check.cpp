@@ -26,6 +26,7 @@
 
 #include "dll_log.hpp"
 #include "runtime.hpp"
+#include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_run.hpp"
 
@@ -431,16 +432,27 @@ namespace
 		}
 	}
 
+	[[ nodiscard ]] bool isError ( const std::string& line )
+	{
+		return line.find ( "| ERROR |" ) != std::string::npos;
+	}
+
+	// The file, and the recent lines in memory for any the file dropped
 	[[ nodiscard ]] bool logHasErrors ()
 	{
+		reshade::ultra::flushLog ();
 		std::ifstream	log ( g_reshade_base_path / L"ReShade.log" );
 		std::string		line;
 
 		while ( std::getline ( log, line ) )
-			if ( line.find ( "| ERROR |" ) != std::string::npos )
+			if ( isError ( line ) )
 				return true;
 
-		return false;
+		uint64_t					seen = 0;
+		std::vector<std::string>	recent;
+		(void) reshade::ultra::copyLogLines ( seen, recent );
+
+		return std::ranges::any_of ( recent, isError );
 	}
 }
 //-----------------------------------------------------------------------------

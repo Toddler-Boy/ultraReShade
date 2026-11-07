@@ -16,6 +16,7 @@
 #include "imgui_widgets.hpp"
 #include "localization.hpp"
 #include "platform_utils.hpp"
+#include "ultra_log.hpp"
 #include "ultra_overlay.hpp"
 #include "fonts/forkawesome.inl"
 #include <cmath> // std::abs, std::ceil, std::floor
@@ -3069,43 +3070,53 @@ void reshade::runtime::draw_gui_statistics()
 }
 void reshade::runtime::draw_gui_log()
 {
-	std::error_code ec;
-	std::filesystem::path log_path = global_config().path();
-	log_path.replace_extension(L".log");
-
 	const bool filter_changed = imgui::search_input_box(_log_filter, sizeof(_log_filter), -(ImGui::GetFrameHeight() + 8.0f * ImGui::GetFontSize() + 2 * _imgui_context->Style.ItemSpacing.x));
 
 	ImGui::SameLine();
 
+	// Only on a click: 'global_config' checks the file's time
 	if (ImGui::Button(ICON_FK_FOLDER, ImVec2(ImGui::GetFrameHeight(), 0.0f)))
+	{
+		std::filesystem::path log_path = global_config().path();
+		log_path.replace_extension(L".log");
 		utils::open_explorer(log_path);
+	}
 	ImGui::SetItemTooltip(_("Open folder in explorer"));
 
 	ImGui::SameLine();
 
 	if (ImGui::Button(_("Clear Log"), ImVec2(8.0f * ImGui::GetFontSize(), 0.0f)))
-		// Close and open the stream again, which will clear the file too
-		log::open_log_file(log_path, ec);
+	{
+		ultra::clearLog();
+		_log_editor.clear_text();
+	}
 
 	ImGui::Spacing();
 
-	const uintmax_t file_size = std::filesystem::file_size(log_path, ec);
+	// '_last_log_size' holds the logger's line count at the last line shown
+	const uint64_t log_line_count = ultra::logLineCount();
 	// Defer log reloading during user interface interactions to avoid interfering with tab switching
-	if (filter_changed || (_last_log_size != file_size && !ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && !_log_editor.has_selection()))
+	if (filter_changed || (_last_log_size != log_line_count && !ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && !_log_editor.has_selection()))
 	{
 		_log_editor.set_readonly(true);
 
-		if (FILE *const file = _wfsopen(log_path.c_str(), L"r", SH_DENYNO))
+		if (filter_changed)
 		{
-			if (filter_changed || file_size <= _last_log_size)
-				_log_editor.clear_text();
-			else
-				fseek(file, static_cast<long>(_last_log_size), SEEK_SET);
+			_log_editor.clear_text();
+			_last_log_size = 0;
+		}
 
-			char line_data[2048];
-			while (fgets(line_data, sizeof(line_data), file))
+		std::vector<std::string> messages;
+		if (!ultra::copyLogLines(_last_log_size, messages))
+			_log_editor.clear_text();
+
+		for (const std::string &message : messages)
+		{
+			for (size_t line_beg = 0, line_end; line_beg < message.size(); line_beg = line_end)
 			{
-				const std::string_view line(line_data);
+				line_end = std::min(message.find('\n', line_beg), message.size() - 1) + 1;
+
+				const std::string_view line(message.data() + line_beg, line_end - line_beg);
 				if (string_contains(line, _log_filter))
 				{
 					if (line.back() != '\n')
@@ -3130,11 +3141,7 @@ void reshade::runtime::draw_gui_log()
 					_log_editor.colorize(line_pos_beg, line_pos_end, col);
 				}
 			}
-
-			fclose(file);
 		}
-
-		_last_log_size = file_size;
 	}
 
 	uint32_t palette[imgui::code_editor::color_palette_max];

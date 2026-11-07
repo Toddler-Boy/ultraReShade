@@ -50,6 +50,13 @@ namespace reshade::ultra
 		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames ([ADDON] ReloadOnChange=1)
 		bool							isBackground = false;	// -background: never activated, always at the bottom of the z-order; no fullscreen
 		std::wstring					owner;				// -owner <name>: who started the run, shown in the window title
+		std::optional<size_t>			crashAt;			// -crash-at <frame>: an access violation in that frame, without the error dialog
+		size_t							stressLines = 0;	// -log-stress <lines> <threads>: that many lines in frame 1 from that many threads
+		size_t							stressThreads = 0;	//   at once, with the time each call took on its thread
+		bool							isLoggingFrames = false;	// -log-frames: a line in every frame
+		bool							isLoggingThroughAddons = false;	// -log-addons: in frame 1 a line through the add-on API for each loaded add-on, and one for dxgi.dll
+		bool							isCheckingLogLines = false;	// -check-log-lines: in frame 2 the Log tab's copy of new lines, also past the lines kept
+		size_t							handledFaults = 0;	// -handled-faults <n>: n access violations caught in every frame, the frame times every 120 frames
 		bool							isValid = true;		// false: an option was malformed, the log says which
 	};
 
@@ -73,10 +80,21 @@ namespace reshade::ultra
 		[[ nodiscard ]] bool isFixedStep () const;
 		void shrinkWindow ();
 		void checkBackground ( const char* when );
+		void causeHandledFaults ();
 
 		size_t									frames;
 		std::optional<size_t>					resizeAt;
 		size_t									reloadEvery;
+		std::optional<size_t>					crashAt;
+		size_t									stressLines;
+		size_t									stressThreads;
+		bool									isLoggingFrames;
+		bool									isLoggingThroughAddons;
+		bool									isCheckingLogLines;
+		size_t									handledFaults;
+		std::chrono::steady_clock::time_point	frameStart;
+		std::chrono::duration<double, std::milli>	framesTime {};
+		std::chrono::duration<double, std::milli>	faultsTime {};
 		std::vector<TestSwitch>					switches;
 		size_t									nextSwitch = 0;
 		bool									isBackground;

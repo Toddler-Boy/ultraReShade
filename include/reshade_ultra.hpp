@@ -14,6 +14,7 @@
 RESHADE_API_LIBRARY_DECL uint64_t ReShadeGetResourceStableId ( reshade::api::device* device, reshade::api::resource resource );
 RESHADE_API_LIBRARY_DECL bool ReShadeWatchFile ( void* module, const char* path, const char* pattern );
 RESHADE_API_LIBRARY_DECL void ReShadeUnwatchFile ( void* module, const char* path, const char* pattern );
+RESHADE_API_LIBRARY_DECL void ReShadeFlushLog ();
 
 #endif
 
@@ -69,4 +70,20 @@ namespace reshade
 	// The same for every file in the folder whose name matches pattern (* and ?, case ignored); subfolders are not watched
 	inline bool watch_folder ( const char* folder, const char* pattern = "*" ) { return internal::watch_path ( folder, pattern != nullptr ? pattern : "*" ); }
 	inline void unwatch_folder ( const char* folder, const char* pattern = "*" ) { internal::unwatch_path ( folder, pattern != nullptr ? pattern : "*" ); }
+
+	namespace log
+	{
+		// Writes the lines ReShade's log still holds in memory to its file now, on the calling thread (a crash handler's
+		// last step). Nothing on a ReShade without this function
+		inline void flush ()
+		{
+#if defined(RESHADE_API_LIBRARY)
+			ReShadeFlushLog ();
+#else
+			static const auto	func = reinterpret_cast<void ( * ) ()> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeFlushLog" ) );
+			if ( func != nullptr )
+				func ();
+#endif
+		}
+	}
 }

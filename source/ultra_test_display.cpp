@@ -40,10 +40,12 @@ namespace
 			swapchain->SetFullscreenState ( FALSE, nullptr );
 	}
 
-	LONG WINAPI onCrash ( EXCEPTION_POINTERS* )
+	LPTOP_LEVEL_EXCEPTION_FILTER	filterBefore = nullptr;
+
+	LONG WINAPI onCrash ( EXCEPTION_POINTERS* e )
 	{
 		leave ();
-		return EXCEPTION_CONTINUE_SEARCH;
+		return filterBefore != nullptr ? filterBefore ( e ) : EXCEPTION_CONTINUE_SEARCH;
 	}
 
 	[[ nodiscard ]] DisplayMode currentMode ( const wchar_t* device )
@@ -123,7 +125,7 @@ reshade::ultra::TestDisplay::TestDisplay ( IDXGISwapChain* swapchain, HWND windo
 	if ( ! isSafetyInstalled )
 	{
 		isSafetyInstalled = true;
-		SetUnhandledExceptionFilter ( onCrash );
+		filterBefore = SetUnhandledExceptionFilter ( onCrash );
 		std::atexit ( leave );
 	}
 }
