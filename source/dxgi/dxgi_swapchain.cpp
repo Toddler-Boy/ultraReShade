@@ -855,6 +855,38 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::SetHDRMetaData(DXGI_HDR_METADATA_TYPE T
 #endif
 }
 
+// The D3D10/D3D11 device locks this thread entered below, innermost last, and how many are held on all threads
+static thread_local std::vector<ID3D11Multithread *> s_entered_device_locks;
+static std::atomic<size_t> s_held_device_locks = 0;
+static thread_local bool s_is_effect_creation_thread = false;
+
+void reshade::join_without_device_lock(std::thread &thread)
+{
+	for (auto it = s_entered_device_locks.rbegin(); it != s_entered_device_locks.rend(); ++it)
+		(*it)->Leave();
+	s_held_device_locks -= s_entered_device_locks.size();
+	s_held_device_locks.notify_all();
+
+	thread.join();
+
+	s_held_device_locks += s_entered_device_locks.size();
+	for (ID3D11Multithread *const multithread : s_entered_device_locks)
+		multithread->Enter();
+}
+
+void reshade::mark_effect_creation_thread()
+{
+	s_is_effect_creation_thread = true;
+}
+void reshade::wait_for_device_lock_release()
+{
+	if (!s_is_effect_creation_thread)
+		return;
+
+	for (size_t held; (held = s_held_device_locks.load()) != 0;)
+		s_held_device_locks.wait(held);
+}
+
 class unique_direct3d_device_lock : std::unique_lock<std::recursive_mutex>
 {
 public:
@@ -873,17 +905,26 @@ public:
 
 		if (multithread != nullptr)
 		{
+			++s_held_device_locks;
+
 			was_protected = multithread->GetMultithreadProtected();
 			multithread->SetMultithreadProtected(TRUE);
 			multithread->Enter();
+
+			s_entered_device_locks.push_back(multithread.get());
 		}
 	}
 	~unique_direct3d_device_lock()
 	{
 		if (multithread != nullptr)
 		{
+			s_entered_device_locks.pop_back();
+
 			multithread->Leave();
 			multithread->SetMultithreadProtected(was_protected);
+
+			--s_held_device_locks;
+			s_held_device_locks.notify_all();
 		}
 	}
 

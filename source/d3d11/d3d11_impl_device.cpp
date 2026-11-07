@@ -6,6 +6,7 @@
 #include "d3d11_impl_device.hpp"
 #include "d3d11_impl_type_convert.hpp"
 #include "d3d11_extensions.hpp"
+#include "runtime_manager.hpp"
 #include <cstring> // std::memcpy, std::strlen
 #include <algorithm> // std::copy_n
 #include <utf8/unchecked.h>
@@ -261,6 +262,8 @@ bool reshade::d3d11::device_impl::create_resource(const api::resource_desc &desc
 			}
 		}
 	}
+
+	wait_for_device_lock_release();
 
 	switch (desc.type)
 	{
@@ -764,6 +767,8 @@ bool reshade::d3d11::device_impl::create_vertex_shader(const api::shader_desc &d
 	assert(desc.entry_point == nullptr);
 	assert(desc.spec_constants == 0);
 
+	wait_for_device_lock_release();
+
 	if (com_ptr<ID3D11VertexShader> object;
 		SUCCEEDED(_orig->CreateVertexShader(desc.code, desc.code_size, nullptr, &object)))
 	{
@@ -782,6 +787,8 @@ bool reshade::d3d11::device_impl::create_hull_shader(const api::shader_desc &des
 
 	assert(desc.entry_point == nullptr);
 	assert(desc.spec_constants == 0);
+
+	wait_for_device_lock_release();
 
 	if (com_ptr<ID3D11HullShader> object;
 		SUCCEEDED(_orig->CreateHullShader(desc.code, desc.code_size, nullptr, &object)))
@@ -802,6 +809,8 @@ bool reshade::d3d11::device_impl::create_domain_shader(const api::shader_desc &d
 	assert(desc.entry_point == nullptr);
 	assert(desc.spec_constants == 0);
 
+	wait_for_device_lock_release();
+
 	if (com_ptr<ID3D11DomainShader> object;
 		SUCCEEDED(_orig->CreateDomainShader(desc.code, desc.code_size, nullptr, &object)))
 	{
@@ -820,6 +829,8 @@ bool reshade::d3d11::device_impl::create_geometry_shader(const api::shader_desc 
 
 	assert(desc.entry_point == nullptr);
 	assert(desc.spec_constants == 0);
+
+	wait_for_device_lock_release();
 
 	if (com_ptr<ID3D11GeometryShader> object;
 		SUCCEEDED(_orig->CreateGeometryShader(desc.code, desc.code_size, nullptr, &object)))
@@ -840,6 +851,8 @@ bool reshade::d3d11::device_impl::create_pixel_shader(const api::shader_desc &de
 	assert(desc.entry_point == nullptr);
 	assert(desc.spec_constants == 0);
 
+	wait_for_device_lock_release();
+
 	if (com_ptr<ID3D11PixelShader> object;
 		SUCCEEDED(_orig->CreatePixelShader(desc.code, desc.code_size, nullptr, &object)))
 	{
@@ -858,6 +871,8 @@ bool reshade::d3d11::device_impl::create_compute_shader(const api::shader_desc &
 
 	assert(desc.entry_point == nullptr);
 	assert(desc.spec_constants == 0);
+
+	wait_for_device_lock_release();
 
 	if (com_ptr<ID3D11ComputeShader> object;
 		SUCCEEDED(_orig->CreateComputeShader(desc.code, desc.code_size, nullptr, &object)))

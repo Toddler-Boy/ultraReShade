@@ -483,11 +483,84 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 }
 //-----------------------------------------------------------------------------
 
+namespace
+{
+	[[ nodiscard ]] std::filesystem::path sharedEffectCache ()
+	{
+		wchar_t	path[ MAX_PATH ] {};
+		GetModuleFileNameW ( nullptr, path, MAX_PATH );
+		return std::filesystem::path ( path ).parent_path () / L"cache-shared";
+	}
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::isColdCache ()
+{
+	auto		argc = 0;
+	const auto	argv = CommandLineToArgvW ( GetCommandLineW (), &argc );
+	auto		isCold = false;
+
+	for ( auto i = 1; argv != nullptr && i < argc; ++i )
+		isCold = isCold || isOption ( argv[ i ], L"-cold-cache" );
+
+	LocalFree ( argv );
+	return isCold;
+}
+//-----------------------------------------------------------------------------
+
+// Only into a cache that has nothing yet: a run folder used again keeps what it built
+void reshade::ultra::seedEffectCache ( const std::filesystem::path& cache )
+{
+	std::error_code	ec;
+
+	if ( isColdCache () || ! std::filesystem::is_empty ( cache, ec ) || ec )
+		return;
+
+	for ( const auto& entry : std::filesystem::directory_iterator ( sharedEffectCache (), ec ) )
+		if ( entry.is_regular_file ( ec ) )
+			std::filesystem::copy_file ( entry.path (), cache / entry.path ().filename (), std::filesystem::copy_options::skip_existing, ec );
+}
+//-----------------------------------------------------------------------------
+
+// Each file under a name of its own first, then renamed: a run starting meanwhile never copies half a file
+void reshade::ultra::shareEffectCache ( const std::filesystem::path& cache )
+{
+	const auto		shared = sharedEffectCache ();
+	std::error_code	ec;
+
+	if ( isColdCache () || ( ! std::filesystem::create_directories ( shared, ec ) && ec ) )
+		return;
+
+	const auto	suffix = L".part" + std::to_wstring ( GetCurrentProcessId () );
+
+	for ( const auto& entry : std::filesystem::directory_iterator ( cache, ec ) )
+	{
+		const auto	target = shared / entry.path ().filename ();
+
+		if ( ! entry.is_regular_file ( ec ) || std::filesystem::exists ( target, ec ) )
+			continue;
+
+		auto	part = target;
+		part += suffix;
+
+		if ( std::filesystem::copy_file ( entry.path (), part, ec ) && ! MoveFileExW ( part.c_str (), target.c_str (), 0 ) )
+			std::filesystem::remove ( part, ec );
+	}
+}
+//-----------------------------------------------------------------------------
+
 reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window )
 	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), stressLines ( options.stressLines ),
 	  stressThreads ( options.stressThreads ), isLoggingFrames ( options.isLoggingFrames ), isLoggingThroughAddons ( options.isLoggingThroughAddons ),
-	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window )
+	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
+	  holdsClock ( options.frames != 0 || options.resizeAt.has_value () || options.reloadEvery != 0 || options.crashAt.has_value () || ! options.switches.empty () )
 {
+}
+//-----------------------------------------------------------------------------
+
+void reshade::ultra::TestFrames::holdClockUntilLoaded ()
+{
+	holdsClock = true;
 }
 //-----------------------------------------------------------------------------
 
@@ -497,13 +570,13 @@ bool reshade::ultra::TestFrames::isFixedStep () const
 }
 //-----------------------------------------------------------------------------
 
-// Every run shows time 0 until ReShade has loaded its effects, so the motion starts clean and, with a fixed step, frame
-// n is the same picture however long compiling takes
+// A run with numbered frames shows time 0 until ReShade has loaded its effects, so the motion starts clean and, with a
+// fixed step, frame n is the same picture however long compiling takes; other runs animate from the first frame
 bool reshade::ultra::TestFrames::next ()
 {
 	if ( ! hasStarted )
 	{
-		const auto	isLoaded = isReShadeLoaded ();
+		const auto	isLoaded = ! holdsClock || isReShadeLoaded ();
 
 		if ( ! isLoaded && std::chrono::steady_clock::now () - start < loadTimeout )
 			return true;

@@ -101,6 +101,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			config.save();
 			std::filesystem::copy_file(g_reshade_dll_path.parent_path() / L"ReShadePreset.ini", work_dir / L"ReShadePreset.ini", ec);
 		}
+		reshade::ultra::seedEffectCache(work_dir / L"cache");
 		SetEnvironmentVariableW(L"RESHADE_BASE_PATH_OVERRIDE", work_dir.c_str());
 	}
 
@@ -210,6 +211,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	s_resize_h = 0;
 
 	reshade::ultra::TestFrames frames(options, window_handle);
+	if (check.needsNumberedFrames())
+		frames.holdClockUntilLoaded();
 	check.watch(frames);
 
 	MSG msg = {};
@@ -1055,7 +1058,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	reshade::hooks::uninstall();
 
-	return check.exitCode(static_cast<int>(msg.wParam));
+	const int exit_code = check.exitCode(static_cast<int>(msg.wParam));
+	if (exit_code == EXIT_SUCCESS && !work_dir.empty())
+		reshade::ultra::shareEffectCache(work_dir / L"cache");
+	return exit_code;
 }
 
 #endif

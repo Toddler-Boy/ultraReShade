@@ -60,6 +60,58 @@ namespace
 
 	ConstantsDump	dump;
 
+	struct TechniqueToggle
+	{
+		size_t		frame = 0;
+		std::string	effect;
+		std::string	technique;
+		bool		isDone = false;
+	};
+
+	struct EffectChanges
+	{
+		std::vector<TechniqueToggle>	toggles;
+		size_t							reloadEvery = 0;
+		size_t							lastFrame = SIZE_MAX;
+	};
+
+	EffectChanges	changes;
+
+	// After the effects of a present; a toggle due while the effects load waits until they are loaded
+	void applyEffectChanges ( reshade::runtime* runtime, size_t frame )
+	{
+		for ( auto& toggle : changes.toggles )
+		{
+			if ( toggle.isDone || toggle.frame > frame || runtime->is_loading () )
+				continue;
+
+			toggle.isDone = true;
+
+			const auto	technique = runtime->find_technique ( toggle.effect.c_str (), toggle.technique.c_str () );
+
+			if ( technique.handle == 0 )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: no technique '%s' in '%s' to toggle in frame %zu.", toggle.technique.c_str (), toggle.effect.c_str (), frame );
+				continue;
+			}
+
+			const auto	isOn = ! runtime->get_technique_state ( technique );
+			runtime->set_technique_state ( technique, isOn );
+			reshade::log::message ( reshade::log::level::info, "Test application: technique '%s' %s in frame %zu.", toggle.technique.c_str (), isOn ? "on" : "off", frame );
+		}
+
+		if ( frame == changes.lastFrame )
+			return;
+
+		changes.lastFrame = frame;
+
+		if ( changes.reloadEvery != 0 && frame != 0 && frame % changes.reloadEvery == 0 )
+		{
+			reshade::log::message ( reshade::log::level::info, "Test application: effects reload in frame %zu.", frame );
+			runtime->reload_effect_next_frame ( nullptr );
+		}
+	}
+
 	void onConstantBuffer ( reshade::api::command_list*, reshade::api::shader_stage stages, reshade::api::pipeline_layout layout, uint32_t param, uint32_t slot, const void* data,
 							uint64_t size, reshade::api::resource buffer, uint64_t offset )
 	{
@@ -401,6 +453,9 @@ namespace
 		++state.presents;
 		state.isLoaded = state.isLoaded || ! runtime->is_loading ();
 
+		if ( state.frames != nullptr && state.isLoaded )
+			applyEffectChanges ( runtime, state.frames->index () );
+
 		if ( state.frames != nullptr && state.frame == state.frames->index () && ! state.isWritten )
 		{
 			state.isWritten = writeCapture ( runtime );
@@ -474,6 +529,29 @@ reshade::ultra::TestCheck::TestCheck ()
 			}
 
 			ids.path = std::filesystem::absolute ( argv[ ++i ] );
+			continue;
+		}
+
+		if ( _wcsicmp ( argv[ i ], L"-toggle-technique-at" ) == 0 || _wcsicmp ( argv[ i ], L"-reload-effects-every" ) == 0 )
+		{
+			const auto	isToggle = _wcsicmp ( argv[ i ], L"-toggle-technique-at" ) == 0;
+			wchar_t*	end = nullptr;
+			const auto	frame = i + 1 < argc ? std::wcstoull ( argv[ i + 1 ], &end, 10 ) : 0;
+
+			if ( i + ( isToggle ? 3 : 1 ) >= argc || end == argv[ i + 1 ] || *end != L'\0' || ( ! isToggle && frame == 0 ) )
+			{
+				reshade::log::message ( reshade::log::level::error, isToggle ? "Test application: -toggle-technique-at needs a frame, an effect file and a technique."
+																			 : "Test application: -reload-effects-every needs a frame count above zero." );
+				isCommandLineValid = false;
+				break;
+			}
+
+			if ( isToggle )
+				changes.toggles.push_back ( { static_cast<size_t> ( frame ), toUtf8 ( argv[ i + 2 ] ), toUtf8 ( argv[ i + 3 ] ) } );
+			else
+				changes.reloadEvery = static_cast<size_t> ( frame );
+
+			i += isToggle ? 3 : 1;
 			continue;
 		}
 
@@ -559,6 +637,12 @@ void reshade::ultra::TestCheck::watch ( const TestFrames& frames )
 bool reshade::ultra::isReShadeLoaded ()
 {
 	return state.isLoaded;
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::TestCheck::needsNumberedFrames () const
+{
+	return captureFrame.has_value () || dump.frame.has_value () || ! ids.path.empty () || ! changes.toggles.empty () || changes.reloadEvery != 0 || files.unwatchAt.has_value ();
 }
 //-----------------------------------------------------------------------------
 

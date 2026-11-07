@@ -1292,8 +1292,7 @@ void reshade::runtime::render_technique(api::effect_technique handle, api::comma
 	// Queue effect file for initialization if it was not fully loaded yet
 	if (!tech->permutations[permutation_index].created)
 	{
-		if (std::find(_reload_create_queue.cbegin(), _reload_create_queue.cend(), std::make_pair(effect_index, permutation_index)) == _reload_create_queue.cend())
-			_reload_create_queue.emplace_back(effect_index, permutation_index);
+		queue_effect_creation(effect_index, permutation_index);
 		return;
 	}
 

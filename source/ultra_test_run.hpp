@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <filesystem>
 #include <optional>
 #include <string>
 #include <vector>
@@ -62,6 +63,12 @@ namespace reshade::ultra
 
 	[[ nodiscard ]] TestOptions parseTestOptions ();
 
+	// The run's shader cache starts from the shared one beside the test app (<exe folder>\cache-shared) unless -cold-cache;
+	// a run without errors adds its new files to it afterwards
+	[[ nodiscard ]] bool isColdCache ();
+	void seedEffectCache ( const std::filesystem::path& cache );
+	void shareEffectCache ( const std::filesystem::path& cache );
+
 	class TestFrames
 	{
 	public:
@@ -69,6 +76,9 @@ namespace reshade::ultra
 
 		// Starts the next frame; false once the requested frames are done
 		[[ nodiscard ]] bool next ();
+
+		// Frame n is then the same picture in every run: the clock starts once ReShade has loaded its effects
+		void holdClockUntilLoaded ();
 
 		[[ nodiscard ]] size_t index () const;
 		[[ nodiscard ]] float seconds () const;
@@ -103,6 +113,7 @@ namespace reshade::ultra
 		size_t									current = 0;
 		size_t									upcoming = 0;
 		bool									hasStarted = false;
+		bool									holdsClock = false;
 		std::chrono::steady_clock::time_point	start = std::chrono::steady_clock::now ();
 	};
 }

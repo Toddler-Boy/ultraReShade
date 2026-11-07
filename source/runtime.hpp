@@ -63,7 +63,7 @@ namespace reshade
 		/// <summary>
 		/// Gets a boolean indicating whether effects are being loaded.
 		/// </summary>
-		bool is_loading() const { return _reload_remaining_effects != std::numeric_limits<size_t>::max() || !_reload_create_queue.empty(); }
+		bool is_loading() const { return is_compiling_effects() || _is_creating_reloaded_effects; }
 
 		void render_effects(api::command_list *cmd_list, api::resource_view rtv, api::resource_view rtv_srgb) final;
 		void render_technique(api::effect_technique handle, api::command_list *cmd_list, api::resource_view rtv, api::resource_view rtv_srgb) final;
@@ -186,11 +186,33 @@ namespace reshade
 		bool switch_to_next_preset(std::filesystem::path filter_path, bool reversed = false);
 
 		bool load_effect(const std::filesystem::path &source_file, const class ini_file &preset, size_t effect_index, size_t permutation_index, bool force_load = false, bool preprocess_required = false);
-		bool create_effect(size_t effect_index, size_t permutation_index);
 		void destroy_effect(size_t effect_index, bool unload = true);
 
-		void load_textures(size_t effect_index);
-		bool create_texture(texture &texture);
+		// While the effect files compile, their effects, textures and techniques are being added to on the worker threads
+		bool is_compiling_effects() const { return _reload_remaining_effects != std::numeric_limits<size_t>::max(); }
+
+		struct effect_creation;
+		enum class effect_creation_start { started, deferred, failed };
+
+		bool wants_async_effect_creation() const;
+		bool is_effect_creation_pending(size_t effect_index, size_t permutation_index) const;
+		void queue_effect_creation(size_t effect_index, size_t permutation_index);
+		void update_effect_creations();
+		auto start_effect_creation(size_t effect_index, size_t permutation_index) -> effect_creation_start;
+		// On a worker thread, or on the render thread when creation is synchronous; the rest of these on the render thread
+		void run_effect_creation(effect_creation &creation);
+		bool finish_effect_creation(effect_creation &creation);
+		void discard_effect_creation(effect_creation &creation);
+		void cancel_effect_creations(size_t effect_index = std::numeric_limits<size_t>::max());
+		void fail_effect_creation(size_t effect_index);
+		void release_upload_buffers(bool is_idle);
+
+		// Any thread
+		bool load_texture_image(const texture &texture, const std::vector<std::filesystem::path> &search_paths, std::vector<uint8_t> &data, uint32_t &pixel_size);
+		bool create_texture(texture &texture, bool is_off_render_thread);
+		// Render thread
+		void clear_texture(texture &texture);
+		void upload_texture(texture &texture, const void *pixels, uint32_t pixel_size);
 		void destroy_texture(texture &texture);
 
 		void enable_technique(technique &technique);
@@ -309,6 +331,13 @@ namespace reshade
 
 		std::vector<std::thread> _worker_threads;
 		std::chrono::high_resolution_clock::time_point _last_reload_time;
+
+		// Created on worker threads, finished on the render thread; the whole set after a reload counts as loading
+		std::vector<std::unique_ptr<effect_creation>> _effect_creations;
+		bool _is_creating_reloaded_effects = false;
+		std::vector<std::pair<api::resource, uint64_t>> _effect_upload_buffers;
+		api::fence _effect_upload_fence = {};
+		uint64_t _effect_upload_fence_value = 0;
 		#pragma endregion
 
 		#pragma region Effect Rendering
@@ -330,6 +359,7 @@ namespace reshade
 		api::resource_view _empty_srv = {};
 
 		std::unordered_map<size_t, api::sampler> _effect_sampler_states;
+		std::mutex _effect_sampler_mutex;
 		std::unordered_map<std::string, std::pair<api::resource_view, api::resource_view>> _texture_semantic_bindings;
 #if RESHADE_ADDON == 1
 		std::unordered_map<std::string, std::pair<api::resource_view, api::resource_view>> _backup_texture_semantic_bindings;
