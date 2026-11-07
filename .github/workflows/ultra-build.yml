@@ -12,6 +12,10 @@ on:
         description: Branch or tag to build
         type: string
         default: main
+  # The check on every push to main (upstream's build workflow is disabled in this fork: its solution doesn't list our files)
+  push:
+    branches:
+      - main
 
 permissions: {}
 
@@ -26,7 +30,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.ref }}
+          ref: ${{ inputs.ref || github.sha }}
           fetch-depth: 0
           persist-credentials: false
           submodules: true

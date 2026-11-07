@@ -41,8 +41,9 @@ jobs:
           git remote add upstream https://github.com/crosire/reshade.git
           git fetch upstream main --tags
 
-          # The version number comes from upstream's tags
-          git push origin --tags
+          # The version number comes from upstream's tags. Old tags whose commits change workflow files are refused
+          # (this token can't write workflows); the others still arrive, so that refusal doesn't stop the sync.
+          git push origin --tags || echo "::warning::Some upstream tags were refused (they change workflow files)"
 
           if git merge-base --is-ancestor upstream/main main; then
             echo "main already contains upstream main"
