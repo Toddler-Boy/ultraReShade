@@ -12,7 +12,7 @@
 //-----------------------------------------------------------------------------
 
 // What an agent reads after a test run: -capture <frame> <file.png> (the picture after the effects, without the
-// overlay) and the exit code
+// overlay; an scRGB swap chain writes <file>.exr, HDR10 a 16-bit PQ PNG) and the exit code
 //   0 fine, 1 bad command line, 2 ReShade never presented a frame, 3 capture not written, 4 the log has errors
 namespace reshade::ultra
 {

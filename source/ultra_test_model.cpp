@@ -739,12 +739,11 @@ bool reshade::ultra::poseTestModel ( const TestModel& model, float seconds, std:
 	const auto	down = rig.forward;				// positive pitch turns the front of the face down
 	const auto	closed = blink ( seconds );
 	const auto	look = gaze ( seconds );
-	const auto	speech = 0.5f + 0.5f * std::sin ( seconds * 0.9f );
-	const auto	jawOpen = 0.055f * speech * std::pow ( 0.5f + 0.5f * std::sin ( seconds * 8.3f ), 2.0f );
 	Affine		matrices[ groupCount ];
 
+	// The jaw rides the head only: its joints alone open the chin without the lips following
 	matrices[ head ] = rotationAround ( rig.pivots[ head ], down * 0.06f * std::sin ( seconds * 1.46f ), 0.14f * std::sin ( seconds * 1.05f ) );
-	matrices[ jaw ] = matrices[ head ] * rotationAround ( rig.pivots[ jaw ], down * jawOpen, 0.0f );
+	matrices[ jaw ] = matrices[ head ];
 	matrices[ eyeLeft ] = matrices[ head ] * rotationAround ( rig.pivots[ eyeLeft ], down * look[ 0 ], look[ 1 ] );
 	matrices[ eyeRight ] = matrices[ head ] * rotationAround ( rig.pivots[ eyeRight ], down * look[ 0 ], look[ 1 ] );
 	matrices[ lidUpperLeft ] = matrices[ head ] * rotationAround ( rig.pivots[ lidUpperLeft ], down * ( 0.45f * closed + 0.6f * look[ 0 ] ), 0.0f );

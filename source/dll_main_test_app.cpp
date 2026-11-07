@@ -68,6 +68,9 @@ static LONG APIENTRY HookD3DKMTQueryAdapterInfo(const void *pData)
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow)
 {
+	// Like a modern game, so the overlay and add-ons see the monitor's real DPI instead of being stretched
+	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
+
 	g_module_handle = hInstance;
 	g_reshade_dll_path = get_module_path(hInstance);
 	g_target_executable_path = g_reshade_dll_path;

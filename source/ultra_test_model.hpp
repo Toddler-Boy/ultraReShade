@@ -87,7 +87,7 @@ namespace reshade::ultra
 		std::shared_ptr<const struct TestModelRig>	rig;	// null: the model does not move by itself
 	};
 
-	// The model's vertices at a time (blinks, eye saccades, jaw, head turns), the same count and order as
+	// The model's vertices at a time (blinks, eye saccades, head turns), the same count and order as
 	// model.vertices; false (vertices untouched) when the model has no rig. Deterministic in seconds.
 	[[ nodiscard ]] bool poseTestModel ( const TestModel& model, float seconds, std::vector<TestModelVertex>& vertices );
 
