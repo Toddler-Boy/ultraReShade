@@ -59,7 +59,7 @@ namespace reshade::ultra
 		std::optional<size_t>			resizeAt;			// -resize-at <frame>: the window shrinks to three quarters before that frame
 		std::vector<TestSwitch>			switches;			// in frame order; -random-switches <seed> [fullscreen] picks a few buffer sizes (and fullscreen switches)
 		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames ([ADDON] ReloadOnChange=1)
-		bool							isBackground = false;	// -background: never activated, always at the bottom of the z-order; no fullscreen
+		bool							isBackground = true;	// never activated, always at the bottom of the z-order, no fullscreen; -show: a normal window
 		std::wstring					owner;				// -owner <name>: who started the run, shown in the window title
 		std::optional<size_t>			crashAt;			// -crash-at <frame>: an access violation in that frame, without the error dialog
 		size_t							stressLines = 0;	// -log-stress <lines> <threads>: that many lines in frame 1 from that many threads
@@ -73,6 +73,9 @@ namespace reshade::ultra
 	};
 
 	[[ nodiscard ]] TestOptions parseTestOptions ();
+
+	// With no options, or -help: writes the options to the console the test app was started from and returns true
+	[[ nodiscard ]] bool printTestUsage ();
 
 	// The run's shader cache starts from the shared one beside the test app (<exe folder>\cache-shared) unless -cold-cache;
 	// a run without errors adds its new files to it afterwards

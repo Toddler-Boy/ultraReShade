@@ -70,6 +70,10 @@ static LONG APIENTRY HookD3DKMTQueryAdapterInfo(const void *pData)
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow)
 {
+	// No options or -help: the usage on the console it was started from, no window
+	if (reshade::ultra::printTestUsage())
+		return 0;
+
 	// Like a modern game, so the overlay and add-ons see the monitor's real DPI instead of being stretched
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 
@@ -208,8 +212,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		return 0;
 
 	// Whose run this is, in the title
-	if (!options.owner.empty())
-		SetWindowTextW(window_handle, (L"ReShade test: " + options.owner).c_str());
+	SetWindowTextW(window_handle, (L"ReShade test: " + (options.owner.empty() ? std::wstring(L"no owner") : options.owner)).c_str());
+	if (options.owner.empty())
+		reshade::log::message(reshade::log::level::warning, "Test application: started without -owner (not through test-run.sh).");
 
 	// Agents run several of these at once while someone works: never take the focus
 	ShowWindow(window_handle, nCmdShow == SW_HIDE ? SW_HIDE : SW_SHOWNOACTIVATE);

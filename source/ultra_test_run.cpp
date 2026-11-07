@@ -278,9 +278,10 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 	{
 		const auto	arg = argv[ i ];
 
-		if ( isOption ( arg, L"-background" ) )
+		// Runs stay in the background unless someone wants to watch one: an agent's run never steals the focus
+		if ( isOption ( arg, L"-background" ) || isOption ( arg, L"-show" ) )
 		{
-			options.isBackground = true;
+			options.isBackground = isOption ( arg, L"-background" );
 			continue;
 		}
 
@@ -509,7 +510,7 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 	// Fullscreen takes the foreground, which a background window never has
 	if ( options.isBackground && std::ranges::any_of ( options.switches, [] ( const TestSwitch& change ) { return change.kind == TestSwitchKind::fullscreen; } ) )
 	{
-		reshade::log::message ( reshade::log::level::error, "Test application: -background runs can't go fullscreen." );
+		reshade::log::message ( reshade::log::level::error, "Test application: fullscreen needs -show (background runs never take the foreground)." );
 		options.isValid = false;
 	}
 
@@ -756,6 +757,49 @@ void reshade::ultra::TestFrames::shrinkWindow ()
 	RECT	frame { 0, 0, client.right * 3 / 4, client.bottom * 3 / 4 };
 	AdjustWindowRectEx ( &frame, static_cast<DWORD> ( GetWindowLongW ( window, GWL_STYLE ) ), FALSE, static_cast<DWORD> ( GetWindowLongW ( window, GWL_EXSTYLE ) ) );
 	SetWindowPos ( window, nullptr, 0, 0, frame.right - frame.left, frame.bottom - frame.top, SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE );
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::printTestUsage ()
+{
+	auto		argc = 0;
+	const auto	argv = CommandLineToArgvW ( GetCommandLineW (), &argc );
+	const auto	wanted = argc <= 1 || ( argv != nullptr && ( isOption ( argv[ 1 ], L"-help" ) || isOption ( argv[ 1 ], L"--help" ) || isOption ( argv[ 1 ], L"/?" ) ) );
+	LocalFree ( argv );
+
+	if ( ! wanted )
+		return false;
+
+	static constexpr char	usage[] =
+		"ReShade test application: a scene in a window, the whole ReShade runtime with its overlay and add-ons.\n"
+		"Runs stay behind every window and never take the focus; -show for a normal window.\n"
+		"Agents and scripts run it through C:/dev/ultraGame/Tools/test-run.sh <owner> [--limit s] <options>.\n"
+		"\n"
+		"Run       -work-dir <dir>  -owner <name>  -show  -frames <n>  -cold-cache  -config-layered\n"
+		"Scene     -api dx11|dx12  -scene cube|head  -size <w>x<h>  -fov <degrees>  -env <file.hdr>  -sss on|off  -jitter on|off\n"
+		"HDR       -hdr off|scrgb|pq  -paper-white <nits>  -peak <nits>\n"
+		"Output    -capture <frame> <file>  -dump-constants <frame> <file>  -dump-resource-ids <file>  -dump-file-events <file>\n"
+		"Switches  -resize-at <frame>  -buffer-size-at <frame> <w>x<h>  -fullscreen-at <frame>  -windowed-at <frame>\n"
+		"          -random-switches <seed> [fullscreen]  (fullscreen needs -show)\n"
+		"Add-ons   -reload-every <n>  -reload-effects-every <n>  -toggle-technique-at <frame> <file.fx> <technique>  -constants root|cbv|table\n"
+		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"
+		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"
+		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-log-lines  -crash-at <frame>  -handled-faults <n>\n"
+		"\n"
+		"Exit codes: 0 fine, 1 bad command line, 2 ReShade never presented, 3 capture missing, 4 the log has errors.\n";
+
+	// A windows program has no console of its own: the one it was started from, else nothing to write to
+	if ( AttachConsole ( ATTACH_PARENT_PROCESS ) || GetStdHandle ( STD_OUTPUT_HANDLE ) != nullptr )
+	{
+		auto	out = GetStdHandle ( STD_OUTPUT_HANDLE );
+		if ( out == nullptr || out == INVALID_HANDLE_VALUE )
+			out = CreateFileW ( L"CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr );
+		DWORD	written = 0;
+		if ( out != nullptr && out != INVALID_HANDLE_VALUE )
+			WriteFile ( out, usage, DWORD ( sizeof usage - 1 ), &written, nullptr );
+	}
+
+	return true;
 }
 //-----------------------------------------------------------------------------
 
