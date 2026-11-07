@@ -8,6 +8,7 @@
 #include "addon.hpp"
 #include "reshade_events.hpp"
 #include "ultra_addon_reload.hpp"
+#include "ultra_file_watch.hpp"
 
 #if RESHADE_ADDON
 

@@ -394,6 +394,7 @@ void reshade::unload_addons()
 #endif
 
 	ultra::stopAddonReload();
+	ultra::stopFileWatch();
 
 	// Remove all unloaded add-ons
 	addon_loaded_info.erase(
@@ -560,6 +561,8 @@ void ReShadeUnregisterAddon(void *module)
 		ReShadeUnregisterOverlay(last_overlay_callback.title.c_str(), last_overlay_callback.callback);
 	}
 #endif
+
+	reshade::ultra::forgetFileWatches(static_cast<HMODULE>(module));
 
 	reshade::log::message(reshade::log::level::info, "Unregistered add-on \"%s\".", info->name.c_str());
 

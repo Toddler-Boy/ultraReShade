@@ -5,6 +5,7 @@
 
 #ifdef RESHADE_TEST_APPLICATION
 
+#include <algorithm>
 #include <atomic>
 #include <cstdio>
 #include <cstring>
@@ -161,6 +162,104 @@ namespace
 		ids.depth.clear ();
 	}
 
+	// -watch <file>, -watch-folder <folder> <pattern>: watched through the add-on API from the first present on, until
+	// -unwatch-at <frame>. Every change goes to the log and to -dump-file-events <file>, one tab-separated line each:
+	// frame, Unix time in ms, change, thread (present or other), path, old path
+	struct FileEvents
+	{
+		std::vector<std::pair<std::string, std::optional<std::string>>>	paths;		// UTF-8; a pattern for a folder
+		std::filesystem::path	dumpPath;
+		std::ofstream			dump;
+		std::optional<size_t>	unwatchAt;
+		DWORD					presentThread = 0;
+		bool					isListening = false;
+		bool					isStopped = false;
+	};
+
+	FileEvents	files;
+
+	[[ nodiscard ]] std::string toUtf8 ( const wchar_t* text )
+	{
+		const auto	size = WideCharToMultiByte ( CP_UTF8, 0, text, -1, nullptr, 0, nullptr, nullptr );
+		std::string	result ( static_cast<size_t> ( std::max ( size, 1 ) ), '\0' );
+		WideCharToMultiByte ( CP_UTF8, 0, text, -1, result.data (), size, nullptr, nullptr );
+		result.pop_back ();
+		return result;
+	}
+
+	[[ nodiscard ]] std::string absoluteUtf8 ( const wchar_t* path )
+	{
+		std::error_code	ec;
+		return toUtf8 ( std::filesystem::absolute ( path, ec ).c_str () );
+	}
+
+	[[ nodiscard ]] const char* toString ( reshade::api::file_change change )
+	{
+		switch ( change )
+		{
+			case reshade::api::file_change::created:	return "created";
+			case reshade::api::file_change::modified:	return "modified";
+			case reshade::api::file_change::deleted:	return "deleted";
+			case reshade::api::file_change::renamed:	return "renamed";
+		}
+
+		reshade::log::message ( reshade::log::level::error, "Test application: unknown file change %u.", static_cast<uint32_t> ( change ) );
+		return "unknown";
+	}
+
+	[[ nodiscard ]] uint64_t unixMilliseconds ()
+	{
+		FILETIME	time {};
+		GetSystemTimePreciseAsFileTime ( &time );
+		return ( ( uint64_t ( time.dwHighDateTime ) << 32 | time.dwLowDateTime ) - 116444736000000000ull ) / 10000;
+	}
+
+	void onFileChanged ( const char* path, reshade::api::file_change change, const char* oldPath )
+	{
+		const auto	isPresentThread = GetCurrentThreadId () == files.presentThread;
+
+		files.dump << frameIndex () << '\t' << unixMilliseconds () << '\t' << toString ( change ) << '\t' << ( isPresentThread ? "present" : "other" ) << '\t' << path << '\t'
+				   << ( oldPath != nullptr ? oldPath : "" ) << '\n';
+		files.dump.flush ();
+
+		reshade::log::message ( reshade::log::level::info, "Test application: file %s in frame %zu: '%s'%s%s%s", toString ( change ), frameIndex (), path,
+								oldPath != nullptr ? " (from '" : "", oldPath != nullptr ? oldPath : "", oldPath != nullptr ? "')" : "" );
+
+		if ( ! isPresentThread )
+			reshade::log::message ( reshade::log::level::error, "Test application: the file change came on thread %lu, not the presenting thread %lu.", GetCurrentThreadId (),
+									files.presentThread );
+	}
+
+	void watchFiles ( bool isWatching )
+	{
+		if ( isWatching )
+		{
+			if ( ! files.dumpPath.empty () )
+			{
+				files.dump.open ( files.dumpPath );
+
+				if ( ! files.dump.good () )
+					reshade::log::message ( reshade::log::level::error, "Test application: failed to open '%s' for the file changes.", files.dumpPath.u8string ().c_str () );
+			}
+
+			reshade::register_event<reshade::addon_event::ultra_file_changed> ( onFileChanged );
+		}
+
+		for ( const auto& [ path, pattern ] : files.paths )
+		{
+			if ( ! isWatching && pattern.has_value () )
+				reshade::unwatch_folder ( path.c_str (), pattern->c_str () );
+			else if ( ! isWatching )
+				reshade::unwatch_file ( path.c_str () );
+			else if ( pattern.has_value () ? ! reshade::watch_folder ( path.c_str (), pattern->c_str () ) : ! reshade::watch_file ( path.c_str () ) )
+				reshade::log::message ( reshade::log::level::error, "Test application: failed to watch '%s'.", path.c_str () );
+		}
+
+		files.isListening = isWatching;
+		files.isStopped = ! isWatching;
+		reshade::log::message ( reshade::log::level::info, "Test application: %zu file watches %s in frame %zu.", files.paths.size (), isWatching ? "start" : "end", frameIndex () );
+	}
+
 	void writeToStream ( void* file, void* data, int size )
 	{
 		static_cast<std::ofstream*> ( file )->write ( static_cast<const char*> ( data ), size );
@@ -315,6 +414,13 @@ namespace
 		if ( ! ids.path.empty () )
 			writeResourceIds ( runtime );
 
+		files.presentThread = GetCurrentThreadId ();
+
+		if ( ! files.paths.empty () && ! files.isListening && ! files.isStopped )
+			watchFiles ( true );
+		else if ( files.isListening && files.unwatchAt.has_value () && frameIndex () >= *files.unwatchAt )
+			watchFiles ( false );
+
 		if ( dump.frame.has_value () && state.frames != nullptr && dump.frame == state.frames->index () && ! dump.isWritten )
 		{
 			std::ofstream	file ( dump.path );
@@ -356,6 +462,36 @@ reshade::ultra::TestCheck::TestCheck ()
 			}
 
 			ids.path = std::filesystem::absolute ( argv[ ++i ] );
+			continue;
+		}
+
+		const auto	isWatchFolder = _wcsicmp ( argv[ i ], L"-watch-folder" ) == 0;
+
+		if ( isWatchFolder || _wcsicmp ( argv[ i ], L"-watch" ) == 0 || _wcsicmp ( argv[ i ], L"-dump-file-events" ) == 0 || _wcsicmp ( argv[ i ], L"-unwatch-at" ) == 0 )
+		{
+			const auto	values = isWatchFolder ? 2 : 1;
+			wchar_t*	end = nullptr;
+			const auto	isUnwatchAt = _wcsicmp ( argv[ i ], L"-unwatch-at" ) == 0;
+			const auto	frame = isUnwatchAt && i + 1 < argc ? std::wcstoull ( argv[ i + 1 ], &end, 10 ) : 0;
+
+			if ( i + values >= argc || ( isUnwatchAt && ( end == argv[ i + 1 ] || *end != L'\0' ) ) )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: %s needs %s.", toUtf8 ( argv[ i ] ).c_str (),
+										isWatchFolder ? "a folder and a pattern" : isUnwatchAt ? "a frame number" : "a file" );
+				isCommandLineValid = false;
+				break;
+			}
+
+			if ( isUnwatchAt )
+				files.unwatchAt = static_cast<size_t> ( frame );
+			else if ( isWatchFolder )
+				files.paths.emplace_back ( absoluteUtf8 ( argv[ i + 1 ] ), toUtf8 ( argv[ i + 2 ] ) );
+			else if ( _wcsicmp ( argv[ i ], L"-watch" ) == 0 )
+				files.paths.emplace_back ( absoluteUtf8 ( argv[ i + 1 ] ), std::nullopt );
+			else
+				files.dumpPath = std::filesystem::absolute ( argv[ i + 1 ] );
+
+			i += values;
 			continue;
 		}
 

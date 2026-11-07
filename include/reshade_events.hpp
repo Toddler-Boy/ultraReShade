@@ -1843,10 +1843,36 @@ namespace reshade
 		/// </remarks>
 		ultra_resource_recreated = 102,
 
+		/// <summary>
+		/// ultraReShade: called at a present, on the presenting thread, when a file this add-on watches changed (see
+		/// <c>reshade::watch_file</c> and <c>reshade::watch_folder</c> in reshade_ultra.hpp).
+		/// <para>Callback function signature: <c>void (const char *path, api::file_change change, const char *old_path)</c></para>
+		/// </summary>
+		/// <remarks>
+		/// A change arrives once its folder was quiet for about 150 ms, so an editor's save (a temporary file renamed over
+		/// the old one) or a build writing in pieces is one modified. <paramref name="old_path"/> is the name before a
+		/// rename between two watched names, else null. Only the add-on that watches the path gets the call.
+		/// </remarks>
+		ultra_file_changed = 103,
+
 #if RESHADE_ADDON
-		max = 103 // Last value used internally by ReShade to determine number of events in this enum
+		max = 104 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
+
+	namespace api
+	{
+		/// <summary>
+		/// ultraReShade: what happened to a watched file (<see cref="addon_event::ultra_file_changed"/>).
+		/// </summary>
+		enum class file_change : uint32_t
+		{
+			created,
+			modified,
+			deleted,
+			renamed
+		};
+	}
 
 	template <addon_event ev>
 	struct addon_event_traits;
@@ -1995,4 +2021,5 @@ namespace reshade
 
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_constant_buffer, void, api::command_list *cmd_list, api::shader_stage stages, api::pipeline_layout layout, uint32_t layout_param, uint32_t binding, const void *data, uint64_t size, api::resource buffer, uint64_t offset);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_resource_recreated, void, api::device *device, uint64_t stable_id, api::resource old_resource, api::resource new_resource);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_file_changed, void, const char *path, api::file_change change, const char *old_path);
 }

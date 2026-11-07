@@ -12,6 +12,8 @@
 #if defined(RESHADE_API_LIBRARY)
 
 RESHADE_API_LIBRARY_DECL uint64_t ReShadeGetResourceStableId ( reshade::api::device* device, reshade::api::resource resource );
+RESHADE_API_LIBRARY_DECL bool ReShadeWatchFile ( void* module, const char* path, const char* pattern );
+RESHADE_API_LIBRARY_DECL void ReShadeUnwatchFile ( void* module, const char* path, const char* pattern );
 
 #endif
 
@@ -30,4 +32,41 @@ namespace reshade
 		return func != nullptr ? func ( device, resource ) : 0;
 #endif
 	}
+
+	namespace internal
+	{
+		// pattern null: path is a file
+		inline bool watch_path ( const char* path, const char* pattern )
+		{
+#if defined(RESHADE_API_LIBRARY)
+			return ReShadeWatchFile ( nullptr, path, pattern );
+#else
+			static const auto	func = reinterpret_cast<bool ( * ) ( void*, const char*, const char* )> (
+				GetProcAddress ( get_reshade_module_handle (), "ReShadeWatchFile" ) );
+			return func != nullptr && func ( get_current_module_handle (), path, pattern );
+#endif
+		}
+
+		inline void unwatch_path ( const char* path, const char* pattern )
+		{
+#if defined(RESHADE_API_LIBRARY)
+			ReShadeUnwatchFile ( nullptr, path, pattern );
+#else
+			static const auto	func = reinterpret_cast<void ( * ) ( void*, const char*, const char* )> (
+				GetProcAddress ( get_reshade_module_handle (), "ReShadeUnwatchFile" ) );
+			if ( func != nullptr )
+				func ( get_current_module_handle (), path, pattern );
+#endif
+		}
+	}
+
+	// Changes to the file (UTF-8, absolute or relative to ReShade's base path) arrive as addon_event::ultra_file_changed,
+	// for this add-on only. A deleted file stays watched and reports its return. False when its folder can't be watched
+	// (the log says why), and on a ReShade without this function. The add-on's watches end when it unloads
+	inline bool watch_file ( const char* path ) { return internal::watch_path ( path, nullptr ); }
+	inline void unwatch_file ( const char* path ) { internal::unwatch_path ( path, nullptr ); }
+
+	// The same for every file in the folder whose name matches pattern (* and ?, case ignored); subfolders are not watched
+	inline bool watch_folder ( const char* folder, const char* pattern = "*" ) { return internal::watch_path ( folder, pattern != nullptr ? pattern : "*" ); }
+	inline void unwatch_folder ( const char* folder, const char* pattern = "*" ) { internal::unwatch_path ( folder, pattern != nullptr ? pattern : "*" ); }
 }

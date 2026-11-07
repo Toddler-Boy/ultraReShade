@@ -84,6 +84,8 @@ set(RESHADE_SOURCE
   source/ultra_addon_reload.cpp
   source/ultra_addon_reload.hpp
   source/ultra_constant_buffers.cpp
+  source/ultra_file_watch.cpp
+  source/ultra_file_watch.hpp
   source/ultra_resource_ids.cpp
   source/ultra_overlay.cpp
   source/ultra_overlay.hpp

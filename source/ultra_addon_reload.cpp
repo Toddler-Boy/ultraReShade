@@ -40,7 +40,7 @@ namespace
 	thread_local int	eventDepth = 0;
 	constexpr int		reloadDepth = 1 << 20;		// events the reload itself causes run on its thread without the lock
 
-	constexpr auto		pollInterval = std::chrono::milliseconds ( 500 );
+	constexpr auto		writtenCheckInterval = std::chrono::milliseconds ( 100 );
 	constexpr wchar_t	copyMarker[] = L".loaded";
 
 	struct TrackedSampler
@@ -96,14 +96,14 @@ namespace
 		std::filesystem::path	loadedCopy;
 		HMODULE					module = nullptr;
 		FILETIME				loadedTime {};		// file's write time when the copy was made
-		FILETIME				polledTime {};		// file's write time at the last poll: a build writing it changes it
+		bool					isChanged = false;	// the file watch reported a change since
 	};
 
 	std::vector<WatchedAddon>				watched;			// the presenting thread's, after loading
 	size_t									copyNumber = 0;
 	size_t									reloadCount = 0;
 	std::atomic_bool						isReloadRequested = false;
-	std::chrono::steady_clock::time_point	lastPoll;
+	std::chrono::steady_clock::time_point	lastWrittenCheck;
 
 	using Callbacks = std::vector<std::pair<uint32_t, void*>>;
 
@@ -283,6 +283,16 @@ namespace
 		return true;
 	}
 
+	// On the presenting thread, inside the file watch's delivery: the reload waits for pollAddonReload
+	void onAddonFileChanged ( const char* path, api::file_change, const char* )
+	{
+		const auto	file = std::filesystem::u8path ( path );
+
+		for ( auto& addon : watched )
+			if ( _wcsicmp ( addon.file.lexically_normal ().c_str (), file.c_str () ) == 0 )
+				addon.isChanged = true;
+	}
+
 	[[ nodiscard ]] reshade::addon_info* registeredAddon ( HMODULE module )
 	{
 		for ( auto& info : reshade::addon_loaded_info )
@@ -305,6 +315,7 @@ namespace
 		for ( const auto& [ event, callback ] : info->event_callbacks )
 			std::erase ( reshade::addon_event_list[ event ], callback );
 
+		reshade::ultra::forgetFileWatches ( module );
 		reshade::addon_loaded_info.erase ( reshade::addon_loaded_info.begin () + ( info - reshade::addon_loaded_info.data () ) );
 	}
 
@@ -499,7 +510,10 @@ void reshade::ultra::stopAddonReload ()
 	trackObjects ( false );
 
 	for ( const auto& addon : watched )
+	{
+		unwatchFile ( addon.file, onAddonFileChanged );
 		DeleteFileW ( addon.loadedCopy.c_str () );
+	}
 
 	watched.clear ();
 }
@@ -538,12 +552,14 @@ void reshade::ultra::watchAddon ( HMODULE module, const std::filesystem::path& f
 	if ( const auto info = registeredAddon ( module ); info != nullptr )
 		info->file = file.filename ().u8string ();
 
-	const auto	time = writeTime ( file );
-	watched.push_back ( { file, loadedCopy, module, time, time } );
+	if ( ! watchFile ( file, onAddonFileChanged ) )
+		log::message ( log::level::error, "Add-on '%s' can't reload: its file is not watched.", file.u8string ().c_str () );
+
+	watched.push_back ( { file, loadedCopy, module, writeTime ( file ) } );
 }
 //-----------------------------------------------------------------------------
 
-// A build is done once the file's time stayed the same over one poll and nobody writes it
+// A build is done once the file watch reported a change and nobody writes the file any more
 void reshade::ultra::pollAddonReload ()
 {
 	if ( ! isAddonReloadEnabled || eventDepth != 0 || watched.empty () )
@@ -551,25 +567,43 @@ void reshade::ultra::pollAddonReload ()
 
 	const auto	isRequested = isReloadRequested.exchange ( false );
 	const auto	now = std::chrono::steady_clock::now ();
-
-	if ( ! isRequested && now - lastPoll < pollInterval )
-		return;
-
-	lastPoll = now;
+	const auto	isCheckDue = now - lastWrittenCheck >= writtenCheckInterval;
+	auto		hasChecked = false;
 
 	std::vector<size_t>	due;
 
 	for ( size_t i = 0; i < watched.size (); ++i )
 	{
-		auto&		addon = watched[ i ];
-		const auto	time = writeTime ( addon.file );
-		const auto	isChanged = ! isSameTime ( time, FILETIME {} ) && ! isSameTime ( time, addon.loadedTime );
+		auto&	addon = watched[ i ];
 
-		if ( isRequested || ( isChanged && isSameTime ( time, addon.polledTime ) && isWritten ( addon.file ) ) )
+		if ( isRequested )
+		{
+			addon.isChanged = false;
 			due.push_back ( i );
+			continue;
+		}
 
-		addon.polledTime = time;
+		if ( ! addon.isChanged || ! isCheckDue )
+			continue;
+
+		hasChecked = true;
+		const auto	time = writeTime ( addon.file );
+
+		// A deleted file waits for its new copy
+		if ( isSameTime ( time, FILETIME {} ) )
+			continue;
+
+		if ( isSameTime ( time, addon.loadedTime ) )
+			addon.isChanged = false;
+		else if ( isWritten ( addon.file ) )
+		{
+			addon.isChanged = false;
+			due.push_back ( i );
+		}
 	}
+
+	if ( hasChecked )
+		lastWrittenCheck = now;
 
 	if ( ! due.empty () )
 		reloadAddons ( due );
