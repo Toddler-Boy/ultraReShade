@@ -44,6 +44,18 @@ namespace
 		return static_cast<size_t> ( value );
 	}
 
+	// A decimal number, nothing after it
+	[[ nodiscard ]] std::optional<float> parseNumber ( const wchar_t* text )
+	{
+		wchar_t*	end = nullptr;
+		const auto	value = std::wcstof ( text, &end );
+
+		if ( end == text || *end != L'\0' )
+			return std::nullopt;
+
+		return value;
+	}
+
 	void reportBadValue ( const wchar_t* option, const wchar_t* value )
 	{
 		reshade::log::message ( reshade::log::level::error, "Test application: '%s' is not a valid value for %s.", narrow ( value ).c_str (), narrow ( option ).c_str () );
@@ -73,7 +85,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 	for ( auto i = 1; i < argc; ++i )
 	{
 		const auto	arg = argv[ i ];
-		const auto	isKnown = isOption ( arg, L"-api" ) || isOption ( arg, L"-scene" ) || isOption ( arg, L"-jitter" ) || isOption ( arg, L"-sss" ) || isOption ( arg, L"-env" ) || isOption ( arg, L"-fov" )
+		const auto	isKnown = isOption ( arg, L"-api" ) || isOption ( arg, L"-scene" ) || isOption ( arg, L"-jitter" ) || isOption ( arg, L"-sss" ) || isOption ( arg, L"-env" ) || isOption ( arg, L"-fov" ) || isOption ( arg, L"-hdr" )
+							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" );
 
 		if ( ! isKnown )
@@ -121,11 +134,30 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 			options.scene.environment = value;
 		else if ( isOption ( arg, L"-fov" ) )
 		{
-			wchar_t*	end = nullptr;
-			const auto	degrees = std::wcstof ( value, &end );
+			const auto	degrees = parseNumber ( value );
 
-			if ( end != value && *end == L'\0' && degrees > 1.0f && degrees < 170.0f )
-				options.scene.fieldOfView = degrees;
+			if ( degrees.has_value () && *degrees > 1.0f && *degrees < 170.0f )
+				options.scene.fieldOfView = *degrees;
+			else
+				options.isValid = false;
+		}
+		else if ( isOption ( arg, L"-hdr" ) )
+		{
+			if ( isOption ( value, L"off" ) )
+				options.scene.output = TestOutput::sdr;
+			else if ( isOption ( value, L"scrgb" ) )
+				options.scene.output = TestOutput::scRgb;
+			else if ( isOption ( value, L"pq" ) )
+				options.scene.output = TestOutput::pq;
+			else
+				options.isValid = false;
+		}
+		else if ( isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) )
+		{
+			const auto	nits = parseNumber ( value );
+
+			if ( nits.has_value () && *nits >= 1.0f && *nits <= 10000.0f )
+				( isOption ( arg, L"-peak" ) ? options.scene.peak : options.scene.paperWhite ) = *nits;
 			else
 				options.isValid = false;
 		}

@@ -318,17 +318,28 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		com_ptr<ID3D11DeviceContext> immediate_context;
 		com_ptr<IDXGISwapChain> swapchain;
 
+		// HDR needs a flip-model swap chain, which takes no multisampling and at least two buffers
+		const bool is_hdr = options.scene.output != reshade::ultra::TestOutput::sdr;
+		const UINT num_buffers = is_hdr ? 2 : 1;
+
 		{   DXGI_SWAP_CHAIN_DESC desc = {};
-			desc.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-			desc.SampleDesc = { multisample ? 4u : 1u, 0u };
+			desc.BufferDesc.Format = reshade::ultra::backBufferFormat(options.scene.output);
+			desc.SampleDesc = { multisample && !is_hdr ? 4u : 1u, 0u };
 			desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-			desc.BufferCount = 1;
+			desc.BufferCount = num_buffers;
 			desc.OutputWindow = window_handle;
 			desc.Windowed = true;
-			desc.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
+			desc.SwapEffect = is_hdr ? DXGI_SWAP_EFFECT_FLIP_DISCARD : DXGI_SWAP_EFFECT_DISCARD;
 
 			const UINT flags = validation ? D3D11_CREATE_DEVICE_DEBUG : 0;
 			HR_CHECK(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &desc, &swapchain, &device, nullptr, &immediate_context));
+		}
+
+		if (is_hdr)
+		{
+			com_ptr<IDXGISwapChain3> swapchain3;
+			HR_CHECK(swapchain->QueryInterface(&swapchain3));
+			HR_CHECK(swapchain3->SetColorSpace1(reshade::ultra::colourSpace(options.scene.output)));
 		}
 
 		com_ptr<ID3D11Texture2D> back_buffer;
@@ -357,7 +368,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 				back_buffer_rtv.reset();
 				back_buffer.reset();
 
-				HR_CHECK(swapchain->ResizeBuffers(1, s_resize_w, s_resize_h, DXGI_FORMAT_UNKNOWN, 0));
+				HR_CHECK(swapchain->ResizeBuffers(num_buffers, s_resize_w, s_resize_h, DXGI_FORMAT_UNKNOWN, 0));
 
 				HR_CHECK(swapchain->GetBuffer(0, IID_PPV_ARGS(&back_buffer)));
 				HR_CHECK(device->CreateRenderTargetView(back_buffer.get(), nullptr, &back_buffer_rtv));
@@ -422,7 +433,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		{
 			// DXGI has not been updated for d3d12on7, so cannot use swap chain created from D3D12 device there
 			DXGI_SWAP_CHAIN_DESC1 desc = {};
-			desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
+			desc.Format = reshade::ultra::backBufferFormat(options.scene.output);
 			desc.SampleDesc = { 1, 0 };
 			desc.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
 			desc.BufferCount = num_buffers;
@@ -434,6 +445,9 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 			HR_CHECK(dxgi_factory->CreateSwapChainForHwnd(command_queue.get(), window_handle, &desc, nullptr, nullptr, &dxgi_swapchain));
 			HR_CHECK(dxgi_swapchain->QueryInterface(&swapchain));
+
+			if (options.scene.output != reshade::ultra::TestOutput::sdr)
+				HR_CHECK(swapchain->SetColorSpace1(reshade::ultra::colourSpace(options.scene.output)));
 		}
 
 		{   D3D12_DESCRIPTOR_HEAP_DESC desc = { D3D12_DESCRIPTOR_HEAP_TYPE_RTV };

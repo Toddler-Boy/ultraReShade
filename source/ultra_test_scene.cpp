@@ -69,6 +69,10 @@ cbuffer Lighting : register ( b2 )
 	float	unitLength;			// metres per view unit
 	float	exposure;
 	float	scattering;			// 1: skin scatters light under its surface; 0: plain diffuse
+	uint	outputMode;			// the swap chain's picture: SDR, scRGB or PQ
+	float	paperWhite;			// nits of scene light 1 in HDR
+	float	peakNits;			// what HDR highlights roll off towards
+	float	outputPad;
 };
 
 Texture2D		colourMap : register ( t0 );
@@ -291,6 +295,52 @@ float3 encodeSrgb ( float3 c )
 	return c <= 0.0031308 ? c * 12.92 : 1.055 * pow ( c, 1 / 2.4 ) - 0.055;
 }
 
+static const uint	sdrOutput = 0;
+static const uint	scRgbOutput = 1;
+static const uint	pqOutput = 2;
+
+static const float3x3	rec709ToRec2020 = { 0.6274, 0.3293, 0.0433, 0.0691, 0.9195, 0.0114, 0.0164, 0.0880, 0.8956 };
+
+// Scene light in nits, 1 at paper white; above half the peak the highlights roll off towards it
+float3 toNits ( float3 light )
+{
+	const float3	nits = max ( light, 0 ) * paperWhite;
+	const float		knee = 0.5 * peakNits;
+	return nits < knee ? nits : knee + ( peakNits - knee ) * ( 1 - exp ( -( nits - knee ) / ( peakNits - knee ) ) );
+}
+
+// SMPTE ST 2084
+float3 encodePq ( float3 nits )
+{
+	const float3	y = pow ( saturate ( nits / 10000 ), 0.1593017578125 );
+	return pow ( ( 0.8359375 + 18.8515625 * y ) / ( 1 + 18.6875 * y ), 78.84375 );
+}
+
+// Scene light as the swap chain takes it: ACES and sRGB in SDR, nits / 80 in scRGB, Rec. 2020 with PQ in HDR10
+float3 encodeOutput ( float3 light )
+{
+	if ( outputMode == scRgbOutput )
+		return toNits ( light ) / 80;
+
+	if ( outputMode == pqOutput )
+		return encodePq ( mul ( rec709ToRec2020, toNits ( light ) ) );
+
+	return encodeSrgb ( toneMap ( light ) );
+}
+
+// What the encoded picture is multiplied by to darken it about as much as f darkens light (exact in scRGB, at half
+// paper white in PQ)
+float3 encodeFactor ( float f )
+{
+	if ( outputMode == scRgbOutput )
+		return f;
+
+	if ( outputMode == pqOutput )
+		return encodePq ( f * 0.5 * paperWhite ) / encodePq ( 0.5 * paperWhite );
+
+	return pow ( f, 1 / 2.2 );
+}
+
 PsOut psMain ( VsOut i )
 {
 	const float4	colour = colourMap.Sample ( linearWrap, i.uv );
@@ -308,19 +358,19 @@ PsOut psMain ( VsOut i )
 	if ( shading == hairShading )
 	{
 		clip ( colour.r - lerp ( 0.25, 0.75, dither ( i.position.xy ) ) );
-		output = encodeSrgb ( toneMap ( hair ( i, geometric, v, colour ) * exposure ) );
+		output = encodeOutput ( hair ( i, geometric, v, colour ) * exposure );
 	}
 	else if ( shading == eyeOcclusionShading )
 	{
 		const float	edge = min ( min ( i.uv.x, 1 - i.uv.x ), min ( i.uv.y, 1 - i.uv.y ) );
 		const float	darkening = 0.5 * ( 1 - smoothstep ( 0, 0.3, edge ) );
-		output = pow ( 1 - darkening, 1 / 2.2 );
+		output = encodeFactor ( 1 - darkening );
 	}
 	else if ( shading == tearLineShading )
 	{
 		const float	edge = min ( min ( i.uv.x, 1 - i.uv.x ), min ( i.uv.y, 1 - i.uv.y ) );
 		const float	wet = smoothstep ( 0, 0.2, edge );
-		output = encodeSrgb ( toneMap ( specular ( geometric, v, 0.02, 0.05 ) * exposure ) ) * wet;
+		output = encodeOutput ( specular ( geometric, v, 0.02, 0.05 ) * exposure ) * wet;
 	}
 	else
 	{
@@ -344,7 +394,7 @@ PsOut psMain ( VsOut i )
 		else
 			lit = lambert ( colour.rgb, n ) + specular ( n, v, f0, roughness );
 
-		output = encodeSrgb ( toneMap ( lit * exposure ) );
+		output = encodeOutput ( lit * exposure );
 	}
 
 	// In pixels, this frame's position minus the last one's, both without jitter (x right, y down)
@@ -371,9 +421,33 @@ PsOut psMain ( VsOut i )
 		float								unitLength = 1.0f;
 		float								exposure = 1.0f;
 		float								scattering = 1.0f;
+		uint32_t							outputMode = 0;
+		float								paperWhite = 203.0f;
+		float								peakNits = 1000.0f;
+		float								outputPad = 0.0f;
 	};
 
-	constexpr float		clearColour[ 4 ] = { 0.02f, 0.02f, 0.025f, 1.0f };
+	// Near black: about 0.4 nits, a little blue
+	[[ nodiscard ]] std::array<float, 4> backgroundColour ( reshade::ultra::TestOutput output )
+	{
+		constexpr float	nits[ 3 ] = { 0.4f, 0.4f, 0.5f };
+		const auto		pq = [] ( float value ) {
+			const auto	y = std::pow ( value / 10000.0f, 0.1593017578125f );
+			return std::pow ( ( 0.8359375f + 18.8515625f * y ) / ( 1.0f + 18.6875f * y ), 78.84375f );
+		};
+
+		switch ( output )
+		{
+			case reshade::ultra::TestOutput::scRgb:
+				return { nits[ 0 ] / 80.0f, nits[ 1 ] / 80.0f, nits[ 2 ] / 80.0f, 1.0f };
+			case reshade::ultra::TestOutput::pq:
+				return { pq ( nits[ 0 ] ), pq ( nits[ 1 ] ), pq ( nits[ 2 ] ), 1.0f };
+			case reshade::ultra::TestOutput::sdr:
+				break;
+		}
+
+		return { 0.02f, 0.02f, 0.025f, 1.0f };
+	}
 	constexpr UINT		textureCount = 3;
 	constexpr UINT		tableSize = textureCount + 1;		// the part's maps, then the panorama
 	constexpr UINT		maxAnisotropy = 8;
@@ -660,6 +734,9 @@ PsOut psMain ( VsOut i )
 	{
 		LightingConstants	constants;
 		constants.scattering = settings.isScattering ? 1.0f : 0.0f;
+		constants.outputMode = uint32_t ( settings.output );
+		constants.paperWhite = settings.paperWhite;
+		constants.peakNits = std::max ( settings.peak, settings.paperWhite );
 		const auto			length = std::sqrt ( keyDirection[ 0 ] * keyDirection[ 0 ] + keyDirection[ 1 ] * keyDirection[ 1 ] + keyDirection[ 2 ] * keyDirection[ 2 ] );
 
 		constants.irradiance = environment.irradiance;
@@ -958,6 +1035,38 @@ PsOut psMain ( VsOut i )
 }
 //-----------------------------------------------------------------------------
 
+DXGI_FORMAT reshade::ultra::backBufferFormat ( TestOutput output )
+{
+	switch ( output )
+	{
+		case TestOutput::scRgb:
+			return DXGI_FORMAT_R16G16B16A16_FLOAT;
+		case TestOutput::pq:
+			return DXGI_FORMAT_R10G10B10A2_UNORM;
+		case TestOutput::sdr:
+			break;
+	}
+
+	return DXGI_FORMAT_R8G8B8A8_UNORM;
+}
+//-----------------------------------------------------------------------------
+
+DXGI_COLOR_SPACE_TYPE reshade::ultra::colourSpace ( TestOutput output )
+{
+	switch ( output )
+	{
+		case TestOutput::scRgb:
+			return DXGI_COLOR_SPACE_RGB_FULL_G10_NONE_P709;
+		case TestOutput::pq:
+			return DXGI_COLOR_SPACE_RGB_FULL_G2084_NONE_P2020;
+		case TestOutput::sdr:
+			break;
+	}
+
+	return DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
+}
+//-----------------------------------------------------------------------------
+
 // Each face samples its own texel of a 6x1 colour map
 reshade::ultra::TestModel reshade::ultra::makeTestCube ()
 {
@@ -1021,7 +1130,8 @@ reshade::ultra::TestSceneConstants reshade::ultra::TestSceneView::nextFrame ( UI
 }
 //-----------------------------------------------------------------------------
 
-reshade::ultra::TestSceneD3d11::TestSceneD3d11 ( ID3D11Device* device, const TestModel& model, const TestSceneSettings& settings ) : device ( device ), view ( model, settings )
+reshade::ultra::TestSceneD3d11::TestSceneD3d11 ( ID3D11Device* device, const TestModel& model, const TestSceneSettings& settings )
+	: device ( device ), view ( model, settings ), background ( backgroundColour ( settings.output ) )
 {
 	const auto	vsCode = compile ( "vsMain", "vs_5_0" );
 	const auto	psCode = compile ( "psMain", "ps_5_0" );
@@ -1169,7 +1279,7 @@ void reshade::ultra::TestSceneD3d11::resize ( ID3D11Texture2D* backBuffer )
 
 void reshade::ultra::TestSceneD3d11::render ( ID3D11DeviceContext* context, ID3D11RenderTargetView* backBufferRtv, float seconds )
 {
-	context->ClearRenderTargetView ( backBufferRtv, clearColour );
+	context->ClearRenderTargetView ( backBufferRtv, background.data () );
 
 	if ( ! isReady () )
 		return;
@@ -1244,7 +1354,7 @@ void reshade::ultra::TestSceneD3d11::render ( ID3D11DeviceContext* context, ID3D
 
 reshade::ultra::TestSceneD3d12::TestSceneD3d12 ( ID3D12Device* device, ID3D12CommandQueue* queue, DXGI_FORMAT backBufferFormat, const TestModel& model,
 												 const TestSceneSettings& settings )
-	: device ( device ), queue ( queue ), view ( model, settings )
+	: device ( device ), queue ( queue ), view ( model, settings ), background ( backgroundColour ( settings.output ) )
 {
 	const auto	vsCode = compile ( "vsMain", "vs_5_0" );
 	const auto	psCode = compile ( "psMain", "ps_5_0" );
@@ -1624,7 +1734,7 @@ bool reshade::ultra::TestSceneD3d12::render ( ID3D12Resource* backBuffer, D3D12_
 	const auto							dsv = dsvHeap->GetCPUDescriptorHandleForHeapStart ();
 	const auto							motionRtv = rtvHeap->GetCPUDescriptorHandleForHeapStart ();
 	const D3D12_CPU_DESCRIPTOR_HANDLE	targets[] { backBufferRtv, motionRtv };
-	cmdList->ClearRenderTargetView ( backBufferRtv, clearColour, 0, nullptr );
+	cmdList->ClearRenderTargetView ( backBufferRtv, background.data (), 0, nullptr );
 	cmdList->ClearRenderTargetView ( motionRtv, noMotion, 0, nullptr );
 	cmdList->ClearDepthStencilView ( dsv, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr );
 	cmdList->OMSetRenderTargets ( UINT ( std::size ( targets ) ), targets, FALSE, &dsv );

@@ -13,6 +13,7 @@
 
 #include <d3d11.h>
 #include <d3d12.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 
 #include "ultra_test_model.hpp"
@@ -27,6 +28,12 @@ namespace reshade::ultra
 	// head: the built-in scan; model: a head from -model, framed by everything it draws (hair included)
 	enum class TestSceneKind { cube, head, model };
 
+	// The swap chain's picture: 8-bit SDR, scRGB (16-bit float, linear, 1.0 = 80 nits) or HDR10 (Rec. 2020 with PQ)
+	enum class TestOutput { sdr, scRgb, pq };
+
+	[[ nodiscard ]] DXGI_FORMAT backBufferFormat ( TestOutput output );
+	[[ nodiscard ]] DXGI_COLOR_SPACE_TYPE colourSpace ( TestOutput output );
+
 	struct TestSceneSettings
 	{
 		TestSceneKind			kind = TestSceneKind::cube;
@@ -34,6 +41,9 @@ namespace reshade::ultra
 		std::filesystem::path	environment;			// -env: a Radiance .hdr panorama; empty: a studio gradient
 		bool					isScattering = true;	// -sss: skin scatters light under its surface; off: plain diffuse
 		float					fieldOfView = 0.0f;		// -fov: vertical, degrees; 0: 60 for the cube, 22 for the heads
+		TestOutput				output = TestOutput::sdr;	// -hdr off|scrgb|pq
+		float					paperWhite = 203.0f;	// -paper-white: nits of a white surface in HDR
+		float					peak = 1000.0f;			// -peak: nits the HDR highlights roll off towards
 	};
 
 	// The shaders' constants, 52 floats: they fit D3D12's root constants next to the texture table
@@ -106,6 +116,7 @@ namespace reshade::ultra
 
 		ID3D11Device*											device;
 		TestSceneView											view;
+		std::array<float, 4>									background;
 		std::vector<Draw>										draws;
 		const TestModel*										animated = nullptr;		// the rigged model, posed each frame; null: still
 		std::vector<TestModelVertex>							posed;
@@ -170,6 +181,7 @@ namespace reshade::ultra
 		ID3D12Device*											device;
 		ID3D12CommandQueue*										queue;
 		TestSceneView											view;
+		std::array<float, 4>									background;
 		std::vector<Draw>										draws;
 		const TestModel*										animated = nullptr;		// the rigged model, posed each frame; null: still
 		std::vector<TestModelVertex>							posed;
