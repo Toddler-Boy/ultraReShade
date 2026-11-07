@@ -465,6 +465,10 @@ namespace reshade
 
 		bool _is_font_scaling = false;
 		bool _no_font_scaling = false;
+		float _font_scale_adjust = 1.0f; // Ctrl + mouse wheel, for this session only
+		float _display_scale = 0.0f; // From the display the window is on (ultra::measureDisplayScale), never from a config
+		float _display_scale_height = 0.0f;
+		std::chrono::high_resolution_clock::time_point _display_scale_time;
 		bool _block_input_next_frame = false;
 		bool _rebuild_font_atlas = true;
 		unsigned int _overlay_key_data[4];

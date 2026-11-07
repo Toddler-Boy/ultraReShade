@@ -17,4 +17,15 @@ namespace reshade::ultra
 
 	// After all overlay windows: dragging a docked node by its empty tab bar undocks the whole node again
 	void undockDraggedNode ();
+
+	struct DisplayScale
+	{
+		float	monitorScale = 1.0f;	// the effective DPI of the window's monitor / 96 (200% = 2)
+		float	pixelSize = 1.0f;		// back buffer height / the window's height on screen
+		float	scale = 1.0f;			// both, in quarter steps
+	};
+
+	// The overlay's font scale, measured like ultraGame's panel: from the display the game window is on, never from a
+	// config. Without a window (VR) the back buffer height alone decides, as upstream ReShade did
+	[[ nodiscard ]] DisplayScale measureDisplayScale ( void* window, float backBufferHeight );
 }

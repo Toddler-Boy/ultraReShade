@@ -332,8 +332,6 @@ void reshade::runtime::load_config_gui(const ini_file &config)
 	config.get("STYLE", "EditorStyleIndex", _editor_style_index);
 	config.get("STYLE", "Font", _font_path);
 	config.get("STYLE", "FontSize", _font_size);
-	if (!config.get("STYLE", "FontScale", _imgui_context->Style.FontScaleMain) && _font_size == 13.0f)
-		_imgui_context->Style.FontScaleMain = 0.0f;
 	config.get("STYLE", "FPSScale", _fps_scale);
 	config.get("STYLE", "FrameRounding", imgui_style.FrameRounding);
 	config.get("STYLE", "GrabRounding", imgui_style.GrabRounding);
@@ -434,7 +432,6 @@ void reshade::runtime::save_config_gui(ini_file &config) const
 	config.set("STYLE", "EditorStyleIndex", _editor_style_index);
 	config.set("STYLE", "Font", _font_path);
 	config.set("STYLE", "FontSize", _font_size);
-	config.set("STYLE", "FontScale", _imgui_context->Style.FontScaleMain);
 	config.set("STYLE", "FPSScale", _fps_scale);
 	config.set("STYLE", "FrameRounding", imgui_style.FrameRounding);
 	config.set("STYLE", "GrabRounding", imgui_style.GrabRounding);
@@ -861,6 +858,21 @@ void reshade::runtime::draw_gui()
 	imgui_io.DeltaTime = _last_frame_duration.count() * 1e-9f;
 	imgui_io.DisplaySize.x = static_cast<float>(_width);
 	imgui_io.DisplaySize.y = static_cast<float>(_height);
+
+	// The font scale follows the display: measured again after a resize and twice a second (window resized, moved to another monitor)
+	if (imgui_io.DisplaySize.y != _display_scale_height || _last_present_time - _display_scale_time >= std::chrono::milliseconds(500))
+	{
+		const ultra::DisplayScale measured = ultra::measureDisplayScale(get_hwnd(), imgui_io.DisplaySize.y);
+
+		if (measured.scale != _display_scale)
+			log::message(log::level::info, "Overlay scale %.2f (monitor scale %.2f, back buffer %ux%u, pixel size %.3f).", measured.scale, measured.monitorScale, _width, _height, measured.pixelSize);
+
+		_display_scale = measured.scale;
+		_display_scale_height = imgui_io.DisplaySize.y;
+		_display_scale_time = _last_present_time;
+	}
+
+	_imgui_context->Style.FontScaleMain = _display_scale * _font_scale_adjust;
 
 	if (_input != nullptr)
 	{
@@ -1299,8 +1311,9 @@ void reshade::runtime::draw_gui()
 		// Change font size if user presses the control key and moves the mouse wheel
 		if (!_no_font_scaling && imgui_io.KeyCtrl && imgui_io.MouseWheel != 0 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
 		{
-			_imgui_context->Style.FontScaleMain = ImClamp(_imgui_context->Style.FontScaleMain + imgui_io.MouseWheel * 0.25f, 0.5f, 4.0f);
-			save_config();
+			// Only for this session: the scale itself always comes from the display
+			_font_scale_adjust = ImClamp(_font_scale_adjust + imgui_io.MouseWheel * 0.25f, 0.25f, 4.0f);
+			_imgui_context->Style.FontScaleMain = _display_scale * _font_scale_adjust;
 
 			_is_font_scaling = true;
 		}
@@ -4707,10 +4720,6 @@ void reshade::runtime::draw_code_editor(editor_instance &instance)
 
 bool reshade::runtime::init_imgui_resources()
 {
-	// Adjust default font size based on the vertical resolution
-	if (float &font_scale = _imgui_context->Style.FontScaleMain; font_scale == 0.0f)
-		font_scale = _height >= 2160 ? 2.0f : _height >= 1440 ? 1.5f : 1.0f;
-
 	const bool has_combined_sampler_and_view = _device->check_capability(api::device_caps::sampler_with_resource_view);
 
 	if (_imgui_sampler_state == 0)
