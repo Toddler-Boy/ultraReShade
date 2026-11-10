@@ -868,32 +868,61 @@ namespace
 
 		return nullptr;
 	}
+
+	// ReShade's own clients: the callback owns the watch
+	[[ nodiscard ]] bool addClientWatch ( const std::filesystem::path& path, const wchar_t* pattern, FileChangedCallback callback )
+	{
+		auto	watch = makeWatch ( path, pattern );
+
+		if ( ! watch.has_value () )
+			return false;
+
+		watch->owner = reinterpret_cast<void*> ( callback );
+		watch->callback = callback;
+		return addWatch ( std::move ( *watch ) );
+	}
+
+	void removeClientWatch ( const std::filesystem::path& path, const wchar_t* pattern, FileChangedCallback callback )
+	{
+		auto	watch = makeWatch ( path, pattern );
+
+		if ( ! watch.has_value () )
+			return;
+
+		watch->owner = reinterpret_cast<void*> ( callback );
+		watch->callback = callback;
+		removeWatch ( *watch );
+	}
 }
 //-----------------------------------------------------------------------------
 
 bool reshade::ultra::watchFile ( const std::filesystem::path& file, FileChangedCallback callback )
 {
-	auto	watch = makeWatch ( file, nullptr );
-
-	if ( ! watch.has_value () )
-		return false;
-
-	watch->owner = reinterpret_cast<void*> ( callback );
-	watch->callback = callback;
-	return addWatch ( std::move ( *watch ) );
+	return addClientWatch ( file, nullptr, callback );
 }
 //-----------------------------------------------------------------------------
 
 void reshade::ultra::unwatchFile ( const std::filesystem::path& file, FileChangedCallback callback )
 {
-	auto	watch = makeWatch ( file, nullptr );
+	removeClientWatch ( file, nullptr, callback );
+}
+//-----------------------------------------------------------------------------
 
-	if ( ! watch.has_value () )
-		return;
+bool reshade::ultra::watchFolder ( const std::filesystem::path& folder, const wchar_t* pattern, FileChangedCallback callback )
+{
+	return addClientWatch ( folder, pattern, callback );
+}
+//-----------------------------------------------------------------------------
 
-	watch->owner = reinterpret_cast<void*> ( callback );
-	watch->callback = callback;
-	removeWatch ( *watch );
+void reshade::ultra::unwatchFolder ( const std::filesystem::path& folder, const wchar_t* pattern, FileChangedCallback callback )
+{
+	removeClientWatch ( folder, pattern, callback );
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::isFileBeingWritten ( const std::filesystem::path& file )
+{
+	return isBeingWritten ( file.native () );
 }
 //-----------------------------------------------------------------------------
 

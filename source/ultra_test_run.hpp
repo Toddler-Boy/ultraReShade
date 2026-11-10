@@ -58,7 +58,7 @@ namespace reshade::ultra
 		size_t							frames = 0;			// -frames <n>: quit after n frames, each 1/60 s apart; 0: run until closed
 		std::optional<size_t>			resizeAt;			// -resize-at <frame>: the window shrinks to three quarters before that frame
 		std::vector<TestSwitch>			switches;			// in frame order; -random-switches <seed> [fullscreen] picks a few buffer sizes (and fullscreen switches)
-		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames ([ADDON] ReloadOnChange=1)
+		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames
 		bool							isBackground = true;	// never activated, always at the bottom of the z-order, no fullscreen; -show: a normal window
 		std::wstring					owner;				// -owner <name>: who started the run, shown in the window title
 		std::optional<size_t>			crashAt;			// -crash-at <frame>: an access violation in that frame, without the error dialog

@@ -15,6 +15,7 @@ RESHADE_API_LIBRARY_DECL uint64_t ReShadeGetResourceStableId ( reshade::api::dev
 RESHADE_API_LIBRARY_DECL bool ReShadeWatchFile ( void* module, const char* path, const char* pattern );
 RESHADE_API_LIBRARY_DECL void ReShadeUnwatchFile ( void* module, const char* path, const char* pattern );
 RESHADE_API_LIBRARY_DECL void ReShadeFlushLog ();
+RESHADE_API_LIBRARY_DECL void ReShadeSetLogoAlert ( bool on );
 
 #endif
 
@@ -70,6 +71,19 @@ namespace reshade
 	// The same for every file in the folder whose name matches pattern (* and ?, case ignored); subfolders are not watched
 	inline bool watch_folder ( const char* folder, const char* pattern = "*" ) { return internal::watch_path ( folder, pattern != nullptr ? pattern : "*" ); }
 	inline void unwatch_folder ( const char* folder, const char* pattern = "*" ) { internal::unwatch_path ( folder, pattern != nullptr ? pattern : "*" ); }
+
+	// The start logo red and blinking while on, also after it played: it stays on screen until the add-on turns it off
+	// again, and does not play after that. Nothing on a ReShade without this function
+	inline void set_logo_alert ( bool on )
+	{
+#if defined(RESHADE_API_LIBRARY)
+		ReShadeSetLogoAlert ( on );
+#else
+		static const auto	func = reinterpret_cast<void ( * ) ( bool )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeSetLogoAlert" ) );
+		if ( func != nullptr )
+			func ( on );
+#endif
+	}
 
 	namespace log
 	{

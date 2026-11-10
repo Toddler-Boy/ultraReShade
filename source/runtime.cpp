@@ -17,6 +17,7 @@
 #include "platform_utils.hpp"
 #include "reshade_api_object_impl.hpp"
 #include "runtime_manager.hpp"
+#include "ultra_effect_reload.hpp"
 #include <set>
 #include <cmath> // std::abs, std::fmod
 #include <cctype> // std::toupper
@@ -429,6 +430,11 @@ reshade::runtime::~runtime()
 	assert(_worker_threads.empty() && _effect_creations.empty());
 	assert(!_is_initialized && _techniques.empty() && _technique_sorting.empty());
 
+#if RESHADE_ADDON
+	if (ultra::isAddonReloadEnabled)
+		ultra::forgetEffectWatch(this);
+#endif
+
 #if RESHADE_GUI
 	// Save configuration before shutting down to ensure the current window state is written to disk
 	save_config();
@@ -771,6 +777,7 @@ void reshade::runtime::on_present()
 #if RESHADE_ADDON
 	ultra::deliverFileChanges();
 	ultra::pollAddonReload();
+	ultra_reload_changed_effects();
 
 	_is_in_present_call = true;
 #endif

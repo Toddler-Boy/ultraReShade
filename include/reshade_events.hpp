@@ -1855,8 +1855,25 @@ namespace reshade
 		/// </remarks>
 		ultra_file_changed = 103,
 
+		/// <summary>
+		/// ultraReShade: called after ID3D11DeviceContext::Map of a buffer, right after
+		/// <see cref="addon_event::map_buffer_region"/>, with the device context (immediate or deferred) that mapped it.
+		/// <para>Callback function signature: <c>void (api::command_list *cmd_list, api::resource resource, uint64_t offset, uint64_t size, api::map_access access, void **data)</c></para>
+		/// </summary>
+		/// <remarks>
+		/// A deferred context's draws read a buffer as that context last wrote it, so a write belongs to its context.
+		/// </remarks>
+		ultra_map_buffer_region_command = 104,
+
+		/// <summary>
+		/// ultraReShade: called before ID3D11DeviceContext::Unmap of a buffer, right after
+		/// <see cref="addon_event::unmap_buffer_region"/>, with the device context that unmaps it.
+		/// <para>Callback function signature: <c>void (api::command_list *cmd_list, api::resource resource)</c></para>
+		/// </summary>
+		ultra_unmap_buffer_region_command = 105,
+
 #if RESHADE_ADDON
-		max = 104 // Last value used internally by ReShade to determine number of events in this enum
+		max = 106 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
 
@@ -2022,4 +2039,6 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_constant_buffer, void, api::command_list *cmd_list, api::shader_stage stages, api::pipeline_layout layout, uint32_t layout_param, uint32_t binding, const void *data, uint64_t size, api::resource buffer, uint64_t offset);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_resource_recreated, void, api::device *device, uint64_t stable_id, api::resource old_resource, api::resource new_resource);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_file_changed, void, const char *path, api::file_change change, const char *old_path);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_map_buffer_region_command, void, api::command_list *cmd_list, api::resource resource, uint64_t offset, uint64_t size, api::map_access access, void **data);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_unmap_buffer_region_command, void, api::command_list *cmd_list, api::resource resource);
 }

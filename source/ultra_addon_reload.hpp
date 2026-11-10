@@ -11,12 +11,13 @@
 
 //-----------------------------------------------------------------------------
 
-// Reloading add-ons while the game runs ([ADDON] ReloadOnChange=1, a development setting): add-ons load from a copy
+// Reloading add-ons while the game runs, development builds only (ULTRARESHADE_DEVELOPMENT): add-ons load from a copy
 // next to their file, so a build can overwrite it. When the file changes, the old add-on sees every live object
 // destroyed, unloads, the new copy loads and sees them all created again
 namespace reshade::ultra
 {
-	// Read once when the add-ons load; never changes after that
+#if ULTRARESHADE_DEVELOPMENT
+	// Set once the add-ons load; never changes after that
 	extern bool isAddonReloadEnabled;
 
 	// Held by every add-on event while reloading is enabled, so no event runs while an add-on is swapped
@@ -33,7 +34,10 @@ namespace reshade::ultra
 		bool	isCounted;
 	};
 
-	// Reads the setting and starts tracking live objects; removes copies a previous run left in the add-on folder
+	// The calling thread runs an add-on event (counted only while reloading is enabled)
+	[[ nodiscard ]] bool isInAddonEvent ();
+
+	// Starts tracking live objects; removes copies a previous run left in the add-on folder
 	void startAddonReload ( const std::filesystem::path& addonFolder );
 	void stopAddonReload ();
 
@@ -48,4 +52,20 @@ namespace reshade::ultra
 
 	// Reloads every watched add-on at the next present, changed or not (the test application's repeated reloads)
 	void requestAddonReload ();
+#else
+	constexpr bool	isAddonReloadEnabled = false;
+
+	class AddonEventGuard
+	{
+	public:
+		AddonEventGuard () {}
+	};
+
+	inline void startAddonReload ( const std::filesystem::path& ) {}
+	inline void stopAddonReload () {}
+	[[ nodiscard ]] inline std::filesystem::path addonLoadPath ( const std::filesystem::path& file ) { return file; }
+	inline void watchAddon ( HMODULE, const std::filesystem::path& ) {}
+	inline void pollAddonReload () {}
+	inline void requestAddonReload () {}
+#endif
 }

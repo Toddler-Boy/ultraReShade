@@ -28,6 +28,13 @@ namespace reshade::ultra
 	[[ nodiscard ]] bool watchFile ( const std::filesystem::path& file, FileChangedCallback callback );
 	void unwatchFile ( const std::filesystem::path& file, FileChangedCallback callback );
 
+	// The folder's files whose name matches pattern (* and ?)
+	[[ nodiscard ]] bool watchFolder ( const std::filesystem::path& folder, const wchar_t* pattern, FileChangedCallback callback );
+	void unwatchFolder ( const std::filesystem::path& folder, const wchar_t* pattern, FileChangedCallback callback );
+
+	// Someone has the file open for writing (a missing file is not)
+	[[ nodiscard ]] bool isFileBeingWritten ( const std::filesystem::path& file );
+
 	// An add-on that unregisters loses its watches and the changes still waiting for it
 	void forgetFileWatches ( HMODULE module );
 

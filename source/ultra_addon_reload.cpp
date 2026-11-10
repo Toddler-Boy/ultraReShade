@@ -20,8 +20,8 @@
 
 #include "addon_manager.hpp"
 #include "dll_log.hpp"
-#include "ini_file.hpp"
 #include "ultra_addon_reload.hpp"
+#include "ultra_effect_reload.hpp"
 
 extern HMODULE g_module_handle;
 extern std::filesystem::path get_module_path ( HMODULE module );
@@ -482,14 +482,16 @@ reshade::ultra::AddonEventGuard::~AddonEventGuard ()
 }
 //-----------------------------------------------------------------------------
 
+bool reshade::ultra::isInAddonEvent ()
+{
+	return eventDepth != 0;
+}
+//-----------------------------------------------------------------------------
+
 void reshade::ultra::startAddonReload ( const std::filesystem::path& addonFolder )
 {
-	isAddonReloadEnabled = global_config ().get ( "ADDON", "ReloadOnChange" );
-
-	if ( ! isAddonReloadEnabled )
-		return;
-
-	log::message ( log::level::info, "Add-ons reload when their file changes." );
+	isAddonReloadEnabled = true;
+	log::message ( log::level::info, "Add-ons reload when their file changes, effects when theirs do." );
 
 	// Copies of a previous run are no longer loaded; copies a running game still holds stay
 	std::error_code	error;
@@ -508,6 +510,7 @@ void reshade::ultra::stopAddonReload ()
 		return;
 
 	trackObjects ( false );
+	stopEffectReload ();
 
 	for ( const auto& addon : watched )
 	{

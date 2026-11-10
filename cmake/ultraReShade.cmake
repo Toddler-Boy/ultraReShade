@@ -3,6 +3,9 @@
 
 set(ULTRA_DIR ${CMAKE_BINARY_DIR}/ultra)
 
+# The development build, as ultraGame's ULTRAGAME_DEVELOPMENT: add-ons and effects reload when their files change
+option(ULTRARESHADE_DEVELOPMENT "Development build: add-ons and effects reload while the game runs" OFF)
+
 # Release: no C++ exceptions, no RTTI, no buffer checks in every project
 string(REPLACE "/EHsc" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
 string(REPLACE "/GR" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
@@ -137,6 +140,9 @@ function(ultra_finish_targets)
 
   get_target_property(sources ReShade SOURCES)
   list(REMOVE_ITEM sources res/resource.rc res/version.h res/version.rc2)
+  if(NOT ULTRARESHADE_DEVELOPMENT)
+    list(REMOVE_ITEM sources source/ultra_addon_reload.cpp source/ultra_effect_reload.cpp)
+  endif()
   set_property(TARGET ReShade PROPERTY SOURCES ${sources})
   target_sources(ReShade PRIVATE ${ULTRA_DIR}/res/resource.rc ${ULTRA_DIR}/res/version.h)
   target_include_directories(ReShade BEFORE PRIVATE ${ULTRA_DIR}/res ${ULTRA_DIR}/$<CONFIG>)
@@ -165,7 +171,7 @@ function(ultra_finish_targets)
   set_property(SOURCE source/opengl/opengl.cpp source/opengl/opengl_hooks_ffp.cpp APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Release>:/Zc:threadSafeInit->)
 
   # Upstream gates it on cl, clang-cl reports itself as Clang
-  target_compile_definitions(ReShade PRIVATE RESHADE_LOCALIZATION)
+  target_compile_definitions(ReShade PRIVATE RESHADE_LOCALIZATION ULTRARESHADE_DEVELOPMENT=$<BOOL:${ULTRARESHADE_DEVELOPMENT}>)
   target_compile_options(ReShade PRIVATE /W3)
   target_link_options(ReShade PRIVATE /SUBSYSTEM:WINDOWS /DELAYLOAD:D3DCompiler_47.dll /DELAYLOAD:WinMM.dll /DELAYLOAD:XInput9_1_0.dll $<$<CONFIG:Release>:/MANIFEST:NO>)
   target_link_libraries(ReShade PRIVATE delayimp.lib)

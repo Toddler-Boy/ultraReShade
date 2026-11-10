@@ -86,6 +86,8 @@ set(RESHADE_SOURCE
   source/ultra_config.cpp
   source/ultra_config.hpp
   source/ultra_constant_buffers.cpp
+  source/ultra_effect_reload.cpp
+  source/ultra_effect_reload.hpp
   source/ultra_file_watch.cpp
   source/ultra_file_watch.hpp
   source/ultra_log.cpp

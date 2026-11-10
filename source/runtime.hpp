@@ -277,6 +277,13 @@ namespace reshade
 
 #if RESHADE_ADDON
 		bool _is_in_present_call = false;
+
+		// Effects whose files changed recompile (development builds); each present, before update_effects
+#if ULTRARESHADE_DEVELOPMENT
+		void ultra_reload_changed_effects();
+#else
+		void ultra_reload_changed_effects() {}
+#endif
 #endif
 
 		#pragma region Status

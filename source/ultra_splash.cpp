@@ -3,10 +3,29 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
+#include <atomic>
+
+#include <reshade_ultra.hpp>
+
+//-----------------------------------------------------------------------------
+
+namespace
+{
+	// An add-on's alert (reshade::set_logo_alert): the logo shows red and blinking while it is on, and never plays after it
+	std::atomic<bool>	logoAlert { false };
+	std::atomic<bool>	logoAlertEnded { false };
+}
+
+void ReShadeSetLogoAlert ( bool on )
+{
+	if ( logoAlert.exchange ( on ) && ! on )
+		logoAlertEnded = true;
+}
+//-----------------------------------------------------------------------------
+
 #if RESHADE_GUI
 
 #include <algorithm>
-#include <atomic>
 #include <chrono>
 #include <cmath>
 
@@ -29,6 +48,12 @@ namespace
 	constexpr float				logoHeight = 0.03f;
 	constexpr unsigned char		logoTint[ 3 ] = { 0xff, 0x14, 0x93 };
 	constexpr int				logoStrips = 48;
+
+	// The alert: one blink per period, shown for its first share, each edge fading over alertFade seconds
+	constexpr unsigned char		alertTint[ 3 ] = { 0xff, 0x26, 0x26 };
+	constexpr float				alertPeriod = 1.0f;
+	constexpr float				alertShown = 0.6f;
+	constexpr float				alertFade = 0.08f;
 
 	// Top-left corner of the ring, as shares of the screen width and height; the logo sits to its right, both centred
 	// on one line, so the ring can run while the logo plays
@@ -57,9 +82,12 @@ namespace
 
 	// The logo plays once per process; a runtime destroyed or gone quiet while showing it hands the rest to the next one
 	std::atomic<bool>								logoDone { false };
+	std::atomic<bool>								logoBroken { false };	// its texture could not be made
 	std::atomic<const reshade::ultra::SplashState*>	logoOwner { nullptr };
 	std::atomic<std::chrono::steady_clock::rep>		logoOwnerSeen { 0 };
 	std::atomic<float>								logoElapsed { 0.0f };
+	std::atomic<float>								alertElapsed { 0.0f };
+	std::atomic<bool>								alertLogged { false };
 
 	[[ nodiscard ]] float smoothstep ( float edge0, float edge1, float x )
 	{
@@ -99,9 +127,14 @@ namespace
 		return now - logoOwnerSeen.load () > std::chrono::duration_cast<std::chrono::steady_clock::duration> ( logoOwnerTimeout ).count ();
 	}
 
+	[[ nodiscard ]] bool isLogoWanted ()
+	{
+		return ! logoBroken && ( logoAlert || ( ! logoDone && ! logoAlertEnded ) );
+	}
+
 	[[ nodiscard ]] bool claimLogo ( const reshade::ultra::SplashState& state )
 	{
-		if ( logoDone )
+		if ( ! isLogoWanted () )
 			return false;
 
 		const auto							now = nowTicks ();
@@ -117,7 +150,7 @@ namespace
 
 	[[ nodiscard ]] bool isLogoPendingFor ( const reshade::ultra::SplashState& state )
 	{
-		if ( logoDone )
+		if ( ! isLogoWanted () )
 			return false;
 
 		const auto	owner = logoOwner.load ();
@@ -222,6 +255,20 @@ namespace
 		drawList->PopTexture ();
 	}
 
+	void drawAlert ( const reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float time )
+	{
+		const auto	height = frame.height * logoHeight;
+		const auto	width = height * state.logoWidth / state.logoHeight;
+		const auto	left = frame.width * anchorX + frame.height * ( ringDiameter + ringGap );
+		const auto	top = frame.height * anchorY;
+		const auto	phase = std::fmod ( time, alertPeriod );
+		const auto	shown = alertPeriod * alertShown;
+		const auto	alpha = smoothstep ( 0.0f, alertFade, phase ) * ( 1.0f - smoothstep ( shown - alertFade, shown, phase ) );
+
+		frame.drawList->AddImage ( ImTextureRef ( state.logoView.handle ), ImVec2 ( left, top ), ImVec2 ( left + width, top + height ), ImVec2 ( 0.0f, 0.0f ), ImVec2 ( 1.0f, 1.0f ),
+								   IM_COL32 ( alertTint[ 0 ], alertTint[ 1 ], alertTint[ 2 ], static_cast<int> ( alpha * 255.0f + 0.5f ) ) );
+	}
+
 	// The arc turns all the time, so work shows even while one long effect compiles; its length shows the progress
 	void drawRing ( ImDrawList* drawList, ImVec2 center, float screenHeight, float progress, float turn, float alpha )
 	{
@@ -242,7 +289,17 @@ namespace
 
 		if ( ! loadLogo ( state, frame.device ) )
 		{
-			logoDone = true;
+			logoBroken = true;
+			return;
+		}
+
+		if ( logoAlert )
+		{
+			if ( ! alertLogged.exchange ( true ) )
+				reshade::log::message ( reshade::log::level::info, "Start logo: an add-on's alert, red and blinking until the add-on ends it." );
+			const auto	time = alertElapsed.load ();
+			drawAlert ( state, frame, time );
+			alertElapsed = time + step;
 			return;
 		}
 

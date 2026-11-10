@@ -17,7 +17,7 @@ namespace reshade::api
 //-----------------------------------------------------------------------------
 
 // Top-left corner: a progress ring while effects compile and the overlay is closed, and to its right the start logo
-// once per game start.
+// once per game start, or red and blinking while an add-on's alert is on (ReShadeSetLogoAlert).
 namespace reshade::ultra
 {
 	struct SplashState

@@ -227,6 +227,7 @@ HRESULT STDMETHODCALLTYPE D3D11DeviceContext::Map(ID3D11Resource *pResource, UIN
 #if RESHADE_ADDON >= 2
 	if (SUCCEEDED(hr) && (
 		reshade::has_addon_event<reshade::addon_event::map_buffer_region>() ||
+		reshade::has_addon_event<reshade::addon_event::ultra_map_buffer_region_command>() ||
 		reshade::has_addon_event<reshade::addon_event::map_texture_region>()))
 	{
 		assert(pResource != nullptr);
@@ -245,6 +246,13 @@ HRESULT STDMETHODCALLTYPE D3D11DeviceContext::Map(ID3D11Resource *pResource, UIN
 				UINT64_MAX,
 				reshade::d3d11::convert_access_flags(MapType),
 				// See https://docs.microsoft.com/windows/win32/api/d3d11/nf-d3d11-id3d11devicecontext-map#null-pointers-for-pmappedresource
+				pMappedResource != nullptr ? &pMappedResource->pData : nullptr);
+			reshade::invoke_addon_event<reshade::addon_event::ultra_map_buffer_region_command>(
+				this,
+				to_handle(pResource),
+				0,
+				UINT64_MAX,
+				reshade::d3d11::convert_access_flags(MapType),
 				pMappedResource != nullptr ? &pMappedResource->pData : nullptr);
 		}
 		else
@@ -266,6 +274,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::Unmap(ID3D11Resource *pResource, U
 {
 #if RESHADE_ADDON >= 2
 	if (reshade::has_addon_event<reshade::addon_event::unmap_buffer_region>() ||
+		reshade::has_addon_event<reshade::addon_event::ultra_unmap_buffer_region_command>() ||
 		reshade::has_addon_event<reshade::addon_event::unmap_texture_region>())
 	{
 		assert(pResource != nullptr);
@@ -278,6 +287,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::Unmap(ID3D11Resource *pResource, U
 			assert(Subresource == 0);
 
 			reshade::invoke_addon_event<reshade::addon_event::unmap_buffer_region>(_device, to_handle(pResource));
+			reshade::invoke_addon_event<reshade::addon_event::ultra_unmap_buffer_region_command>(this, to_handle(pResource));
 		}
 		else
 		{
