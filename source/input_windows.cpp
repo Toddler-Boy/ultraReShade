@@ -45,6 +45,16 @@ static_assert(
 	reshade::input::key_left_alt == VK_LMENU &&
 	reshade::input::key_right_alt == VK_RMENU);
 
+// Key state bits: 0x80 down, 0x10 pressed since the last frame, 0x08 changed since the last frame, 0x04 pressed while keyboard input was blocked
+static void set_key_down(uint8_t &state)
+{
+	state = 0x88 | (state & 0x10) | ((state & 0x80) == 0 ? 0x10 : 0);
+}
+static void set_key_up(uint8_t &state, bool up_alone_is_press = false)
+{
+	state = 0x08 | (state & 0x10) | ((up_alone_is_press && (state & 0x80) == 0) ? 0x10 : 0);
+}
+
 bool reshade::input::is_keyboard_layout_german()
 {
 	return LOBYTE(GetKeyboardLayout(0)) == LANG_GERMAN;
@@ -185,27 +195,27 @@ bool reshade::input::handle_window_message(const void *message_data)
 				break; // Input is already handled (since legacy mouse messages are enabled), so nothing to do here
 
 			if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_DOWN)
-				input->_keys[VK_LBUTTON] = 0x88;
+				set_key_down(input->_keys[VK_LBUTTON]);
 			else if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_LEFT_BUTTON_UP)
-				input->_keys[VK_LBUTTON] = 0x08;
+				set_key_up(input->_keys[VK_LBUTTON]);
 			if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_DOWN)
-				input->_keys[VK_RBUTTON] = 0x88;
+				set_key_down(input->_keys[VK_RBUTTON]);
 			else if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_RIGHT_BUTTON_UP)
-				input->_keys[VK_RBUTTON] = 0x08;
+				set_key_up(input->_keys[VK_RBUTTON]);
 			if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_DOWN)
-				input->_keys[VK_MBUTTON] = 0x88;
+				set_key_down(input->_keys[VK_MBUTTON]);
 			else if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_MIDDLE_BUTTON_UP)
-				input->_keys[VK_MBUTTON] = 0x08;
+				set_key_up(input->_keys[VK_MBUTTON]);
 
 			if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_BUTTON_4_DOWN)
-				input->_keys[VK_XBUTTON1] = 0x88;
+				set_key_down(input->_keys[VK_XBUTTON1]);
 			else if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_BUTTON_4_UP)
-				input->_keys[VK_XBUTTON1] = 0x08;
+				set_key_up(input->_keys[VK_XBUTTON1]);
 
 			if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_BUTTON_5_DOWN)
-				input->_keys[VK_XBUTTON2] = 0x88;
+				set_key_down(input->_keys[VK_XBUTTON2]);
 			else if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_BUTTON_5_UP)
-				input->_keys[VK_XBUTTON2] = 0x08;
+				set_key_up(input->_keys[VK_XBUTTON2]);
 
 			if (raw_data.data.mouse.usButtonFlags & RI_MOUSE_WHEEL)
 				input->_mouse_wheel_delta += static_cast<short>(raw_data.data.mouse.usButtonData) / WHEEL_DELTA;
@@ -224,8 +234,13 @@ bool reshade::input::handle_window_message(const void *message_data)
 
 			// Filter out prefix messages without a key code
 			if (raw_data.data.keyboard.VKey < 0xFF)
-				input->_keys[raw_data.data.keyboard.VKey] = (raw_data.data.keyboard.Flags & RI_KEY_BREAK) == 0 ? 0x88 : 0x08,
+			{
+				if ((raw_data.data.keyboard.Flags & RI_KEY_BREAK) == 0)
+					set_key_down(input->_keys[raw_data.data.keyboard.VKey]);
+				else
+					set_key_up(input->_keys[raw_data.data.keyboard.VKey], raw_data.data.keyboard.VKey == VK_SNAPSHOT);
 				input->_keys_time[raw_data.data.keyboard.VKey] = details.time;
+			}
 
 			// No 'WM_CHAR' messages are sent if legacy keyboard messages are disabled, so need to generate text input manually here
 			// Cannot use the ToUnicode function always as it seems to reset dead key state and thus calling it can break subsequent application input, should be fine here though since the application is already explicitly using raw input
@@ -241,7 +256,7 @@ bool reshade::input::handle_window_message(const void *message_data)
 	case WM_KEYDOWN:
 	case WM_SYSKEYDOWN:
 		assert(details.wParam > 0 && details.wParam < std::size(input->_keys));
-		input->_keys[details.wParam] = 0x88;
+		set_key_down(input->_keys[details.wParam]);
 		input->_keys_time[details.wParam] = details.time;
 		if (input->is_blocking_keyboard_input())
 			input->_keys[details.wParam] |= 0x04;
@@ -252,40 +267,40 @@ bool reshade::input::handle_window_message(const void *message_data)
 		// Do not block key up messages if the key down one was not blocked previously (so key does not get stuck for the application)
 		if (input->is_blocking_keyboard_input() && (input->_keys[details.wParam] & 0x04) == 0)
 			is_keyboard_message = false;
-		input->_keys[details.wParam] = 0x08;
+		set_key_up(input->_keys[details.wParam], details.wParam == VK_SNAPSHOT); // Print Screen sends no key down message
 		input->_keys_time[details.wParam] = details.time;
 		break;
 	case WM_LBUTTONDOWN:
 	case WM_LBUTTONDBLCLK: // Double clicking generates this sequence: WM_LBUTTONDOWN -> WM_LBUTTONUP -> WM_LBUTTONDBLCLK -> WM_LBUTTONUP, so handle it like a normal down
-		input->_keys[VK_LBUTTON] = 0x88;
+		set_key_down(input->_keys[VK_LBUTTON]);
 		break;
 	case WM_LBUTTONUP:
-		input->_keys[VK_LBUTTON] = 0x08;
+		set_key_up(input->_keys[VK_LBUTTON]);
 		break;
 	case WM_RBUTTONDOWN:
 	case WM_RBUTTONDBLCLK:
-		input->_keys[VK_RBUTTON] = 0x88;
+		set_key_down(input->_keys[VK_RBUTTON]);
 		break;
 	case WM_RBUTTONUP:
-		input->_keys[VK_RBUTTON] = 0x08;
+		set_key_up(input->_keys[VK_RBUTTON]);
 		break;
 	case WM_MBUTTONDOWN:
 	case WM_MBUTTONDBLCLK:
-		input->_keys[VK_MBUTTON] = 0x88;
+		set_key_down(input->_keys[VK_MBUTTON]);
 		break;
 	case WM_MBUTTONUP:
-		input->_keys[VK_MBUTTON] = 0x08;
+		set_key_up(input->_keys[VK_MBUTTON]);
 		break;
 	case WM_MOUSEWHEEL:
 		input->_mouse_wheel_delta += GET_WHEEL_DELTA_WPARAM(details.wParam) / WHEEL_DELTA;
 		break;
 	case WM_XBUTTONDOWN:
 		assert(HIWORD(details.wParam) == XBUTTON1 || HIWORD(details.wParam) == XBUTTON2);
-		input->_keys[VK_XBUTTON1 + (HIWORD(details.wParam) - XBUTTON1)] = 0x88;
+		set_key_down(input->_keys[VK_XBUTTON1 + (HIWORD(details.wParam) - XBUTTON1)]);
 		break;
 	case WM_XBUTTONUP:
 		assert(HIWORD(details.wParam) == XBUTTON1 || HIWORD(details.wParam) == XBUTTON2);
-		input->_keys[VK_XBUTTON1 + (HIWORD(details.wParam) - XBUTTON1)] = 0x08;
+		set_key_up(input->_keys[VK_XBUTTON1 + (HIWORD(details.wParam) - XBUTTON1)]);
 		break;
 	}
 
@@ -311,7 +326,7 @@ void reshade::input::next_frame()
 	std::copy_n(_keys, 256, _last_keys);
 
 	for (uint8_t &state : _keys)
-		state &= ~0x08;
+		state &= ~0x18;
 
 	// Reset any pressed down key states (apart from mouse buttons) that have not been updated for more than 5 seconds
 	// Do not check mouse buttons here, since 'GetAsyncKeyState' always returns the state of the physical mouse buttons, not the logical ones in case they were remapped
@@ -340,7 +355,7 @@ void reshade::input::next_frame()
 	// Update print screen state (there is no key down message, but the key up one is received via the message queue)
 	if ((_keys[VK_SNAPSHOT] & 0x80) == 0 &&
 		(GetAsyncKeyState_trampoline(VK_SNAPSHOT) & 0x8000) != 0)
-		(_keys[VK_SNAPSHOT] = 0x88),
+		(_keys[VK_SNAPSHOT] = 0x98),
 		(_keys_time[VK_SNAPSHOT] = time);
 
 	// Run through all forms of input blocking for all windows and establish whether any of them are blocking input

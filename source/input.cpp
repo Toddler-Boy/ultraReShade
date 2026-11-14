@@ -19,7 +19,7 @@ bool reshade::input::is_key_down(unsigned int keycode) const
 bool reshade::input::is_key_pressed(unsigned int keycode) const
 {
 	assert(keycode < std::size(_keys));
-	return keycode > 0 && keycode < std::size(_keys) && (_keys[keycode] & 0x88) == 0x88 && !is_key_repeated(keycode);
+	return keycode > 0 && keycode < std::size(_keys) && (_keys[keycode] & 0x10) == 0x10;
 }
 bool reshade::input::is_key_pressed(unsigned int keycode, bool ctrl, bool shift, bool alt, bool force_modifiers) const
 {
