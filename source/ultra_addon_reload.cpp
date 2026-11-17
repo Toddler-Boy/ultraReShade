@@ -9,6 +9,7 @@
 #include <atomic>
 #include <chrono>
 #include <deque>
+#include <iterator>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -381,42 +382,45 @@ namespace
 		return module;
 	}
 
-	void reloadAddon ( WatchedAddon& addon, const LiveObjects& objects )
+	// False: an add-on holding something it can't let go of said so, and stays as it is
+	[[ nodiscard ]] bool unloadAddon ( WatchedAddon& addon, const LiveObjects& objects )
 	{
-		const auto	start = std::chrono::steady_clock::now ();
+		if ( addon.module == nullptr )
+			return true;
 
-		if ( addon.module != nullptr )
+		const auto	canReload = reinterpret_cast<bool ( * ) ()> ( GetProcAddress ( addon.module, "AddonCanReload" ) );
+
+		if ( canReload != nullptr && ! canReload () )
 		{
-			// An add-on holding something it can't let go of says so, and stays
-			const auto	canReload = reinterpret_cast<bool ( * ) ()> ( GetProcAddress ( addon.module, "AddonCanReload" ) );
-
-			if ( canReload != nullptr && ! canReload () )
-			{
-				reshade::log::message ( reshade::log::level::warning, "The add-on in '%s' can't reload now; it stays as it is.", addon.file.u8string ().c_str () );
-				addon.loadedTime = writeTime ( addon.file );
-				return;
-			}
-
-			if ( const auto info = registeredAddon ( addon.module ); info != nullptr )
-			{
-				reshade::log::message ( reshade::log::level::info, "Reloading add-on \"%s\" ...", info->name.c_str () );
-				replayDestruction ( info->event_callbacks, objects );
-			}
-
-			if ( const auto uninit = reinterpret_cast<void ( * ) ( HMODULE, HMODULE )> ( GetProcAddress ( addon.module, "AddonUninit" ) ); uninit != nullptr )
-				uninit ( addon.module, g_module_handle );
-
-			const auto	oldModule = addon.module;
-			addon.module = nullptr;
-			FreeLibrary ( oldModule );
-			forgetAddon ( oldModule );
-
-			if ( GetModuleHandleW ( addon.loadedCopy.c_str () ) != nullptr )
-				reshade::log::message ( reshade::log::level::error, "The old add-on in '%s' is still loaded: something else holds it.", addon.loadedCopy.u8string ().c_str () );
-			else
-				DeleteFileW ( addon.loadedCopy.c_str () );
+			reshade::log::message ( reshade::log::level::warning, "The add-on in '%s' can't reload now; it stays as it is.", addon.file.u8string ().c_str () );
+			addon.loadedTime = writeTime ( addon.file );
+			return false;
 		}
 
+		if ( const auto info = registeredAddon ( addon.module ); info != nullptr )
+		{
+			reshade::log::message ( reshade::log::level::info, "Reloading add-on \"%s\" ...", info->name.c_str () );
+			replayDestruction ( info->event_callbacks, objects );
+		}
+
+		if ( const auto uninit = reinterpret_cast<void ( * ) ( HMODULE, HMODULE )> ( GetProcAddress ( addon.module, "AddonUninit" ) ); uninit != nullptr )
+			uninit ( addon.module, g_module_handle );
+
+		const auto	oldModule = addon.module;
+		addon.module = nullptr;
+		FreeLibrary ( oldModule );
+		forgetAddon ( oldModule );
+
+		if ( GetModuleHandleW ( addon.loadedCopy.c_str () ) != nullptr )
+			reshade::log::message ( reshade::log::level::error, "The old add-on in '%s' is still loaded: something else holds it.", addon.loadedCopy.u8string ().c_str () );
+		else
+			DeleteFileW ( addon.loadedCopy.c_str () );
+
+		return true;
+	}
+
+	void loadAgain ( WatchedAddon& addon, const LiveObjects& objects, std::chrono::steady_clock::time_point start )
+	{
 		addon.module = loadAddon ( addon );
 
 		if ( addon.module == nullptr )
@@ -465,9 +469,20 @@ namespace
 			}
 
 			++reloadCount;
+			const auto	start = std::chrono::steady_clock::now ();
 
-			for ( const auto index : due )
-				reloadAddon ( watched[ index ], objects );
+			// Out from the last loaded, in from the first: an add-on may use those loaded before it
+			auto	out = due.rbegin ();
+			while ( out != due.rend () && unloadAddon ( watched[ *out ], objects ) )
+				++out;
+
+			// Those before one that stays stay too, and try again at the next check
+			if ( out != due.rend () )
+				for ( auto before = std::next ( out ); before != due.rend (); ++before )
+					watched[ *before ].isChanged = true;
+
+			for ( auto in = out.base (); in != due.end (); ++in )
+				loadAgain ( watched[ *in ], objects, start );
 		} );
 
 		logProcessUse ();
@@ -723,8 +738,23 @@ void reshade::ultra::pollAddonReload ()
 	if ( hasChecked )
 		lastWrittenCheck = now;
 
-	if ( ! due.empty () )
-		reloadAddons ( due );
+	if ( due.empty () )
+		return;
+
+	// The add-ons loaded after one reload with it, once their files are written too
+	std::vector<size_t>	batch;
+
+	for ( auto i = due.front (); i < watched.size (); ++i )
+		batch.push_back ( i );
+
+	if ( std::ranges::any_of ( batch, [] ( size_t i ) { return ! isWritten ( watched[ i ].file ); } ) )
+	{
+		for ( const auto i : due )
+			watched[ i ].isChanged = true;
+		return;
+	}
+
+	reloadAddons ( batch );
 }
 //-----------------------------------------------------------------------------
 

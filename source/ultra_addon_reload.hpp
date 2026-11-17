@@ -13,7 +13,8 @@
 
 // Reloading add-ons while the game runs, development builds only (ULTRARESHADE_DEVELOPMENT): add-ons load from a copy
 // in the add-on folder, so a build can overwrite their file. When the file changes, the old add-on sees every live object
-// destroyed, unloads, the new copy loads and sees them all created again
+// destroyed, unloads, the new copy loads and sees them all created again. The add-ons loaded after it reload with it (they
+// may use it): out before it, in after it
 namespace reshade::ultra
 {
 #if ULTRARESHADE_DEVELOPMENT
