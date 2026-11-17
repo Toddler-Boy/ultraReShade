@@ -6,6 +6,7 @@
 #pragma once
 
 #include "reshade.hpp"
+#include "reshade_ultra_json.hpp"
 
 // ultraReShade's additions to the add-on API: functions an add-on calls (include after reshade.hpp, or instead of it)
 

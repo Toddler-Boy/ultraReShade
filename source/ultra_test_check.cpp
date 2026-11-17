@@ -28,6 +28,7 @@
 #include "runtime.hpp"
 #include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
+#include "ultra_test_json.hpp"
 #include "ultra_test_run.hpp"
 
 extern std::filesystem::path g_reshade_base_path;
@@ -472,6 +473,9 @@ namespace
 
 		files.presentThread = GetCurrentThreadId ();
 
+		if ( reshade::ultra::isJsonTestRequested () )
+			reshade::ultra::stepJsonTests ( runtime->get_hwnd () );
+
 		if ( ! files.paths.empty () && ! files.isListening && ! files.isStopped )
 			watchFiles ( true );
 		else if ( files.isListening && files.unwatchAt.has_value () && frameIndex () >= *files.unwatchAt )
@@ -663,6 +667,7 @@ int reshade::ultra::TestCheck::exitCode ( int loopResult ) const
 	if ( captureFrame.has_value () && ! state.isWritten )
 		return 3;
 
+	reshade::ultra::finishJsonTests ();
 	return logHasErrors () ? 4 : EXIT_SUCCESS;
 }
 //-----------------------------------------------------------------------------

@@ -25,6 +25,7 @@
 #include "addon_manager.hpp"
 #include "dll_log.hpp"
 #include "ultra_file_watch.hpp"
+#include "ultra_json.hpp"
 
 extern std::filesystem::path g_reshade_base_path;
 
@@ -928,6 +929,8 @@ bool reshade::ultra::isFileBeingWritten ( const std::filesystem::path& file )
 
 void reshade::ultra::forgetFileWatches ( HMODULE module )
 {
+	forgetJsonWatches ( module );
+
 	const std::scoped_lock	guard ( lock );
 	std::erase_if ( watches, [ module ] ( const Watch& watch ) { return watch.owner == module && watch.callback == nullptr; } );
 	std::erase_if ( ready, [ module ] ( const Change& change ) { return change.owner == module && change.callback == nullptr; } );
@@ -978,6 +981,7 @@ void reshade::ultra::deliverFileChanges ()
 void reshade::ultra::stopFileWatch ()
 {
 	HANDLE	running = nullptr;
+	stopJsonWatch ();
 	{
 		const std::scoped_lock	guard ( lock );
 		watches.clear ();

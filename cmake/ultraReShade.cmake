@@ -133,6 +133,8 @@ function(ultra_finish_targets)
     set_source_files_properties(source/ultra_dll_entry.cpp PROPERTIES COMPILE_OPTIONS -mno-avx)
     target_link_options(ReShade PRIVATE /ENTRY:ultraDllEntry)
   endif()
+  # Json numbers round-trip exactly and refuse infinity and NaN, which upstream's /fp:fast assumes away
+  set_source_files_properties(source/ultra_json.cpp source/ultra_test_json.cpp PROPERTIES COMPILE_OPTIONS /fp:precise)
   # Third-party headers: their warnings are not ours to fix
   foreach(target D3D12On7 fpng glad ImGui jxl MinHook OpenVR OpenXR SPIRV stb utfcpp VMA)
     set_property(TARGET ${target} PROPERTY SYSTEM TRUE)
@@ -196,7 +198,7 @@ function(ultra_add_test_app)
   target_sources(ReShadeTest PRIVATE ${sources} source/dll_main_test_app.cpp source/ultra_test_scene.cpp source/ultra_test_scene.hpp
     source/ultra_test_model.cpp source/ultra_test_model.hpp source/ultra_test_check.cpp source/ultra_test_check.hpp source/ultra_test_run.cpp source/ultra_test_run.hpp
     source/ultra_test_display.cpp source/ultra_test_display.hpp
-    source/ultra_test_environment.cpp source/ultra_test_environment.hpp)
+    source/ultra_test_environment.cpp source/ultra_test_environment.hpp source/ultra_test_json.cpp source/ultra_test_json.hpp)
 
   foreach(property INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_LIBRARIES LINK_OPTIONS CXX_STANDARD CXX_STANDARD_REQUIRED)
     get_target_property(values ReShade ${property})

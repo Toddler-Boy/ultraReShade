@@ -90,6 +90,9 @@ set(RESHADE_SOURCE
   source/ultra_effect_reload.hpp
   source/ultra_file_watch.cpp
   source/ultra_file_watch.hpp
+  source/ultra_json.cpp
+  source/ultra_json.hpp
+  source/ultra_json_watch.cpp
   source/ultra_log.cpp
   source/ultra_log.hpp
   source/ultra_resource_ids.cpp

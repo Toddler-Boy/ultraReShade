@@ -785,6 +785,7 @@ bool reshade::ultra::printTestUsage ()
 		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"
 		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"
 		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-log-lines  -crash-at <frame>  -handled-faults <n>\n"
+		"Json      -json-tests  (the add-on API's json functions; the run ends when they are done)\n"
 		"\n"
 		"Exit codes: 0 fine, 1 bad command line, 2 ReShade never presented, 3 capture missing, 4 the log has errors.\n";
 
