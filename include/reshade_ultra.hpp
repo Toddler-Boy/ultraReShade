@@ -18,6 +18,7 @@ RESHADE_API_LIBRARY_DECL void ReShadeUnwatchFile ( void* module, const char* pat
 RESHADE_API_LIBRARY_DECL void ReShadeFlushLog ();
 RESHADE_API_LIBRARY_DECL void ReShadeSetLogoAlert ( bool on );
 RESHADE_API_LIBRARY_DECL bool ReShadeRunExclusive ( void* module, void ( *callback ) ( void* context ), void* context );
+RESHADE_API_LIBRARY_DECL bool ReShadeReloadAddon ( void* module );
 
 #endif
 
@@ -97,6 +98,18 @@ namespace reshade
 		static const auto	func = reinterpret_cast<bool ( * ) ( void*, void ( * ) ( void* ), void* )> (
 			GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeRunExclusive" ) );
 		return func != nullptr && func ( internal::get_current_module_handle (), callback, context );
+#endif
+	}
+
+	// This add-on unloads and loads again from its file at the next present, as when its file changed. Development builds of
+	// ultraReShade only: false elsewhere, and on a ReShade without this function
+	inline bool reload_addon ()
+	{
+#if defined(RESHADE_API_LIBRARY)
+		return ReShadeReloadAddon ( nullptr );
+#else
+		static const auto	func = reinterpret_cast<bool ( * ) ( void* )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeReloadAddon" ) );
+		return func != nullptr && func ( internal::get_current_module_handle () );
 #endif
 	}
 

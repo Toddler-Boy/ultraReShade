@@ -21,10 +21,12 @@
 
 #include "addon_manager.hpp"
 #include "dll_log.hpp"
+#include "ini_file.hpp"
 #include "ultra_addon_reload.hpp"
 #include "ultra_effect_reload.hpp"
 
 extern HMODULE g_module_handle;
+extern std::filesystem::path g_reshade_base_path;
 extern std::filesystem::path get_module_path ( HMODULE module );
 
 bool reshade::ultra::isAddonReloadEnabled = false;
@@ -95,16 +97,21 @@ namespace
 	{
 		std::filesystem::path	file;
 		std::filesystem::path	loadedCopy;
+		std::filesystem::path	folder;				// where its copies go: the add-on folder it was found in
 		HMODULE					module = nullptr;
 		FILETIME				loadedTime {};		// file's write time when the copy was made
 		bool					isChanged = false;	// the file watch reported a change since
 	};
 
 	std::vector<WatchedAddon>				watched;			// the presenting thread's, after loading
+	std::filesystem::path					buildFolder;		// [ADDON] AddonBuildPath, set before loading
 	size_t									copyNumber = 0;
 	size_t									reloadCount = 0;
 	std::atomic_bool						isReloadRequested = false;
 	std::chrono::steady_clock::time_point	lastWrittenCheck;
+
+	std::mutex								wantedMutex;
+	std::vector<HMODULE>					wanted;				// add-ons that asked to reload
 
 	using Callbacks = std::vector<std::pair<uint32_t, void*>>;
 
@@ -350,7 +357,7 @@ namespace
 	[[ nodiscard ]] HMODULE loadAddon ( WatchedAddon& addon )
 	{
 		addon.loadedTime = writeTime ( addon.file );
-		addon.loadedCopy = reshade::ultra::addonLoadPath ( addon.file );
+		addon.loadedCopy = reshade::ultra::addonLoadPath ( addon.file, addon.folder );
 
 		const auto	module = LoadLibraryExW ( addon.loadedCopy.c_str (), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS );
 
@@ -568,6 +575,12 @@ void reshade::ultra::startAddonReload ( const std::filesystem::path& addonFolder
 		if ( entry.path ().extension ().native ().starts_with ( copyMarker ) )
 			DeleteFileW ( entry.path ().c_str () );
 
+	if ( std::filesystem::path build; global_config ().get ( "ADDON", "AddonBuildPath", build ) && ! build.empty () )
+	{
+		buildFolder = g_reshade_base_path / build;
+		log::message ( log::level::info, "Add-ons with a file of their name in '%s' load from that file.", buildFolder.u8string ().c_str () );
+	}
+
 	trackObjects ( true );
 }
 //-----------------------------------------------------------------------------
@@ -594,14 +607,28 @@ void reshade::ultra::stopAddonReload ()
 }
 //-----------------------------------------------------------------------------
 
-// name.addon64 loads as name.loaded<n> in the same folder: the add-on still finds the files next to it, and files it
+std::filesystem::path reshade::ultra::addonSource ( const std::filesystem::path& found )
+{
+	if ( buildFolder.empty () )
+		return found;
+
+	auto	built = buildFolder / found.filename ();
+	if ( std::error_code error; ! std::filesystem::is_regular_file ( built, error ) )
+		return found;
+
+	log::message ( log::level::info, "Add-on '%s' loads from '%s'.", found.u8string ().c_str (), built.u8string ().c_str () );
+	return built;
+}
+//-----------------------------------------------------------------------------
+
+// name.addon64 loads as name.loaded<n> in the add-on folder: the add-on still finds the files next to it, and files it
 // names after itself keep their name (name.log)
-std::filesystem::path reshade::ultra::addonLoadPath ( const std::filesystem::path& file )
+std::filesystem::path reshade::ultra::addonLoadPath ( const std::filesystem::path& file, const std::filesystem::path& folder )
 {
 	if ( ! isAddonReloadEnabled )
 		return file;
 
-	auto	copy = file;
+	auto	copy = folder / file.filename ();
 	copy.replace_extension ( copyMarker + std::to_wstring ( ++copyNumber ) );
 
 	if ( ! CopyFileW ( file.c_str (), copy.c_str (), FALSE ) )
@@ -630,7 +657,7 @@ void reshade::ultra::watchAddon ( HMODULE module, const std::filesystem::path& f
 	if ( ! watchFile ( file, onAddonFileChanged ) )
 		log::message ( log::level::error, "Add-on '%s' can't reload: its file is not watched.", file.u8string ().c_str () );
 
-	watched.push_back ( { file, loadedCopy, module, writeTime ( file ) } );
+	watched.push_back ( { file, loadedCopy, loadedCopy.parent_path (), module, writeTime ( file ) } );
 }
 //-----------------------------------------------------------------------------
 
@@ -650,13 +677,24 @@ void reshade::ultra::pollAddonReload ()
 	const auto	isCheckDue = now - lastWrittenCheck >= writtenCheckInterval;
 	auto		hasChecked = false;
 
+	std::vector<HMODULE>	asked;
+	{
+		const std::scoped_lock	lock ( wantedMutex );
+		asked.swap ( wanted );
+	}
+
+	for ( const auto module : asked )
+		if ( std::ranges::none_of ( watched, [ module ] ( const WatchedAddon& addon ) { return addon.module == module; } ) )
+			if ( const auto info = registeredAddon ( module ); info != nullptr )
+				log::message ( log::level::warning, "Add-on \"%s\" asked to reload, but it loaded from its file and can't.", info->name.c_str () );
+
 	std::vector<size_t>	due;
 
 	for ( size_t i = 0; i < watched.size (); ++i )
 	{
 		auto&	addon = watched[ i ];
 
-		if ( isRequested )
+		if ( isRequested || std::ranges::contains ( asked, addon.module ) )
 		{
 			addon.isChanged = false;
 			due.push_back ( i );
@@ -693,6 +731,17 @@ void reshade::ultra::pollAddonReload ()
 void reshade::ultra::requestAddonReload ()
 {
 	isReloadRequested = true;
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::requestAddonReload ( HMODULE owner )
+{
+	if ( ! isAddonReloadEnabled )
+		return false;
+
+	const std::scoped_lock	lock ( wantedMutex );
+	wanted.push_back ( owner );
+	return true;
 }
 //-----------------------------------------------------------------------------
 

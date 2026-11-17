@@ -281,7 +281,8 @@ void reshade::load_addons()
 		log::message(log::level::info, "Loading add-on from '%s' ...", path.u8string().c_str());
 
 		// Use 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR' to temporarily add add-on search path to the list of directories 'LoadLibraryEx' will use to resolve DLL dependencies
-		const HMODULE module = LoadLibraryExW(ultra::addonLoadPath(path).c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+		const std::filesystem::path source = ultra::addonSource(path);
+		const HMODULE module = LoadLibraryExW(ultra::addonLoadPath(source, path.parent_path()).c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 		if (module == nullptr)
 		{
 			const DWORD error_code = GetLastError();
@@ -328,7 +329,7 @@ void reshade::load_addons()
 		if (addon_info *const registered_info = find_addon(module))
 		{
 			registered_info->external = false;
-			ultra::watchAddon(module, path);
+			ultra::watchAddon(module, source);
 		}
 		else
 		{
@@ -583,6 +584,19 @@ bool ReShadeRunExclusive(void *module, void(*callback)(void *context), void *con
 	}
 
 	return reshade::ultra::runExclusive(static_cast<HMODULE>(info->handle), callback, context);
+}
+
+// module null: the add-on is the caller's module
+bool ReShadeReloadAddon(void *module)
+{
+	const reshade::addon_info *const info = reshade::find_addon(module != nullptr ? module : _ReturnAddress());
+	if (info == nullptr)
+	{
+		reshade::log::message(reshade::log::level::error, "reload_addon was called by a module that is not a registered add-on.");
+		return false;
+	}
+
+	return reshade::ultra::requestAddonReload(static_cast<HMODULE>(info->handle));
 }
 
 void ReShadeRegisterEvent(reshade::addon_event ev, void *callback)
