@@ -316,6 +316,41 @@ namespace
 				addon.isChanged = true;
 	}
 
+	//-------------------------------------------------------------------------
+	// The publish marker: a publish writes "publishing" into the build folder first and removes it last. Meanwhile nothing
+	// reloads and no exclusive call runs; its removal has every add-on's file checked, so the set changes as one, whichever
+	// changes the file watch delivered when. Only needed while add-ons and what they load must come from one build
+
+	constexpr wchar_t	publishingMarker[] = L"publishing";
+
+	bool	isPublishing = false;		// the presenting thread's, as the file watch's delivery
+
+	void onPublishingChanged ( const char*, api::file_change change, const char* )
+	{
+		isPublishing = change != api::file_change::deleted;
+		reshade::log::message ( reshade::log::level::info, isPublishing ? "A publish of the add-on build folder started: nothing reloads until it is complete."
+																		: "The publish of the add-on build folder is complete." );
+		if ( ! isPublishing )
+			for ( auto& addon : watched )
+				addon.isChanged = true;
+	}
+
+	void followPublishing ()
+	{
+		const auto	marker = buildFolder / publishingMarker;
+		isPublishing = GetFileAttributesW ( marker.c_str () ) != INVALID_FILE_ATTRIBUTES;
+
+		if ( ! reshade::ultra::watchFile ( marker, onPublishingChanged ) )
+			reshade::log::message ( reshade::log::level::error, "'%s' is not watched: add-ons may reload from a publish that is not complete.", marker.u8string ().c_str () );
+	}
+
+	void stopFollowingPublishing ()
+	{
+		if ( ! buildFolder.empty () )
+			reshade::ultra::unwatchFile ( buildFolder / publishingMarker, onPublishingChanged );
+	}
+	//-------------------------------------------------------------------------
+
 	[[ nodiscard ]] reshade::addon_info* registeredAddon ( HMODULE module )
 	{
 		for ( auto& info : reshade::addon_loaded_info )
@@ -394,6 +429,7 @@ namespace
 		{
 			reshade::log::message ( reshade::log::level::warning, "The add-on in '%s' can't reload now; it stays as it is.", addon.file.u8string ().c_str () );
 			addon.loadedTime = writeTime ( addon.file );
+			reshade::ultra::forgetExclusiveCalls ( addon.module );		// they belong to the set that did not come
 			return false;
 		}
 
@@ -594,6 +630,7 @@ void reshade::ultra::startAddonReload ( const std::filesystem::path& addonFolder
 	{
 		buildFolder = g_reshade_base_path / build;
 		log::message ( log::level::info, "Add-ons with a file of their name in '%s' load from that file.", buildFolder.u8string ().c_str () );
+		followPublishing ();
 	}
 
 	trackObjects ( true );
@@ -607,6 +644,7 @@ void reshade::ultra::stopAddonReload ()
 
 	trackObjects ( false );
 	stopEffectReload ();
+	stopFollowingPublishing ();
 
 	for ( const auto& addon : watched )
 	{
@@ -676,16 +714,15 @@ void reshade::ultra::watchAddon ( HMODULE module, const std::filesystem::path& f
 }
 //-----------------------------------------------------------------------------
 
-// A build is done once the file watch reported a change and nobody writes the file any more
+// A build is done once the file watch reported a change and nobody writes the file any more. The exclusive calls run after
+// the reloads, and wait while an add-on's file changed: the call may belong to the add-on that is about to reload
 void reshade::ultra::pollAddonReload ()
 {
-	if ( ! isAddonReloadEnabled || eventDepth != 0 )
+	if ( ! isAddonReloadEnabled || eventDepth != 0 || isPublishing )
 		return;
-
-	runExclusiveCalls ();
 
 	if ( watched.empty () )
-		return;
+		return runExclusiveCalls ();
 
 	const auto	isRequested = isReloadRequested.exchange ( false );
 	const auto	now = std::chrono::steady_clock::now ();
@@ -738,23 +775,23 @@ void reshade::ultra::pollAddonReload ()
 	if ( hasChecked )
 		lastWrittenCheck = now;
 
-	if ( due.empty () )
-		return;
-
 	// The add-ons loaded after one reload with it, once their files are written too
 	std::vector<size_t>	batch;
 
-	for ( auto i = due.front (); i < watched.size (); ++i )
-		batch.push_back ( i );
+	if ( ! due.empty () )
+		for ( auto i = due.front (); i < watched.size (); ++i )
+			batch.push_back ( i );
 
 	if ( std::ranges::any_of ( batch, [] ( size_t i ) { return ! isWritten ( watched[ i ].file ); } ) )
 	{
 		for ( const auto i : due )
 			watched[ i ].isChanged = true;
-		return;
 	}
+	else if ( ! batch.empty () )
+		reloadAddons ( batch );
 
-	reloadAddons ( batch );
+	if ( std::ranges::none_of ( watched, &WatchedAddon::isChanged ) )
+		runExclusiveCalls ();
 }
 //-----------------------------------------------------------------------------
 
