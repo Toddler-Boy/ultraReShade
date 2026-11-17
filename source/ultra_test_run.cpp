@@ -782,6 +782,7 @@ bool reshade::ultra::printTestUsage ()
 		"Switches  -resize-at <frame>  -buffer-size-at <frame> <w>x<h>  -fullscreen-at <frame>  -windowed-at <frame>\n"
 		"          -random-switches <seed> [fullscreen]  (fullscreen needs -show)\n"
 		"Add-ons   -reload-every <n>  -reload-effects-every <n>  -toggle-technique-at <frame> <file.fx> <technique>  -constants root|cbv|table\n"
+		"          -run-exclusive-at <frame>\n"
 		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"
 		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"
 		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-log-lines  -crash-at <frame>  -handled-faults <n>\n"

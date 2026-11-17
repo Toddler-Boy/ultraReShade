@@ -6,10 +6,12 @@
 #if RESHADE_ADDON
 
 #include "reshade.hpp"
+#include "reshade_ultra.hpp"
 #include "addon_manager.hpp"
 #include "dll_log.hpp"
 #include "ini_file.hpp"
 #include <algorithm> // std::find, std::find_if, std::remove, std::remove_if
+#include <intrin.h>
 #include <Windows.h>
 
 extern void register_addon_depth();
@@ -563,10 +565,24 @@ void ReShadeUnregisterAddon(void *module)
 #endif
 
 	reshade::ultra::forgetFileWatches(static_cast<HMODULE>(module));
+	reshade::ultra::forgetExclusiveCalls(static_cast<HMODULE>(module));
 
 	reshade::log::message(reshade::log::level::info, "Unregistered add-on \"%s\".", info->name.c_str());
 
 	reshade::addon_loaded_info.erase(reshade::addon_loaded_info.begin() + (info - reshade::addon_loaded_info.data()));
+}
+
+// module null: the add-on is the caller's module
+bool ReShadeRunExclusive(void *module, void(*callback)(void *context), void *context)
+{
+	const reshade::addon_info *const info = reshade::find_addon(module != nullptr ? module : _ReturnAddress());
+	if (info == nullptr)
+	{
+		reshade::log::message(reshade::log::level::error, "run_exclusive was called by a module that is not a registered add-on.");
+		return false;
+	}
+
+	return reshade::ultra::runExclusive(static_cast<HMODULE>(info->handle), callback, context);
 }
 
 void ReShadeRegisterEvent(reshade::addon_event ev, void *callback)

@@ -26,11 +26,13 @@
 
 #include "dll_log.hpp"
 #include "runtime.hpp"
+#include "ultra_addon_reload.hpp"
 #include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_json.hpp"
 #include "ultra_test_run.hpp"
 
+extern HMODULE g_module_handle;
 extern std::filesystem::path g_reshade_base_path;
 
 //-----------------------------------------------------------------------------
@@ -314,6 +316,25 @@ namespace
 		reshade::log::message ( reshade::log::level::info, "Test application: %zu file watches %s in frame %zu.", files.paths.size (), isWatching ? "start" : "end", frameIndex () );
 	}
 
+	// -run-exclusive-at <frame>: queued after that frame's effects, runs at the next present
+	struct ExclusiveCallTest
+	{
+		std::optional<size_t>	frame;
+		bool					isAsked = false;
+		bool					isQueued = false;
+		bool					hasRun = false;
+	};
+
+	ExclusiveCallTest	exclusive;
+
+	void onExclusiveCall ( void* )
+	{
+		exclusive.hasRun = true;
+		const auto	isPresentThread = GetCurrentThreadId () == files.presentThread;
+		reshade::log::message ( isPresentThread ? reshade::log::level::info : reshade::log::level::error, "Test application: exclusive call ran in frame %zu on %s thread.", frameIndex (),
+								isPresentThread ? "the presenting" : "another" );
+	}
+
 	void writeToStream ( void* file, void* data, int size )
 	{
 		static_cast<std::ofstream*> ( file )->write ( static_cast<const char*> ( data ), size );
@@ -473,6 +494,15 @@ namespace
 
 		files.presentThread = GetCurrentThreadId ();
 
+		if ( exclusive.frame.has_value () && ! exclusive.isAsked && frameIndex () >= *exclusive.frame )
+		{
+			exclusive.isAsked = true;
+			exclusive.isQueued = reshade::ultra::runExclusive ( g_module_handle, onExclusiveCall, nullptr );
+
+			if ( ! exclusive.isQueued )
+				reshade::log::message ( reshade::log::level::error, "Test application: the exclusive call was refused in frame %zu.", frameIndex () );
+		}
+
 		if ( reshade::ultra::isJsonTestRequested () )
 			reshade::ultra::stepJsonTests ( runtime->get_hwnd () );
 
@@ -533,6 +563,23 @@ reshade::ultra::TestCheck::TestCheck ()
 			}
 
 			ids.path = std::filesystem::absolute ( argv[ ++i ] );
+			continue;
+		}
+
+		if ( _wcsicmp ( argv[ i ], L"-run-exclusive-at" ) == 0 )
+		{
+			wchar_t*	end = nullptr;
+			const auto	frame = i + 1 < argc ? std::wcstoull ( argv[ i + 1 ], &end, 10 ) : 0;
+
+			if ( i + 1 >= argc || end == argv[ i + 1 ] || *end != L'\0' )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: -run-exclusive-at needs a frame number." );
+				isCommandLineValid = false;
+				break;
+			}
+
+			exclusive.frame = static_cast<size_t> ( frame );
+			++i;
 			continue;
 		}
 
@@ -646,7 +693,8 @@ bool reshade::ultra::isReShadeLoaded ()
 
 bool reshade::ultra::TestCheck::needsNumberedFrames () const
 {
-	return captureFrame.has_value () || dump.frame.has_value () || ! ids.path.empty () || ! changes.toggles.empty () || changes.reloadEvery != 0 || files.unwatchAt.has_value ();
+	return captureFrame.has_value () || dump.frame.has_value () || ! ids.path.empty () || ! changes.toggles.empty () || changes.reloadEvery != 0 || files.unwatchAt.has_value ()
+		|| exclusive.frame.has_value ();
 }
 //-----------------------------------------------------------------------------
 
@@ -666,6 +714,9 @@ int reshade::ultra::TestCheck::exitCode ( int loopResult ) const
 
 	if ( captureFrame.has_value () && ! state.isWritten )
 		return 3;
+
+	if ( exclusive.isQueued && ! exclusive.hasRun )
+		reshade::log::message ( reshade::log::level::error, "Test application: the exclusive call queued in frame %zu never ran.", *exclusive.frame );
 
 	reshade::ultra::finishJsonTests ();
 	return logHasErrors () ? 4 : EXIT_SUCCESS;

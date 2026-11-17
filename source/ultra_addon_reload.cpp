@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <deque>
 #include <mutex>
 #include <string>
 #include <unordered_map>
@@ -106,6 +107,20 @@ namespace
 	std::chrono::steady_clock::time_point	lastWrittenCheck;
 
 	using Callbacks = std::vector<std::pair<uint32_t, void*>>;
+
+	struct ExclusiveCall
+	{
+		void ( *callback ) ( void* context ) = nullptr;
+		void*		context = nullptr;
+		HMODULE		owner = nullptr;
+		std::string	caller;				// for the log
+		uint64_t	number = 0;
+	};
+
+	std::mutex					callMutex;
+	std::deque<ExclusiveCall>	calls;
+	uint64_t					callCount = 0;
+	std::atomic_bool			hasCalls = false;
 
 	//-------------------------------------------------------------------------
 
@@ -316,6 +331,7 @@ namespace
 			std::erase ( reshade::addon_event_list[ event ], callback );
 
 		reshade::ultra::forgetFileWatches ( module );
+		reshade::ultra::forgetExclusiveCalls ( module );
 		reshade::addon_loaded_info.erase ( reshade::addon_loaded_info.begin () + ( info - reshade::addon_loaded_info.data () ) );
 	}
 
@@ -406,33 +422,85 @@ namespace
 	}
 
 	// Nothing runs an add-on event meanwhile: other threads wait at their next event. The GPU is idle first, so no
-	// work in flight uses what the old add-on frees
-	void reloadAddons ( const std::vector<size_t>& due )
+	// work in flight uses what work frees
+	template <typename Work>
+	void runExclusively ( const Work& work )
 	{
 		AcquireSRWLockExclusive ( &eventLock );
 		eventDepth += reloadDepth;
 
-		LiveObjects	objects;
+		std::vector<api::command_queue*>	queues;
 		{
 			const std::scoped_lock	lock ( liveMutex );
-			objects = live;
+			queues = live.queues;
 		}
 
-		for ( const auto queue : objects.queues )
+		for ( const auto queue : queues )
 		{
 			queue->flush_immediate_command_list ();
 			queue->wait_idle ();
 		}
 
-		++reloadCount;
-
-		for ( const auto index : due )
-			reloadAddon ( watched[ index ], objects );
+		work ();
 
 		eventDepth -= reloadDepth;
 		ReleaseSRWLockExclusive ( &eventLock );
+	}
+
+	void reloadAddons ( const std::vector<size_t>& due )
+	{
+		runExclusively ( [ &due ]
+		{
+			LiveObjects	objects;
+			{
+				const std::scoped_lock	lock ( liveMutex );
+				objects = live;
+			}
+
+			++reloadCount;
+
+			for ( const auto index : due )
+				reloadAddon ( watched[ index ], objects );
+		} );
 
 		logProcessUse ();
+	}
+
+	// The calls queued before this present, in order; one a callback queues waits for the next present
+	void runExclusiveCalls ()
+	{
+		if ( ! hasCalls )
+			return;
+
+		uint64_t	last = 0;
+		{
+			const std::scoped_lock	lock ( callMutex );
+			last = callCount;
+		}
+
+		runExclusively ( [ last ]
+		{
+			for ( ;; )
+			{
+				ExclusiveCall	call;
+				{
+					const std::scoped_lock	lock ( callMutex );
+
+					if ( calls.empty () || calls.front ().number > last )
+						break;
+
+					call = std::move ( calls.front () );
+					calls.pop_front ();
+					hasCalls = ! calls.empty ();
+				}
+
+				const auto	start = std::chrono::steady_clock::now ();
+				call.callback ( call.context );
+
+				const auto	took = std::chrono::duration_cast<std::chrono::milliseconds> ( std::chrono::steady_clock::now () - start );
+				reshade::log::message ( reshade::log::level::info, "Ran an exclusive call of %s in %lld ms.", call.caller.c_str (), static_cast<long long> ( took.count () ) );
+			}
+		} );
 	}
 
 	template <addon_event ev, typename T>
@@ -519,6 +587,10 @@ void reshade::ultra::stopAddonReload ()
 	}
 
 	watched.clear ();
+
+	const std::scoped_lock	lock ( callMutex );
+	calls.clear ();
+	hasCalls = false;
 }
 //-----------------------------------------------------------------------------
 
@@ -565,7 +637,12 @@ void reshade::ultra::watchAddon ( HMODULE module, const std::filesystem::path& f
 // A build is done once the file watch reported a change and nobody writes the file any more
 void reshade::ultra::pollAddonReload ()
 {
-	if ( ! isAddonReloadEnabled || eventDepth != 0 || watched.empty () )
+	if ( ! isAddonReloadEnabled || eventDepth != 0 )
+		return;
+
+	runExclusiveCalls ();
+
+	if ( watched.empty () )
 		return;
 
 	const auto	isRequested = isReloadRequested.exchange ( false );
@@ -616,6 +693,35 @@ void reshade::ultra::pollAddonReload ()
 void reshade::ultra::requestAddonReload ()
 {
 	isReloadRequested = true;
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::runExclusive ( HMODULE owner, void ( *callback ) ( void* context ), void* context )
+{
+	const auto	info = owner != g_module_handle ? registeredAddon ( owner ) : nullptr;
+
+	if ( ! isAddonReloadEnabled || callback == nullptr || ( info == nullptr && owner != g_module_handle ) )
+	{
+		log::message ( log::level::error, ! isAddonReloadEnabled ? "An exclusive call was refused: add-ons were not loaded for reloading."
+										  : callback == nullptr ? "An exclusive call without a callback was refused."
+																: "An exclusive call was refused: its module is not a registered add-on." );
+		return false;
+	}
+
+	const auto	caller = info != nullptr ? "add-on \"" + info->name + "\"" : std::string ( "ReShade" );
+
+	const std::scoped_lock	lock ( callMutex );
+	calls.push_back ( { callback, context, owner, caller, ++callCount } );
+	hasCalls = true;
+	return true;
+}
+//-----------------------------------------------------------------------------
+
+void reshade::ultra::forgetExclusiveCalls ( HMODULE owner )
+{
+	const std::scoped_lock	lock ( callMutex );
+	std::erase_if ( calls, [ owner ] ( const ExclusiveCall& call ) { return call.owner == owner; } );
+	hasCalls = ! calls.empty ();
 }
 //-----------------------------------------------------------------------------
 

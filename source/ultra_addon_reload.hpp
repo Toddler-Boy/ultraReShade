@@ -52,6 +52,11 @@ namespace reshade::ultra
 
 	// Reloads every watched add-on at the next present, changed or not (the test application's repeated reloads)
 	void requestAddonReload ();
+
+	// From any thread: callback runs once at the next present, on the presenting thread, while no add-on event runs and
+	// the GPU is idle. owner is a registered add-on's module or ReShade's own; its calls are dropped when it unregisters
+	[[ nodiscard ]] bool runExclusive ( HMODULE owner, void ( *callback ) ( void* context ), void* context );
+	void forgetExclusiveCalls ( HMODULE owner );
 #else
 	constexpr bool	isAddonReloadEnabled = false;
 
@@ -67,5 +72,7 @@ namespace reshade::ultra
 	inline void watchAddon ( HMODULE, const std::filesystem::path& ) {}
 	inline void pollAddonReload () {}
 	inline void requestAddonReload () {}
+	[[ nodiscard ]] inline bool runExclusive ( HMODULE, void ( * ) ( void* ), void* ) { return false; }
+	inline void forgetExclusiveCalls ( HMODULE ) {}
 #endif
 }

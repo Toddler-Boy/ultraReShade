@@ -17,6 +17,7 @@ RESHADE_API_LIBRARY_DECL bool ReShadeWatchFile ( void* module, const char* path,
 RESHADE_API_LIBRARY_DECL void ReShadeUnwatchFile ( void* module, const char* path, const char* pattern );
 RESHADE_API_LIBRARY_DECL void ReShadeFlushLog ();
 RESHADE_API_LIBRARY_DECL void ReShadeSetLogoAlert ( bool on );
+RESHADE_API_LIBRARY_DECL bool ReShadeRunExclusive ( void* module, void ( *callback ) ( void* context ), void* context );
 
 #endif
 
@@ -83,6 +84,19 @@ namespace reshade
 		static const auto	func = reinterpret_cast<void ( * ) ( bool )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeSetLogoAlert" ) );
 		if ( func != nullptr )
 			func ( on );
+#endif
+	}
+
+	// callback runs once at the next present while no add-on event runs on any thread and the GPU is idle. Development
+	// builds of ultraReShade only: false elsewhere, and on a ReShade without this function
+	inline bool run_exclusive ( void ( *callback ) ( void* context ), void* context )
+	{
+#if defined(RESHADE_API_LIBRARY)
+		return ReShadeRunExclusive ( nullptr, callback, context );
+#else
+		static const auto	func = reinterpret_cast<bool ( * ) ( void*, void ( * ) ( void* ), void* )> (
+			GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeRunExclusive" ) );
+		return func != nullptr && func ( internal::get_current_module_handle (), callback, context );
 #endif
 	}
 
