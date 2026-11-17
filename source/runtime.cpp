@@ -835,6 +835,23 @@ void reshade::runtime::on_present()
 	if (_should_save_screenshot)
 		save_screenshot(_screenshot_save_before ? "After" : nullptr);
 
+#if RESHADE_ADDON
+	// Every frame, whether the effects ran or not; screenshots of the effects are taken before
+	if (has_addon_event<addon_event::ultra_finish_present>())
+	{
+		if (_back_buffer_resolved != 0)
+		{
+			invoke_addon_event<addon_event::ultra_finish_present>(this, cmd_list, _back_buffer_targets[0], _back_buffer_targets[1]);
+		}
+		else
+		{
+			cmd_list->barrier(back_buffer_resource, api::resource_usage::present, api::resource_usage::render_target);
+			invoke_addon_event<addon_event::ultra_finish_present>(this, cmd_list, _back_buffer_targets[back_buffer_index], _back_buffer_targets[back_buffer_index + 1]);
+			cmd_list->barrier(back_buffer_resource, api::resource_usage::render_target, api::resource_usage::present);
+		}
+	}
+#endif
+
 	if (ultra_after_effects != nullptr)
 		ultra_after_effects(this);
 

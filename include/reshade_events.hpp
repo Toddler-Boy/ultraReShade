@@ -1872,8 +1872,20 @@ namespace reshade
 		/// </summary>
 		ultra_unmap_buffer_region_command = 105,
 
+		/// <summary>
+		/// ultraReShade: called at every present after the effects, also in a frame they did not run in (still compiling,
+		/// switched off, or rendered earlier by an add-on), and before the overlay: what is drawn here lies over the
+		/// finished picture and under the overlay.
+		/// <para>Callback function signature: <c>void (api::effect_runtime *runtime, api::command_list *cmd_list, api::resource_view rtv, api::resource_view rtv_srgb)</c></para>
+		/// </summary>
+		/// <remarks>
+		/// The resource behind <paramref name="rtv"/> is in the <see cref="api::resource_usage::render_target"/> state and must be
+		/// left in it. The application's state is put back after the overlay, as around the effects.
+		/// </remarks>
+		ultra_finish_present = 106,
+
 #if RESHADE_ADDON
-		max = 106 // Last value used internally by ReShade to determine number of events in this enum
+		max = 107 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
 
@@ -2041,4 +2053,5 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_file_changed, void, const char *path, api::file_change change, const char *old_path);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_map_buffer_region_command, void, api::command_list *cmd_list, api::resource resource, uint64_t offset, uint64_t size, api::map_access access, void **data);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_unmap_buffer_region_command, void, api::command_list *cmd_list, api::resource resource);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_finish_present, void, api::effect_runtime *runtime, api::command_list *cmd_list, api::resource_view rtv, api::resource_view rtv_srgb);
 }
