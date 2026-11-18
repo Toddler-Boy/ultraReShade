@@ -321,6 +321,24 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 			continue;
 		}
 
+		if ( isOption ( arg, L"-draws" ) )
+		{
+			const auto	draws = i + 2 < argc ? parseCount ( argv[ i + 1 ] ) : std::nullopt;
+			const auto	scale = i + 2 < argc ? parseNumber ( argv[ i + 2 ] ) : std::nullopt;
+
+			if ( ! draws.has_value () || *draws > 1000 || ! scale.has_value () || *scale <= 0.0f || *scale > 10.0f )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: -draws needs a number of draws (up to 1000) and a scale (above 0, up to 10)." );
+				options.isValid = false;
+				break;
+			}
+
+			options.scene.loadDraws = *draws;
+			options.scene.loadScale = *scale;
+			i += 2;
+			continue;
+		}
+
 		if ( isOption ( arg, L"-random-switches" ) )
 		{
 			randomSeed = i + 1 < argc ? parseCount ( argv[ i + 1 ] ) : std::nullopt;
@@ -777,6 +795,7 @@ bool reshade::ultra::printTestUsage ()
 		"\n"
 		"Run       -work-dir <dir>  -owner <name>  -show  -frames <n>  -cold-cache  -config-layered\n"
 		"Scene     -api dx11|dx12  -scene cube|head  -size <w>x<h>  -fov <degrees>  -env <file.hdr>  -sss on|off  -jitter on|off\n"
+		"Load      -draws <n> <scale>  (D3D11: the model n more times a frame at scale times its size, no depth test)\n"
 		"HDR       -hdr off|scrgb|pq  -paper-white <nits>  -peak <nits>\n"
 		"Output    -capture <frame> <file>  -dump-constants <frame> <file>  -dump-resource-ids <file>  -dump-file-events <file>\n"
 		"Switches  -resize-at <frame>  -buffer-size-at <frame> <w>x<h>  -fullscreen-at <frame>  -windowed-at <frame>\n"

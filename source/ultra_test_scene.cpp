@@ -848,6 +848,12 @@ reshade::ultra::TestSceneD3d11::TestSceneD3d11 ( ID3D11Device* device, const Tes
 	depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ALL;
 	depthDesc.DepthFunc = D3D11_COMPARISON_LESS_EQUAL;
 	device->CreateDepthStencilState ( &depthDesc, &depthState );
+
+	loadDraws = settings.loadDraws;
+	loadScale = settings.loadScale;
+	depthDesc.DepthEnable = FALSE;
+	depthDesc.DepthWriteMask = D3D11_DEPTH_WRITE_MASK_ZERO;
+	device->CreateDepthStencilState ( &depthDesc, &loadDepthState );
 }
 //-----------------------------------------------------------------------------
 
@@ -936,6 +942,29 @@ void reshade::ultra::TestSceneD3d11::render ( ID3D11DeviceContext* context, ID3D
 	context->PSSetShaderResources ( 0, tableSize, views );
 	context->PSSetSamplers ( 0, 1, sampler.GetAddressOf () );
 	context->OMSetBlendState ( nullptr, nullptr, UINT_MAX );
+
+	// The load: copies in a grid over the picture (centred from scale 1 on), each shading all its pixels
+	if ( loadDraws > 0 && loadDepthState != nullptr )
+	{
+		const auto	columns = size_t ( std::ceil ( std::sqrt ( double ( loadDraws ) ) ) );
+		const auto	spread = 1.0f - std::min ( loadScale, 1.0f );
+		context->OMSetDepthStencilState ( loadDepthState.Get (), 0 );
+
+		for ( size_t i = 0; i < loadDraws; ++i )
+		{
+			const auto		x = ( ( float ( i % columns ) + 0.5f ) / float ( columns ) * 2.0f - 1.0f ) * spread;
+			const auto		y = ( ( float ( i / columns ) + 0.5f ) / float ( columns ) * 2.0f - 1.0f ) * spread;
+			const Matrix	place { loadScale, 0, 0, 0, 0, loadScale, 0, 0, 0, 0, 1, 0, x, y, 0, 1 };
+			auto			copy = frameConstants;
+			copy.worldViewProj = multiply ( frameConstants.worldViewProj, place );
+			copy.previousWorldViewProj = multiply ( frameConstants.previousWorldViewProj, place );
+			context->UpdateSubresource ( constants.Get (), 0, nullptr, &copy, 0, 0 );
+			context->DrawIndexed ( indexCount, 0, 0 );
+		}
+
+		context->UpdateSubresource ( constants.Get (), 0, nullptr, &frameConstants, 0, 0 );
+	}
+
 	context->OMSetDepthStencilState ( depthState.Get (), 0 );
 	context->DrawIndexed ( indexCount, 0, 0 );
 }

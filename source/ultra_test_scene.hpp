@@ -49,6 +49,8 @@ namespace reshade::ultra
 		float					paperWhite = 203.0f;	// -paper-white: nits of a white surface in HDR
 		float					peak = 1000.0f;			// -peak: nits the HDR highlights roll off towards
 		TestConstantsPath		constantsPath = TestConstantsPath::root;	// -constants root|cbv|table (D3D12)
+		size_t					loadDraws = 0;			// -draws <n> <scale> (D3D11): the model n more times ahead of the frame's own draw, each with
+		float					loadScale = 1.0f;		//   its own constants, at scale times its size, without depth test; below 1 spread over the picture
 	};
 
 	// The shaders' constants, 52 floats: they fit D3D12's root constants next to the texture table
@@ -116,6 +118,9 @@ namespace reshade::ultra
 		Microsoft::WRL::ComPtr<ID3D11SamplerState>				sampler;
 		Microsoft::WRL::ComPtr<ID3D11RasterizerState>			rasterizer;
 		Microsoft::WRL::ComPtr<ID3D11DepthStencilState>			depthState;
+		Microsoft::WRL::ComPtr<ID3D11DepthStencilState>			loadDepthState;
+		size_t													loadDraws = 0;
+		float													loadScale = 1.0f;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D>					depth;
 		Microsoft::WRL::ComPtr<ID3D11DepthStencilView>			dsv;
 		Microsoft::WRL::ComPtr<ID3D11Texture2D>					motion;
