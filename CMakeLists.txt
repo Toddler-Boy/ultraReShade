@@ -95,6 +95,8 @@ set(RESHADE_SOURCE
   source/ultra_json_watch.cpp
   source/ultra_log.cpp
   source/ultra_log.hpp
+  source/ultra_process_exit.cpp
+  source/ultra_process_exit.hpp
   source/ultra_resource_ids.cpp
   source/ultra_overlay.cpp
   source/ultra_overlay.hpp

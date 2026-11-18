@@ -1884,13 +1884,36 @@ namespace reshade
 		/// </remarks>
 		ultra_finish_present = 106,
 
+		/// <summary>
+		/// ultraReShade: called once when the process is about to end in order: ExitProcess (also through the C runtime's
+		/// exit and a return from main) or TerminateProcess on its own handle. The last thing an add-on hears.
+		/// <para>Callback function signature: <c>void (api::process_exit reason)</c></para>
+		/// </summary>
+		/// <remarks>
+		/// Called on the thread that ends the process, before any thread is ended and outside the loader lock, so threads can
+		/// still be joined, logs flushed and files written. No event starts after it (events running on other threads may
+		/// still finish), nothing more is called except the DllMain detach, which then has nothing left to do (after
+		/// TerminateProcess there is none). All handlers together get 5 seconds; then the process ends without them.
+		/// A crash (an exit status with error severity) gets no call.
+		/// </remarks>
+		ultra_process_exit = 107,
+
 #if RESHADE_ADDON
-		max = 107 // Last value used internally by ReShade to determine number of events in this enum
+		max = 108 // Last value used internally by ReShade to determine number of events in this enum
 #endif
 	};
 
 	namespace api
 	{
+		/// <summary>
+		/// ultraReShade: how the process ends (<see cref="addon_event::ultra_process_exit"/>).
+		/// </summary>
+		enum class process_exit : uint32_t
+		{
+			exit,
+			self_terminate
+		};
+
 		/// <summary>
 		/// ultraReShade: what happened to a watched file (<see cref="addon_event::ultra_file_changed"/>).
 		/// </summary>
@@ -2054,4 +2077,5 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_map_buffer_region_command, void, api::command_list *cmd_list, api::resource resource, uint64_t offset, uint64_t size, api::map_access access, void **data);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_unmap_buffer_region_command, void, api::command_list *cmd_list, api::resource resource);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_finish_present, void, api::effect_runtime *runtime, api::command_list *cmd_list, api::resource_view rtv, api::resource_view rtv_srgb);
+	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_process_exit, void, api::process_exit reason);
 }

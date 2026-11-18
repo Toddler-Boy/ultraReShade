@@ -1458,7 +1458,7 @@ void reshade::runtime::draw_gui()
 				if (widget.title != "OSD")
 					ultra::dockNewAddonWindow();
 
-				if (ImGui::Begin(widget.title.c_str(), nullptr, ImGuiWindowFlags_NoFocusOnAppearing))
+				if (ImGui::Begin(widget.title.c_str(), nullptr, ImGuiWindowFlags_NoFocusOnAppearing) && !ultra::hasProcessExitBegun())
 					widget.callback(this);
 				if (widget.title == "ultraGame")
 					ultra::placeUltraGameTab(_ultra_tab_placed);
@@ -3427,7 +3427,7 @@ void reshade::runtime::draw_gui_addons()
 
 				ImGui::EndGroup();
 
-				if (info.settings_overlay_callback != nullptr)
+				if (info.settings_overlay_callback != nullptr && !ultra::hasProcessExitBegun())
 				{
 					ImGui::Spacing();
 					ImGui::Separator();

@@ -63,6 +63,8 @@ namespace reshade::ultra
 		bool							isBackground = true;	// never activated, always at the bottom of the z-order, no fullscreen; -show: a normal window
 		std::wstring					owner;				// -owner <name>: who started the run, shown in the window title
 		std::optional<size_t>			crashAt;			// -crash-at <frame>: an access violation in that frame, without the error dialog
+		std::optional<size_t>			exitHandlerMs;		// -exit-handler <ms>: an exit event handler that has another thread write a line, then sleeps ms
+		std::optional<size_t>			terminateAt;		// -terminate-at <frame>: TerminateProcess on its own process in that frame
 		size_t							stressLines = 0;	// -log-stress <lines> <threads>: that many lines in frame 1 from that many threads
 		size_t							stressThreads = 0;	//   at once, with the time each call took on its thread
 		bool							isLoggingFrames = false;	// -log-frames: a line in every frame
@@ -111,6 +113,8 @@ namespace reshade::ultra
 		std::optional<size_t>					resizeAt;
 		size_t									reloadEvery;
 		std::optional<size_t>					crashAt;
+		std::optional<size_t>					exitHandlerMs;
+		std::optional<size_t>					terminateAt;
 		size_t									stressLines;
 		size_t									stressThreads;
 		bool									isLoggingFrames;

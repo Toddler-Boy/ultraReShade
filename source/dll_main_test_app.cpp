@@ -12,6 +12,7 @@
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
 #include "ultra_config.hpp"
+#include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_display.hpp"
 #include "ultra_test_run.hpp"
@@ -1082,13 +1083,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		break;
 	}
 
-	reshade::release_process_addons();
-	reshade::hooks::uninstall();
-
 	const int exit_code = check.exitCode(static_cast<int>(msg.wParam));
 	if (exit_code == EXIT_SUCCESS && !work_dir.empty())
 		reshade::ultra::shareEffectCache(work_dir / L"cache");
-	return exit_code;
+
+	// Ends as a game does, add-ons loaded: returning would destroy ReShade's statics while its threads still run
+	reshade::ultra::flushLog();
+	ExitProcess(static_cast<UINT>(exit_code));
 }
 
 #endif

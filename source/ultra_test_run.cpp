@@ -250,6 +250,44 @@ namespace
 								what.c_str (), isFound ? "'" : "nothing", isFound ? value : "", isFound ? "'" : "" );
 	}
 
+	// -exit-handler <ms>: the exit event shows another thread still running, then holds the exit for ms
+	DWORD	exitHandlerSleep = 0;
+	HANDLE	lineWanted = nullptr;
+	HANDLE	lineWritten = nullptr;
+
+	DWORD WINAPI writeLineAtExit ( void* )
+	{
+		WaitForSingleObject ( lineWanted, INFINITE );
+		reshade::log::message ( reshade::log::level::info, "Test application: thread %lu still runs and writes this line while the exit event runs.", GetCurrentThreadId () );
+		SetEvent ( lineWritten );
+		return 0;
+	}
+
+	void onProcessExit ( reshade::api::process_exit reason )
+	{
+		reshade::log::message ( reshade::log::level::info, "Test application: exit event (%s) on thread %lu.", reason == reshade::api::process_exit::exit ? "exit" : "self-terminate", GetCurrentThreadId () );
+		SetEvent ( lineWanted );
+
+		if ( WaitForSingleObject ( lineWritten, 1000 ) != WAIT_OBJECT_0 )
+			reshade::log::message ( reshade::log::level::error, "Test application: no other thread wrote its line within 1 s of the exit event." );
+
+		if ( exitHandlerSleep != 0 )
+		{
+			reshade::log::message ( reshade::log::level::info, "Test application: the exit handler sleeps %lu ms.", exitHandlerSleep );
+			Sleep ( exitHandlerSleep );
+			reshade::log::message ( reshade::log::level::info, "Test application: the exit handler woke up after %lu ms.", exitHandlerSleep );
+		}
+	}
+
+	void followExit ( size_t sleepMs )
+	{
+		exitHandlerSleep = static_cast<DWORD> ( sleepMs );
+		lineWanted = CreateEventW ( nullptr, TRUE, FALSE, nullptr );
+		lineWritten = CreateEventW ( nullptr, TRUE, FALSE, nullptr );
+		CloseHandle ( CreateThread ( nullptr, 0, writeLineAtExit, nullptr, 0, nullptr ) );
+		reshade::register_event<reshade::addon_event::ultra_process_exit> ( onProcessExit );
+	}
+
 	void crash ( size_t frame )
 	{
 		const auto	filter = SetUnhandledExceptionFilter ( nullptr );
@@ -401,7 +439,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) || isOption ( arg, L"-reload-every" ) || isOption ( arg, L"-probe-devices" )
 							  || isOption ( arg, L"-constants" ) || isOption ( arg, L"-owner" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" )
-							  || isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) || isOption ( arg, L"-crash-at" ) || isOption ( arg, L"-handled-faults" );
+							  || isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) || isOption ( arg, L"-crash-at" ) || isOption ( arg, L"-handled-faults" )
+							  || isOption ( arg, L"-exit-handler" ) || isOption ( arg, L"-terminate-at" );
 
 		if ( ! isKnown )
 			continue;
@@ -503,6 +542,10 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 				options.probeDevices = *count;
 			else if ( isOption ( arg, L"-crash-at" ) )
 				options.crashAt = *count;
+			else if ( isOption ( arg, L"-exit-handler" ) )
+				options.exitHandlerMs = *count;
+			else if ( isOption ( arg, L"-terminate-at" ) )
+				options.terminateAt = *count;
 			else if ( isOption ( arg, L"-handled-faults" ) )
 				options.handledFaults = *count;
 			else if ( isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) )
@@ -605,7 +648,8 @@ void reshade::ultra::shareEffectCache ( const std::filesystem::path& cache )
 //-----------------------------------------------------------------------------
 
 reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window )
-	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), stressLines ( options.stressLines ),
+	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), exitHandlerMs ( options.exitHandlerMs ),
+	  terminateAt ( options.terminateAt ), stressLines ( options.stressLines ),
 	  stressThreads ( options.stressThreads ), isLoggingFrames ( options.isLoggingFrames ), isLoggingThroughAddons ( options.isLoggingThroughAddons ),
 	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), configAccesses ( options.configAccesses ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
 	  holdsClock ( options.frames != 0 || options.resizeAt.has_value () || options.reloadEvery != 0 || options.crashAt.has_value () || ! options.switches.empty () )
@@ -684,6 +728,15 @@ bool reshade::ultra::TestFrames::next ()
 
 	if ( crashAt == current )
 		crash ( current );
+
+	if ( current == 1 && exitHandlerMs.has_value () )
+		followExit ( *exitHandlerMs );
+
+	if ( terminateAt == current )
+	{
+		reshade::log::message ( reshade::log::level::info, "Test application: TerminateProcess on its own process in frame %zu.", current );
+		TerminateProcess ( GetCurrentProcess (), 0 );
+	}
 
 	if ( handledFaults != 0 )
 		causeHandledFaults ();
@@ -808,6 +861,7 @@ bool reshade::ultra::printTestUsage ()
 		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"
 		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"
 		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-log-lines  -crash-at <frame>  -handled-faults <n>\n"
+		"Exit      -exit-handler <ms>  (an exit event handler that shows another thread alive, then sleeps ms)  -terminate-at <frame>\n"
 		"Json      -json-tests  (the add-on API's json functions; the run ends when they are done)\n"
 		"\n"
 		"Exit codes: 0 fine, 1 bad command line, 2 ReShade never presented, 3 capture missing, 4 the log has errors.\n";

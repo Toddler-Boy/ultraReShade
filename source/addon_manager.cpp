@@ -147,7 +147,13 @@ std::vector<void *> reshade::addon_event_list[static_cast<uint32_t>(reshade::add
 std::vector<reshade::addon_info> reshade::addon_loaded_info;
 thread_local const reshade::addon_info *reshade::addon_current = nullptr;
 static unsigned long s_reference_count = 0;
-static long s_is_held_by_process = 0;
+
+// [ADDON] KeepLoaded=0 gives upstream's way back: add-ons unload with the last device; read at the first load
+[[nodiscard]] static bool wants_addons_kept()
+{
+	static const bool is_kept = !reshade::global_config().has("ADDON", "KeepLoaded") || reshade::global_config().get("ADDON", "KeepLoaded");
+	return is_kept;
+}
 
 void reshade::load_addons()
 {
@@ -156,11 +162,16 @@ void reshade::load_addons()
 		return;
 
 	// Games make and drop devices before the one they keep: add-ons stay, and so does ReShade (a Vulkan layer is freed with its last instance)
-	InterlockedIncrement(&s_reference_count);
-	InterlockedExchange(&s_is_held_by_process, 1);
-	if (HMODULE pinned = nullptr; !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(g_module_handle), &pinned))
-		log::message(log::level::error, "ReShade could not keep itself loaded (error code %lu): its add-ons may outlive it.", GetLastError());
-	log::message(log::level::info, "Add-ons stay loaded until the process ends.");
+	if (wants_addons_kept())
+	{
+		InterlockedIncrement(&s_reference_count);
+		if (HMODULE pinned = nullptr; !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(g_module_handle), &pinned))
+			log::message(log::level::error, "ReShade could not keep itself loaded (error code %lu): its add-ons may outlive it.", GetLastError());
+		log::message(log::level::info, "Add-ons stay loaded until the process ends.");
+		ultra::followProcessExit();
+	}
+	else
+		log::message(log::level::info, "Add-ons unload when the last device goes ([ADDON] KeepLoaded=0).");
 
 	ini_file &config = global_config();
 
@@ -418,11 +429,6 @@ void reshade::unload_addons()
 		addon_loaded_info.end());
 }
 
-void reshade::release_process_addons()
-{
-	if (InterlockedExchange(&s_is_held_by_process, 0) != 0)
-		unload_addons();
-}
 
 reshade::addon_info *reshade::find_addon(const void *address)
 {

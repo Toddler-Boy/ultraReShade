@@ -9,6 +9,7 @@
 #include "reshade_events.hpp"
 #include "ultra_addon_reload.hpp"
 #include "ultra_file_watch.hpp"
+#include "ultra_process_exit.hpp"
 
 #if RESHADE_ADDON
 
@@ -46,10 +47,6 @@ namespace reshade
 	/// Unloads any add-ons previously loaded via <see cref="load_addons"/>.
 	/// </summary>
 	void unload_addons();
-
-	// The process holds the add-ons from their first load on, so a device going away never unloads them; a process that ends
-	// itself in order (the test application) lets go of them here
-	void release_process_addons();
 
 	/// <summary>
 	/// Gets the add-on that was loaded at the specified address.
@@ -116,6 +113,8 @@ namespace reshade
 		if (!addon_enabled)
 			return;
 #endif
+		if (ultra::hasProcessExitBegun())
+			return;
 		const ultra::AddonEventGuard reload_guard;
 		const std::vector<void *> &event_list = addon_event_list[static_cast<uint32_t>(ev)];
 		for (size_t cb = 0, count = event_list.size(); cb < count; ++cb) // Generates better code than ranged-based for loop
@@ -180,6 +179,8 @@ namespace reshade
 		if (!addon_enabled)
 			return false;
 #endif
+		if (ultra::hasProcessExitBegun())
+			return false;
 		const ultra::AddonEventGuard reload_guard;
 		bool skip = false;
 		const std::vector<void *> &event_list = addon_event_list[static_cast<uint32_t>(ev)];
