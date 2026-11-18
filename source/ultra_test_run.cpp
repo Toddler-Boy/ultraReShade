@@ -398,7 +398,7 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		}
 
 		const auto	isKnown = isOption ( arg, L"-api" ) || isOption ( arg, L"-scene" ) || isOption ( arg, L"-jitter" ) || isOption ( arg, L"-sss" ) || isOption ( arg, L"-env" ) || isOption ( arg, L"-fov" ) || isOption ( arg, L"-hdr" )
-							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) || isOption ( arg, L"-reload-every" )
+							  || isOption ( arg, L"-paper-white" ) || isOption ( arg, L"-peak" ) || isOption ( arg, L"-reload-every" ) || isOption ( arg, L"-probe-devices" )
 							  || isOption ( arg, L"-constants" ) || isOption ( arg, L"-owner" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" )
 							  || isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) || isOption ( arg, L"-crash-at" ) || isOption ( arg, L"-handled-faults" );
@@ -499,6 +499,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 				options.frames = *count;
 			else if ( isOption ( arg, L"-reload-every" ) )
 				options.reloadEvery = *count;
+			else if ( isOption ( arg, L"-probe-devices" ) )
+				options.probeDevices = *count;
 			else if ( isOption ( arg, L"-crash-at" ) )
 				options.crashAt = *count;
 			else if ( isOption ( arg, L"-handled-faults" ) )
@@ -800,6 +802,7 @@ bool reshade::ultra::printTestUsage ()
 		"Output    -capture <frame> <file>  -dump-constants <frame> <file>  -dump-resource-ids <file>  -dump-file-events <file>\n"
 		"Switches  -resize-at <frame>  -buffer-size-at <frame> <w>x<h>  -fullscreen-at <frame>  -windowed-at <frame>\n"
 		"          -random-switches <seed> [fullscreen]  (fullscreen needs -show)\n"
+		"Devices   -probe-devices <n>  (D3D11: n devices, each presenting once and released, before the run's own)\n"
 		"Add-ons   -reload-every <n>  -reload-effects-every <n>  -toggle-technique-at <frame> <file.fx> <technique>  -constants root|cbv|table\n"
 		"          -run-exclusive-at <frame>\n"
 		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"

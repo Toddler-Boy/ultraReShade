@@ -147,12 +147,20 @@ std::vector<void *> reshade::addon_event_list[static_cast<uint32_t>(reshade::add
 std::vector<reshade::addon_info> reshade::addon_loaded_info;
 thread_local const reshade::addon_info *reshade::addon_current = nullptr;
 static unsigned long s_reference_count = 0;
+static long s_is_held_by_process = 0;
 
 void reshade::load_addons()
 {
 	// Only load add-ons the first time a reference is added
 	if (InterlockedIncrement(&s_reference_count) != 1)
 		return;
+
+	// Games make and drop devices before the one they keep: add-ons stay, and so does ReShade (a Vulkan layer is freed with its last instance)
+	InterlockedIncrement(&s_reference_count);
+	InterlockedExchange(&s_is_held_by_process, 1);
+	if (HMODULE pinned = nullptr; !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(g_module_handle), &pinned))
+		log::message(log::level::error, "ReShade could not keep itself loaded (error code %lu): its add-ons may outlive it.", GetLastError());
+	log::message(log::level::info, "Add-ons stay loaded until the process ends.");
 
 	ini_file &config = global_config();
 
@@ -410,13 +418,10 @@ void reshade::unload_addons()
 		addon_loaded_info.end());
 }
 
-bool reshade::has_loaded_addons()
+void reshade::release_process_addons()
 {
-	// Ignore disabled and built-in add-ons
-	return s_reference_count != 0 && std::find_if(addon_loaded_info.cbegin(), addon_loaded_info.cend(),
-		[](const addon_info &info) {
-			return info.handle != nullptr && info.handle != g_module_handle;
-		}) != addon_loaded_info.cend();
+	if (InterlockedExchange(&s_is_held_by_process, 0) != 0)
+		unload_addons();
 }
 
 reshade::addon_info *reshade::find_addon(const void *address)
@@ -437,6 +442,12 @@ reshade::addon_info *reshade::find_addon(const void *address)
 }
 
 #if defined(RESHADE_API_LIBRARY_EXPORT)
+
+[[nodiscard]] static bool is_process_exiting()
+{
+	const auto shutdown_in_progress = reinterpret_cast<BOOLEAN(NTAPI *)()>(reinterpret_cast<void *>(GetProcAddress(GetModuleHandleW(L"ntdll.dll"), "RtlDllShutdownInProgress")));
+	return shutdown_in_progress != nullptr && shutdown_in_progress() != FALSE;
+}
 
 bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 {
@@ -565,8 +576,12 @@ void ReShadeUnregisterAddon(void *module)
 	}
 #endif
 
-	reshade::ultra::forgetFileWatches(static_cast<HMODULE>(module));
-	reshade::ultra::forgetExclusiveCalls(static_cast<HMODULE>(module));
+	// At process exit nothing delivers any more, and a thread ended mid-delivery may hold the watches' locks
+	if (!is_process_exiting())
+	{
+		reshade::ultra::forgetFileWatches(static_cast<HMODULE>(module));
+		reshade::ultra::forgetExclusiveCalls(static_cast<HMODULE>(module));
+	}
 
 	reshade::log::message(reshade::log::level::info, "Unregistered add-on \"%s\".", info->name.c_str());
 

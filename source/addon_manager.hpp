@@ -47,10 +47,9 @@ namespace reshade
 	/// </summary>
 	void unload_addons();
 
-	/// <summary>
-	/// Checks whether any add-ons were loaded.
-	/// </summary>
-	bool has_loaded_addons();
+	// The process holds the add-ons from their first load on, so a device going away never unloads them; a process that ends
+	// itself in order (the test application) lets go of them here
+	void release_process_addons();
 
 	/// <summary>
 	/// Gets the add-on that was loaded at the specified address.

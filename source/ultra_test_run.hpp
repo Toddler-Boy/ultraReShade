@@ -59,6 +59,7 @@ namespace reshade::ultra
 		std::optional<size_t>			resizeAt;			// -resize-at <frame>: the window shrinks to three quarters before that frame
 		std::vector<TestSwitch>			switches;			// in frame order; -random-switches <seed> [fullscreen] picks a few buffer sizes (and fullscreen switches)
 		size_t							reloadEvery = 0;	// -reload-every <n>: the add-ons reload every n frames
+		size_t							probeDevices = 0;	// -probe-devices <n> (D3D11): n devices, each presenting once and released, before the one the run keeps
 		bool							isBackground = true;	// never activated, always at the bottom of the z-order, no fullscreen; -show: a normal window
 		std::wstring					owner;				// -owner <name>: who started the run, shown in the window title
 		std::optional<size_t>			crashAt;			// -crash-at <frame>: an access violation in that frame, without the error dialog

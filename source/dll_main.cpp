@@ -378,11 +378,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 		{
 			reshade::log::message(reshade::log::level::info, "Exiting ...");
 
-#if RESHADE_ADDON >= 2
-			if (reshade::has_loaded_addons())
-				reshade::log::message(reshade::log::level::warning, "Add-ons are still loaded! Application may crash on exit.");
-#endif
-
 			reshade::hooks::uninstall();
 
 			// Module is now invalid, so break out of any message loops that may still have it in the call stack (see 'HookGetMessage' implementation in input_windows.cpp)

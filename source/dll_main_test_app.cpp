@@ -375,6 +375,17 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			desc.SwapEffect = is_hdr ? DXGI_SWAP_EFFECT_FLIP_DISCARD : DXGI_SWAP_EFFECT_DISCARD;
 
 			const UINT flags = validation ? D3D11_CREATE_DEVICE_DEBUG : 0;
+
+			for (size_t i = 0; i < options.probeDevices; ++i)
+			{
+				com_ptr<ID3D11Device> probe_device;
+				com_ptr<ID3D11DeviceContext> probe_context;
+				com_ptr<IDXGISwapChain> probe_swapchain;
+				HR_CHECK(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &desc, &probe_swapchain, &probe_device, nullptr, &probe_context));
+				HR_CHECK(probe_swapchain->Present(0, 0));
+				reshade::log::message(reshade::log::level::info, "Test application: probe device %zu presented once, released now.", i + 1);
+			}
+
 			HR_CHECK(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, flags, nullptr, 0, D3D11_SDK_VERSION, &desc, &swapchain, &device, nullptr, &immediate_context));
 		}
 
@@ -1071,6 +1082,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		break;
 	}
 
+	reshade::release_process_addons();
 	reshade::hooks::uninstall();
 
 	const int exit_code = check.exitCode(static_cast<int>(msg.wParam));
