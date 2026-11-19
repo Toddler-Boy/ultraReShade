@@ -15,6 +15,7 @@
 #include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_display.hpp"
+#include "ultra_test_dlss.hpp"
 #include "ultra_test_run.hpp"
 #include "ultra_test_scene.hpp"
 #include <shellapi.h>
@@ -450,6 +451,11 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	#pragma region D3D12 Implementation
 	case reshade::api::device_api::d3d12:
 	{
+#if ULTRA_TEST_DLSS
+		if (options.dlss.framesPerMode > 0)
+			reshade::ultra::prepareTestDlssBench(options.dlss, g_reshade_base_path);
+#endif
+
 		const scoped_module_handle dxgi_module(L"dxgi.dll");
 		const scoped_module_handle d3d12_module(L"d3d12.dll");
 
@@ -471,9 +477,20 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		com_ptr<ID3D12CommandAllocator> cmd_alloc;
 		com_ptr<ID3D12GraphicsCommandList> cmd_lists[3];
 
-		HR_CHECK(CreateDXGIFactory2(validation ? DXGI_CREATE_FACTORY_DEBUG : 0, IID_PPV_ARGS(&dxgi_factory)));
+#if ULTRA_TEST_DLSS
+		// -dlss-fg: as Streamline wants it, its device on the default adapter handed to it first, then its factory
+		if (const auto create = reshade::ultra::testDlssFactoryCreator(); create != nullptr)
+		{
+			HR_CHECK(reshade::ultra::testDlssDeviceCreator()(nullptr, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device)));
+			reshade::ultra::attachTestDlssDevice(device.get());
+			HR_CHECK(create(validation ? DXGI_CREATE_FACTORY_DEBUG : 0, IID_PPV_ARGS(&dxgi_factory)));
+		}
+		else
+#endif
+		{
+			HR_CHECK(CreateDXGIFactory2(validation ? DXGI_CREATE_FACTORY_DEBUG : 0, IID_PPV_ARGS(&dxgi_factory)));
 
-		{	HRESULT hr = E_FAIL; com_ptr<IDXGIAdapter> adapter;
+			HRESULT hr = E_FAIL; com_ptr<IDXGIAdapter> adapter;
 			for (UINT i = 0; dxgi_factory->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND; i++, adapter.reset())
 				if (SUCCEEDED(hr = D3D12CreateDevice(adapter.get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device))))
 					break;
@@ -520,6 +537,27 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 		const UINT rtv_handle_size = device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 		HR_CHECK(device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&cmd_alloc)));
+
+#if ULTRA_TEST_DLSS
+		// -dlss: the app as a game with DLSS, which runs its own frames until its sequence is done
+		if (options.dlss.framesPerMode > 0)
+		{
+			if (is_d3d12on7)
+			{
+				reshade::log::message(reshade::log::level::error, "Test application: -dlss needs a DXGI swap chain (no d3d12on7).");
+				msg.wParam = EXIT_FAILURE;
+				break;
+			}
+
+			const auto pump = [&msg]() {
+				while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) && msg.message != WM_QUIT)
+					DispatchMessage(&msg);
+				return msg.message != WM_QUIT;
+			};
+			msg.wParam = reshade::ultra::runTestDlssBench(device.get(), command_queue.get(), swapchain.get(), options.dlss, g_reshade_base_path, pump);
+			break;
+		}
+#endif
 
 		std::unique_ptr<reshade::ultra::TestSceneD3d12> scene;
 		if (!is_d3d12on7)

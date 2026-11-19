@@ -214,6 +214,31 @@ function(ultra_add_test_app)
     COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different ${CMAKE_CURRENT_SOURCE_DIR}/res/test_scene $<TARGET_FILE_DIR:ReShadeTest>/test_scene)
   # CMake hands .def files only to libraries; the hooks match the system DLLs' exports against these
   target_link_options(ReShadeTest PRIVATE /DEF:${CMAKE_CURRENT_SOURCE_DIR}/res/exports.def)
+
+  # -dlss (64-bit): NGX's headers (include/) and its static-CRT loader (lib/nvsdk_ngx_s.lib) from a folder outside the tree,
+  # ultraGame's build has both in Builds/vs/ngx
+  set(ULTRARESHADE_NGX_DIR "" CACHE PATH "NGX's include/ and lib/nvsdk_ngx_s.lib for the test app's -dlss; empty: no -dlss")
+  if(CMAKE_SIZEOF_VOID_P EQUAL 8 AND ULTRARESHADE_NGX_DIR)
+    if(NOT EXISTS ${ULTRARESHADE_NGX_DIR}/include/nvsdk_ngx.h OR NOT EXISTS ${ULTRARESHADE_NGX_DIR}/lib/nvsdk_ngx_s.lib)
+      message(FATAL_ERROR "ULTRARESHADE_NGX_DIR (${ULTRARESHADE_NGX_DIR}) has no include/nvsdk_ngx.h or lib/nvsdk_ngx_s.lib")
+    endif()
+    target_sources(ReShadeTest PRIVATE source/ultra_test_dlss.cpp source/ultra_test_dlss.hpp)
+    target_include_directories(ReShadeTest SYSTEM PRIVATE ${ULTRARESHADE_NGX_DIR}/include)
+    target_link_libraries(ReShadeTest PRIVATE ${ULTRARESHADE_NGX_DIR}/lib/nvsdk_ngx_s.lib)
+    target_compile_definitions(ReShadeTest PRIVATE ULTRA_TEST_DLSS=1)
+
+    # -dlss-streamline: the Streamline SDK's include/ (no library: the game's sl.interposer.dll is loaded by name at run time)
+    set(ULTRARESHADE_STREAMLINE_DIR "" CACHE PATH "The Streamline SDK's include/ folder for the test app's -dlss-streamline; empty: no -dlss-streamline")
+    if(ULTRARESHADE_STREAMLINE_DIR)
+      if(NOT EXISTS ${ULTRARESHADE_STREAMLINE_DIR}/sl.h)
+        message(FATAL_ERROR "ULTRARESHADE_STREAMLINE_DIR (${ULTRARESHADE_STREAMLINE_DIR}) has no sl.h")
+      endif()
+      target_include_directories(ReShadeTest SYSTEM PRIVATE ${ULTRARESHADE_STREAMLINE_DIR})
+      target_compile_definitions(ReShadeTest PRIVATE ULTRA_TEST_STREAMLINE=1)
+      # sl_pcl.h and sl_reflex.h alias std::to_underlying under C++23, which does not compile
+      set_source_files_properties(source/ultra_test_dlss.cpp PROPERTIES COMPILE_OPTIONS -clang:-std=c++20)
+    endif()
+  endif()
 endfunction()
 
 cmake_language(DEFER CALL ultra_finish_targets)

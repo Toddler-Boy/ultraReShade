@@ -15,6 +15,7 @@
 #include <Windows.h>
 
 #include "reshade_api_device.hpp"
+#include "ultra_test_dlss.hpp"
 #include "ultra_test_scene.hpp"
 
 //-----------------------------------------------------------------------------
@@ -72,6 +73,7 @@ namespace reshade::ultra
 		bool							isCheckingLogLines = false;	// -check-log-lines: in frame 2 the Log tab's copy of new lines, also past the lines kept
 		size_t							handledFaults = 0;	// -handled-faults <n>: n access violations caught in every frame, the frame times every 120 frames
 		std::vector<TestConfigAccess>	configAccesses;		// -set-config <frame> <section> <key> <value|->, -get-config <frame> <section> <key>
+		TestDlssSettings				dlss;				// -dlss <frames per mode> [-dlss-warmup <ms>] (D3D12, 64-bit): the app as a game that ships DLSS, ultra_test_dlss.hpp
 		bool							isValid = true;		// false: an option was malformed, the log says which
 	};
 

@@ -323,6 +323,16 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 			continue;
 		}
 
+		if ( isOption ( arg, L"-dlss-sl-track" ) || isOption ( arg, L"-dlss-resize" ) || isOption ( arg, L"-dlss-no-reset" ) || isOption ( arg, L"-dlss-keep-compute" )
+			 || isOption ( arg, L"-dlss-game-exit" ) || isOption ( arg, L"-dlss-fg" ) )
+		{
+			auto&	flag = isOption ( arg, L"-dlss-sl-track" ) ? options.dlss.isListStateTracked : isOption ( arg, L"-dlss-resize" ) ? options.dlss.isResizedAtSwitch
+						   : isOption ( arg, L"-dlss-no-reset" ) ? options.dlss.isResetSkipped : isOption ( arg, L"-dlss-game-exit" ) ? options.dlss.isGameExit
+						   : isOption ( arg, L"-dlss-fg" ) ? options.dlss.isFrameGenerated : options.dlss.reliesOnCompute;
+			flag = true;
+			continue;
+		}
+
 		if ( isOption ( arg, L"-log-frames" ) )
 		{
 			options.isLoggingFrames = true;
@@ -440,7 +450,8 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 							  || isOption ( arg, L"-constants" ) || isOption ( arg, L"-owner" )
 							  || isOption ( arg, L"-size" ) || isOption ( arg, L"-frames" ) || isOption ( arg, L"-resize-at" )
 							  || isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) || isOption ( arg, L"-crash-at" ) || isOption ( arg, L"-handled-faults" )
-							  || isOption ( arg, L"-exit-handler" ) || isOption ( arg, L"-terminate-at" );
+							  || isOption ( arg, L"-exit-handler" ) || isOption ( arg, L"-terminate-at" ) || isOption ( arg, L"-dlss" ) || isOption ( arg, L"-dlss-warmup" ) || isOption ( arg, L"-dlss-streamline" ) || isOption ( arg, L"-dlss-tags" )
+							  || isOption ( arg, L"-dlss-new-images" ) || isOption ( arg, L"-dlss-pipelines" ) || isOption ( arg, L"-dlss-reload" ) || isOption ( arg, L"-dlss-fg-remake" );
 
 		if ( ! isKnown )
 			continue;
@@ -480,6 +491,19 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 				setting = true;
 			else if ( isOption ( value, L"off" ) )
 				setting = false;
+			else
+				options.isValid = false;
+		}
+		else if ( isOption ( arg, L"-dlss-streamline" ) )
+			options.dlss.streamlineFolder = value;
+		else if ( isOption ( arg, L"-dlss-tags" ) )
+		{
+			if ( isOption ( value, L"now" ) )
+				options.dlss.tags = TestDlssTags::onlyNow;
+			else if ( isOption ( value, L"evaluate" ) )
+				options.dlss.tags = TestDlssTags::untilEvaluate;
+			else if ( isOption ( value, L"present" ) )
+				options.dlss.tags = TestDlssTags::untilPresent;
 			else
 				options.isValid = false;
 		}
@@ -548,6 +572,18 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 				options.terminateAt = *count;
 			else if ( isOption ( arg, L"-handled-faults" ) )
 				options.handledFaults = *count;
+			else if ( isOption ( arg, L"-dlss" ) )
+				options.dlss.framesPerMode = *count;
+			else if ( isOption ( arg, L"-dlss-warmup" ) )
+				options.dlss.warmupMs = *count;
+			else if ( isOption ( arg, L"-dlss-new-images" ) )
+				options.dlss.newImagesEvery = *count;
+			else if ( isOption ( arg, L"-dlss-pipelines" ) )
+				options.dlss.pipelinesAtSwitch = *count;
+			else if ( isOption ( arg, L"-dlss-reload" ) )
+				options.dlss.reloadBeforeSwitch = *count;
+			else if ( isOption ( arg, L"-dlss-fg-remake" ) )
+				options.dlss.fgRemakeBeforeSwitch = *count;
 			else if ( isOption ( arg, L"-fullscreen-at" ) || isOption ( arg, L"-windowed-at" ) )
 				options.switches.push_back ( { *count, isOption ( arg, L"-fullscreen-at" ) ? TestSwitchKind::fullscreen : TestSwitchKind::windowed } );
 			else
@@ -569,6 +605,22 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 		pickSwitches ( options, *randomSeed, isRandomFullscreen );
 
 	std::ranges::stable_sort ( options.switches, {}, &TestSwitch::frame );
+
+	// The DLSS bench is a D3D12 game with NGX's 64-bit loader linked in
+	if ( options.dlss.framesPerMode > 0 && options.isValid )
+	{
+#if ULTRA_TEST_DLSS
+		if ( options.api.has_value () && *options.api != api::device_api::d3d12 )
+		{
+			reshade::log::message ( reshade::log::level::error, "Test application: -dlss runs on D3D12 only (-api dx12)." );
+			options.isValid = false;
+		}
+		options.api = api::device_api::d3d12;
+#else
+		reshade::log::message ( reshade::log::level::error, "Test application: -dlss needs the 64-bit test application." );
+		options.isValid = false;
+#endif
+	}
 
 	// Fullscreen takes the foreground, which a background window never has
 	if ( options.isBackground && std::ranges::any_of ( options.switches, [] ( const TestSwitch& change ) { return change.kind == TestSwitchKind::fullscreen; } ) )
@@ -862,9 +914,12 @@ bool reshade::ultra::printTestUsage ()
 		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"
 		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-log-lines  -crash-at <frame>  -handled-faults <n>\n"
 		"Exit      -exit-handler <ms>  (an exit event handler that shows another thread alive, then sleeps ms)  -terminate-at <frame>\n"
+		"DLSS      -dlss <frames per mode>  -dlss-warmup <ms>  (D3D12, 64-bit: a game with DLSS Super Resolution and mode switches, checking itself)\n"
+		"          -dlss-streamline <folder>  -dlss-tags now|evaluate|present  -dlss-sl-track  -dlss-resize  -dlss-no-reset  -dlss-keep-compute\n"
+		"          -dlss-new-images <n>  -dlss-pipelines <n>  -dlss-reload <n>  -dlss-game-exit  -dlss-fg  -dlss-fg-remake <n>\n"
 		"Json      -json-tests  (the add-on API's json functions; the run ends when they are done)\n"
 		"\n"
-		"Exit codes: 0 fine, 1 bad command line, 2 ReShade never presented, 3 capture missing, 4 the log has errors.\n";
+		"Exit codes: 0 fine, 1 bad command line, 2 ReShade never presented, 3 capture missing, 4 the log has errors, 5 a -dlss check failed.\n";
 
 	// A windows program has no console of its own: the one it was started from, else nothing to write to
 	if ( AttachConsole ( ATTACH_PARENT_PROCESS ) || GetStdHandle ( STD_OUTPUT_HANDLE ) != nullptr )
