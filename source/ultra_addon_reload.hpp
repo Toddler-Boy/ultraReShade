@@ -46,7 +46,8 @@ namespace reshade::ultra
 	// (a build's output), else found itself. The add-on folder decides which add-ons load
 	[[ nodiscard ]] std::filesystem::path addonSource ( const std::filesystem::path& found );
 
-	// Where the add-on in file loads from: a fresh copy in folder (the add-on folder) while reloading is enabled, else file itself
+	// Where the add-on in file loads from: a fresh copy of this process's in folder (the add-on folder) while reloading is
+	// enabled, else file itself; empty when the copy can't be made (logged): file is never loaded in place then
 	[[ nodiscard ]] std::filesystem::path addonLoadPath ( const std::filesystem::path& file, const std::filesystem::path& folder );
 
 	// An add-on that loaded from addonLoadPath ( file, folder ) and registered: watched from now on

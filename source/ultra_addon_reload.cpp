@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cwchar>
 #include <deque>
 #include <iterator>
 #include <mutex>
@@ -294,6 +295,31 @@ namespace
 		return CompareFileTime ( &a, &b ) == 0;
 	}
 
+	// name.loaded<process id>-<n> of another process that still runs
+	[[ nodiscard ]] bool isCopyOfRunningProcess ( const std::filesystem::path& copy )
+	{
+		const auto	extension = copy.extension ().native ();
+		const auto	dash = extension.find ( L'-' );
+
+		if ( dash == std::wstring::npos )
+			return false;
+
+		const auto	start = std::size ( copyMarker ) - 1;
+		const auto	id = dash > start ? static_cast<DWORD> ( std::wcstoul ( extension.substr ( start, dash - start ).c_str (), nullptr, 10 ) ) : DWORD ( 0 );
+
+		if ( id == 0 || id == GetCurrentProcessId () )
+			return false;
+
+		const auto	process = OpenProcess ( SYNCHRONIZE, FALSE, id );
+
+		if ( process == nullptr )
+			return false;
+
+		const auto	isRunning = WaitForSingleObject ( process, 0 ) == WAIT_TIMEOUT;
+		CloseHandle ( process );
+		return isRunning;
+	}
+
 	// Nobody writes the file any more: it opens while denying writers
 	[[ nodiscard ]] bool isWritten ( const std::filesystem::path& file )
 	{
@@ -394,6 +420,9 @@ namespace
 	{
 		addon.loadedTime = writeTime ( addon.file );
 		addon.loadedCopy = reshade::ultra::addonLoadPath ( addon.file, addon.folder );
+
+		if ( addon.loadedCopy.empty () )
+			return nullptr;
 
 		const auto	module = LoadLibraryExW ( addon.loadedCopy.c_str (), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS );
 
@@ -619,11 +648,11 @@ void reshade::ultra::startAddonReload ( const std::filesystem::path& addonFolder
 	isAddonReloadEnabled = true;
 	log::message ( log::level::info, "Add-ons reload when their file changes, effects when theirs do." );
 
-	// Copies of a previous run are no longer loaded; copies a running game still holds stay
+	// Copies of processes that ended go; another running process of the same folder keeps its own
 	std::error_code	error;
 
 	for ( const auto& entry : std::filesystem::directory_iterator ( addonFolder, std::filesystem::directory_options::skip_permission_denied, error ) )
-		if ( entry.path ().extension ().native ().starts_with ( copyMarker ) )
+		if ( entry.path ().extension ().native ().starts_with ( copyMarker ) && ! isCopyOfRunningProcess ( entry.path () ) )
 			DeleteFileW ( entry.path ().c_str () );
 
 	if ( std::filesystem::path build; global_config ().get ( "ADDON", "AddonBuildPath", build ) && ! build.empty () )
@@ -674,20 +703,20 @@ std::filesystem::path reshade::ultra::addonSource ( const std::filesystem::path&
 }
 //-----------------------------------------------------------------------------
 
-// name.addon64 loads as name.loaded<n> in the add-on folder: the add-on still finds the files next to it, and files it
-// names after itself keep their name (name.log)
+// name.addon64 loads as name.loaded<process id>-<n> in the add-on folder: the add-on still finds the files next to it, files it
+// names after itself keep their name (name.log), and several processes of one folder never want the same copy
 std::filesystem::path reshade::ultra::addonLoadPath ( const std::filesystem::path& file, const std::filesystem::path& folder )
 {
 	if ( ! isAddonReloadEnabled )
 		return file;
 
 	auto	copy = folder / file.filename ();
-	copy.replace_extension ( copyMarker + std::to_wstring ( ++copyNumber ) );
+	copy.replace_extension ( copyMarker + std::to_wstring ( GetCurrentProcessId () ) + L"-" + std::to_wstring ( ++copyNumber ) );
 
 	if ( ! CopyFileW ( file.c_str (), copy.c_str (), FALSE ) )
 	{
-		log::message ( log::level::error, "Failed to copy add-on '%s' for loading (error code %lu); it loads from its file and can't reload.", file.u8string ().c_str (), GetLastError () );
-		return file;
+		log::message ( log::level::error, "Add-on '%s' is not loaded: its copy '%s' could not be made (error code %lu).", file.u8string ().c_str (), copy.u8string ().c_str (), GetLastError () );
+		return {};
 	}
 
 	return copy;
@@ -700,9 +729,6 @@ void reshade::ultra::watchAddon ( HMODULE module, const std::filesystem::path& f
 		return;
 
 	const auto	loadedCopy = get_module_path ( module );
-
-	if ( loadedCopy == file )
-		return;
 
 	if ( const auto info = registeredAddon ( module ); info != nullptr )
 		info->file = file.filename ().u8string ();

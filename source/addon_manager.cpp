@@ -25,6 +25,7 @@ extern void register_addon_resource_ids();
 extern void unregister_addon_resource_ids();
 
 extern HMODULE g_module_handle;
+extern std::filesystem::path g_target_executable_path;
 
 extern std::filesystem::path get_module_path(HMODULE module);
 
@@ -155,14 +156,34 @@ static unsigned long s_reference_count = 0;
 	return is_kept;
 }
 
+// [ADDON] GameExes: the exe names add-ons load in, so a game's helpers in its folder (crash handler, video player) load none;
+// without the key every process does
+[[nodiscard]] static bool is_addon_process()
+{
+	std::vector<std::string> exes;
+	reshade::global_config().get("ADDON", "GameExes", exes);
+	std::erase_if(exes, [](const std::string &exe) { return exe.empty(); });
+	if (exes.empty())
+		return true;
+
+	const std::filesystem::path exe = g_target_executable_path.filename();
+	if (std::any_of(exes.cbegin(), exes.cend(), [&exe](const std::string &name) { return _wcsicmp(std::filesystem::u8path(name).filename().c_str(), exe.c_str()) == 0; }))
+		return true;
+
+	reshade::log::message(reshade::log::level::info, "No add-on loads in '%s': [ADDON] GameExes does not name it.", exe.u8string().c_str());
+	return false;
+}
+
 void reshade::load_addons()
 {
 	// Only load add-ons the first time a reference is added
 	if (InterlockedIncrement(&s_reference_count) != 1)
 		return;
 
+	const bool is_loading = is_addon_process();
+
 	// Games make and drop devices before the one they keep: add-ons stay, and so does ReShade (a Vulkan layer is freed with its last instance)
-	if (wants_addons_kept())
+	if (is_loading && wants_addons_kept())
 	{
 		InterlockedIncrement(&s_reference_count);
 		if (HMODULE pinned = nullptr; !GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_PIN | GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, reinterpret_cast<LPCWSTR>(g_module_handle), &pinned))
@@ -170,7 +191,7 @@ void reshade::load_addons()
 		log::message(log::level::info, "Add-ons stay loaded until the process ends.");
 		ultra::followProcessExit();
 	}
-	else
+	else if (is_loading)
 		log::message(log::level::info, "Add-ons unload when the last device goes ([ADDON] KeepLoaded=0).");
 
 	ini_file &config = global_config();
@@ -238,6 +259,9 @@ void reshade::load_addons()
 		}
 	}
 
+	if (!is_loading)
+		return;
+
 	// Get directory from where to load add-ons from
 	std::filesystem::path addon_search_path = g_reshade_base_path;
 	if (config.get("ADDON", "AddonPath", addon_search_path))
@@ -301,7 +325,13 @@ void reshade::load_addons()
 
 		// Use 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR' to temporarily add add-on search path to the list of directories 'LoadLibraryEx' will use to resolve DLL dependencies
 		const std::filesystem::path source = ultra::addonSource(path);
-		const HMODULE module = LoadLibraryExW(ultra::addonLoadPath(source, path.parent_path()).c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+		const std::filesystem::path load_path = ultra::addonLoadPath(source, path.parent_path());
+		if (load_path.empty())
+		{
+			addon_all_loaded = false;
+			continue;
+		}
+		const HMODULE module = LoadLibraryExW(load_path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 		if (module == nullptr)
 		{
 			const DWORD error_code = GetLastError();
