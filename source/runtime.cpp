@@ -4841,6 +4841,8 @@ void reshade::runtime::save_texture(const texture &tex)
 		get_texture_data(tex.resource, api::resource_usage::shader_resource, pixels.data(), api::format::r8g8b8a8_unorm))
 	{
 		_worker_threads.emplace_back([this, screenshot_path, pixels = std::move(pixels), width = tex.width, height = tex.height]() mutable {
+				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+
 			// Default to a save failure unless it is reported to succeed below
 			bool save_success = false;
 
@@ -5262,6 +5264,8 @@ void reshade::runtime::save_screenshot(const char *postfix_in)
 			utils::play_sound_async(g_reshade_base_path / _screenshot_sound_path);
 
 		_worker_threads.emplace_back([this, screenshot_count, screenshot_format, screenshot_path, postfix, pixels = std::move(pixels), effects_json = std::move(effects_json)]() mutable {
+				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
+
 			// Remove alpha channel
 			int comp = 4;
 			if (screenshot_format >= 4)
