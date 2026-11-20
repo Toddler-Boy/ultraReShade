@@ -9,6 +9,7 @@
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
 #include "ultra_home.hpp"
+#include "ultra_main_log.hpp"
 #include "ultra_pass_through.hpp"
 #include <Windows.h>
 #include <Psapi.h>
@@ -108,28 +109,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 
 			// The log opens before the settings are read, so a problem with them is in it
 			if (!GetEnvironmentVariableW(L"RESHADE_DISABLE_LOGGING", nullptr, 0))
-			{
-				std::filesystem::path log_path = reshade::ultra::logPath();
-
-				std::error_code ec;
-				std::filesystem::create_directories(g_reshade_base_path, ec);
-				if (!reshade::log::open_log_file(log_path, ec))
-				{
-					// Try a different file if the default failed to open (e.g. because currently in use by another ReShade instance)
-					for (int log_index = 0; log_index < 10 && std::filesystem::exists(log_path, ec); ++log_index)
-					{
-						log_path.replace_extension(L".log" + std::to_wstring(log_index + 1));
-
-						if (reshade::log::open_log_file(log_path, ec))
-							break;
-					}
-
-#ifndef NDEBUG
-					if (ec)
-						reshade::log::message(reshade::log::level::error, "Opening the ReShade log file failed with error code %d.", ec.value());
-#endif
-				}
-			}
+				(void)reshade::ultra::openMainLog();
 
 			reshade::log::message(reshade::log::level::info,
 				"Initializing crosire's ReShade version '" VERSION_STRING_FILE "' "

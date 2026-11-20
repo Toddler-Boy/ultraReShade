@@ -70,7 +70,7 @@ namespace
 			return 0;
 
 		reshade::log::message ( reshade::log::level::warning, "An add-on's exit handler still runs after %lu ms: the process ends without waiting for it.", handlerBound );
-		reshade::ultra::flushLog ();
+		ultralog::endRuns ();
 
 		if ( reason == api::process_exit::exit )
 			realExit ( exitStatus );
@@ -102,7 +102,7 @@ namespace
 
 		const auto	took = std::chrono::duration_cast<std::chrono::milliseconds> ( std::chrono::steady_clock::now () - start );
 		reshade::log::message ( reshade::log::level::info, "The add-ons' exit handlers took %lld ms.", static_cast<long long> ( took.count () ) );
-		reshade::ultra::flushLog ();
+		ultralog::endRuns ();
 	}
 
 	void endOrNote ( api::process_exit why, NTSTATUS status )
@@ -114,7 +114,7 @@ namespace
 			return;
 
 		reshade::log::message ( reshade::log::level::info, "The process ends (%s) with status 0x%08lX, a crash: the add-ons get no exit event.", nameOf ( why ), static_cast<unsigned long> ( status ) );
-		reshade::ultra::flushLog ();
+		ultralog::noteCrash ();
 	}
 
 	void NTAPI onExitUserProcess ( NTSTATUS status )

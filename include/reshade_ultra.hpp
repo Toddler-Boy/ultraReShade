@@ -7,6 +7,7 @@
 
 #include "reshade.hpp"
 #include "reshade_ultra_json.hpp"
+#include "reshade_ultra_log.hpp"
 
 // ultraReShade's additions to the add-on API: functions an add-on calls (include after reshade.hpp, or instead of it)
 
@@ -115,8 +116,8 @@ namespace reshade
 
 	namespace log
 	{
-		// Writes the lines ReShade's log still holds in memory to its file now, on the calling thread (a crash handler's
-		// last step). Nothing on a ReShade without this function
+		// Writes the lines every log of the process (reshade.log and the named logs) still holds in memory to its file now,
+		// on the calling thread (a crash handler's last step). Nothing on a ReShade without this function
 		inline void flush ()
 		{
 #if defined(RESHADE_API_LIBRARY)

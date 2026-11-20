@@ -10,7 +10,7 @@
 #include "runtime.hpp"
 #include "dll_log.hpp"
 #include "ini_file.hpp"
-#include "ultra_log.hpp"
+#include "ultra_main_log.hpp"
 #include <cstring> // std::strlen
 
 void ReShadeLogMessage([[maybe_unused]] void *module, int level, const char *message)

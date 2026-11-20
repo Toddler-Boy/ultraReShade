@@ -11,6 +11,8 @@
 #include <cstring>
 #include <cwchar>
 #include <fstream>
+#include <iterator>
+#include <sstream>
 #include <set>
 #include <string>
 #include <vector>
@@ -27,7 +29,8 @@
 #include "dll_log.hpp"
 #include "runtime.hpp"
 #include "ultra_addon_reload.hpp"
-#include "ultra_log.hpp"
+#include "ultra_home.hpp"
+#include "ultra_main_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_json.hpp"
 #include "ultra_test_run.hpp"
@@ -551,20 +554,22 @@ namespace
 		return line.find ( "| ERROR |" ) != std::string::npos;
 	}
 
-	// The file, and the recent lines in memory for any the file dropped
+	// This run's lines in the file (it holds the runs before too), and the recent lines in memory for any the file dropped
 	[[ nodiscard ]] bool logHasErrors ()
 	{
-		reshade::ultra::flushLog ();
-		std::ifstream	log ( g_reshade_base_path / L"ReShade.log" );
-		std::string		line;
+		ultralog::flushAll ();
+		std::ifstream		log ( reshade::ultra::logPath (), std::ios::binary );
+		const std::string	text ( ( std::istreambuf_iterator<char> ( log ) ), std::istreambuf_iterator<char> () );
+		std::istringstream	run { std::string ( ultralog::lastRun ( text ) ) };
+		std::string			line;
 
-		while ( std::getline ( log, line ) )
+		while ( std::getline ( run, line ) )
 			if ( isError ( line ) )
 				return true;
 
 		uint64_t					seen = 0;
 		std::vector<std::string>	recent;
-		(void) reshade::ultra::copyLogLines ( seen, recent );
+		(void) ultralog::copyLines ( reshade::ultra::mainLog (), seen, recent );
 
 		return std::ranges::any_of ( recent, isError );
 	}

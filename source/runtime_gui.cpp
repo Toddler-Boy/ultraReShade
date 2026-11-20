@@ -17,7 +17,7 @@
 #include "localization.hpp"
 #include "platform_utils.hpp"
 #include "ultra_home.hpp"
-#include "ultra_log.hpp"
+#include "ultra_main_log.hpp"
 #include "ultra_overlay.hpp"
 #include "fonts/forkawesome.inl"
 #include <cmath> // std::abs, std::ceil, std::floor
@@ -2604,14 +2604,14 @@ void reshade::runtime::draw_gui_log()
 
 	if (ImGui::Button(_("Clear Log"), ImVec2(8.0f * ImGui::GetFontSize(), 0.0f)))
 	{
-		ultra::clearLog();
+		ultralog::clearRecent(ultra::mainLog());
 		_log_editor.clear_text();
 	}
 
 	ImGui::Spacing();
 
 	// '_last_log_size' holds the logger's line count at the last line shown
-	const uint64_t log_line_count = ultra::logLineCount();
+	const uint64_t log_line_count = ultralog::lineCount(ultra::mainLog());
 	// Defer log reloading during user interface interactions to avoid interfering with tab switching
 	if (filter_changed || (_last_log_size != log_line_count && !ImGui::IsAnyItemActive() && !ImGui::IsAnyItemFocused() && !_log_editor.has_selection()))
 	{
@@ -2624,7 +2624,7 @@ void reshade::runtime::draw_gui_log()
 		}
 
 		std::vector<std::string> messages;
-		if (!ultra::copyLogLines(_last_log_size, messages))
+		if (!ultralog::copyLines(ultra::mainLog(), _last_log_size, messages))
 			_log_editor.clear_text();
 
 		for (const std::string &message : messages)

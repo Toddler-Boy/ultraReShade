@@ -36,13 +36,6 @@ namespace reshade::log
 	};
 
 	/// <summary>
-	/// Opens a log file for writing.
-	/// </summary>
-	/// <param name="path">Path to the log file.</param>
-	/// <param name="ec">Error code that is set on failure.</param>
-	bool open_log_file(const std::filesystem::path &path, std::error_code &ec);
-
-	/// <summary>
 	/// Constructs a single log message including current time and level and writes it to the open log file.
 	/// </summary>
 	void message(level level, const char *format, ...);

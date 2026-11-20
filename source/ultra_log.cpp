@@ -4,22 +4,23 @@
  */
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <chrono>
+#include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <deque>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <Windows.h>
 
-#include <reshade_ultra.hpp>
-
-#include "dll_log.hpp"
 #include "ultra_log.hpp"
 
-extern HMODULE g_module_handle;
 extern "C" IMAGE_DOS_HEADER __ImageBase;
 
 //-----------------------------------------------------------------------------
@@ -31,42 +32,178 @@ namespace
 	constexpr DWORD		drainEveryMs = 50;				// at most this much is lost when the process is killed
 	constexpr size_t	recentMax = 10000;
 	constexpr size_t	recentBytesMax = 4 << 20;
+	constexpr size_t	lineMax = 32 << 10;
+	constexpr DWORD		scanChunk = 64 << 10;
+	constexpr DWORD		moveChunk = 256 << 10;
 	constexpr auto		lockTimeout = std::chrono::milliseconds ( 500 );
 	constexpr ULONGLONG	faultDrainEveryMs = 250;		// games that handle access violations themselves raise thousands
 
+	// A header is always at the start of a line; a line's own continuation never starts like one (see appendWithCrLf)
+	constexpr std::string_view	runBoundary = "\n-- run start ";
+	constexpr std::string_view	runPrefix = "-- run ";
+
+	static_assert ( runBoundary.substr ( 1 ) == ultralog::runStartMarker );
+
 	struct Log
 	{
-		// Timed: a thread that ExitProcess ended may still hold one
-		std::timed_mutex			pendingLock;		// pending, dropped, isTruncateWanted, recent, recentBytes
-		std::timed_mutex			fileLock;			// file, draining, hasWriteFailed
-		std::string					pending;
+		ultralog::Id				id = ultralog::none;
+		std::string					name;
+		uint64_t					maxFileBytes = 0;
+
+		// Timed: a thread that ExitProcess ended may still hold one. Taken in this order when both are
+		std::timed_mutex			fileLock;			// file, writeOffset, startOffset, draining, hasWriteFailed
+		std::timed_mutex			pendingLock;		// pending, dropped, recent, recentBytes
+		HANDLE						file = INVALID_HANDLE_VALUE;
+		uint64_t					writeOffset = 0;	// where the next write goes: the end of the file
+		uint64_t					startOffset = 0;	// the file's size when this run began
 		std::string					draining;
+		bool						hasWriteFailed = false;
+
+		std::string					pending;
 		size_t						dropped = 0;		// lines that found no room since the last drain
-		bool						isTruncateWanted = false;
 		std::deque<std::string>		recent;
 		size_t						recentBytes = 0;
+
 		std::atomic<uint64_t>		count = 0;
 		std::atomic<bool>			hasFile = false;
+		std::atomic<bool>			hasPending = false;
+		std::atomic<bool>			isTrimPending = false;
+		std::atomic<bool>			isEnded = false;
+	};
+
+	struct Registry
+	{
+		std::mutex					openLock;
+		std::array<std::atomic<Log*>, ultralog::logsMax>	slots {};		// never freed: lines logged while other statics end still find them
+		std::atomic<uint32_t>		count = 0;
+
 		std::atomic<bool>			hasWriter = false;
-		bool						hasWriteFailed = false;
-		HANDLE						file = INVALID_HANDLE_VALUE;
 		HANDLE						writer = nullptr;
 		HANDLE						wake = nullptr;
 		HANDLE						parked = nullptr;
 		std::atomic<bool>			isStopping = false;
 		std::atomic<bool>			shouldPark = false;
+
 		PVOID						crashHandler = nullptr;
-		std::atomic<bool>			hasPending = false;
 		std::atomic<ULONGLONG>		lastFaultDrain = 0;
 		std::atomic<LPTOP_LEVEL_EXCEPTION_FILTER>	gamesFilter = nullptr;		// called after ours
 		std::atomic<bool>			hasOwnFilter = false;
+		std::atomic<bool>			isCrashed = false;
 	};
 
-	// Never destroyed: lines logged while other statics end still find it
-	[[ nodiscard ]] Log& logger ()
+	[[ nodiscard ]] Registry& registry ()
 	{
-		static auto* const	instance = new Log;
+		static auto* const	instance = new Registry;
 		return *instance;
+	}
+
+	[[ nodiscard ]] Log* find ( ultralog::Id id )
+	{
+		const auto&	r = registry ();
+		return id >= 1 && id <= r.count.load ( std::memory_order_acquire ) ? r.slots[ id - 1 ].load ( std::memory_order_acquire ) : nullptr;
+	}
+
+	template <typename Visitor>
+	void forEachLog ( Visitor visit )
+	{
+		const auto&	r = registry ();
+
+		for ( auto i = uint32_t ( 0 ), n = r.count.load ( std::memory_order_acquire ); i < n; ++i )
+			if ( auto* const l = r.slots[ i ].load ( std::memory_order_acquire ); l != nullptr )
+				visit ( *l );
+	}
+
+	[[ nodiscard ]] std::string asciiOf ( std::string_view text )
+	{
+		std::string	out ( text );
+
+		for ( auto& c : out )
+			if ( c < 32 || c > 126 )
+				c = '?';
+			else if ( c == '"' )
+				c = '\'';
+
+		return out;
+	}
+
+	[[ nodiscard ]] std::string formatted ( const char* format, ... )
+	{
+		char	text[ 512 ];
+		va_list	args;
+		va_start ( args, format );
+		const auto	length = std::vsnprintf ( text, sizeof ( text ), format, args );
+		va_end ( args );
+		return std::string ( text, size_t ( std::clamp ( length, 0, int ( sizeof ( text ) ) - 1 ) ) );
+	}
+
+	[[ nodiscard ]] std::string timeText ()
+	{
+		SYSTEMTIME	t;
+		GetLocalTime ( &t );
+		return formatted ( "%04d-%02d-%02d %02d:%02d:%02d.%03d", t.wYear, t.wMonth, t.wDay, t.wHour, t.wMinute, t.wSecond, t.wMilliseconds );
+	}
+
+	[[ nodiscard ]] std::string exeName ()
+	{
+		wchar_t		path[ MAX_PATH ];
+		const auto	length = GetModuleFileNameW ( nullptr, path, MAX_PATH );
+		const auto	name = std::wstring_view ( path, length );
+		const auto	slash = name.find_last_of ( L"\\/" );
+		const auto	file = slash == std::wstring_view::npos ? name : name.substr ( slash + 1 );
+		std::string	ascii;
+
+		for ( const auto c : file )
+			ascii += c >= 32 && c <= 126 && c != L'"' ? char ( c ) : '?';
+
+		return ascii;
+	}
+
+	[[ nodiscard ]] std::string runHeader ( std::string_view build )
+	{
+		constexpr size_t	buildMax = 200;
+		std::string			line ( ultralog::runStartMarker );
+		line += timeText ();
+		line += formatted ( " pid %lu exe \"", GetCurrentProcessId () );
+		line += exeName ();
+		line += "\" build \"";
+		line += asciiOf ( build.substr ( 0, buildMax ) );
+		line += "\"\n";
+		return line;
+	}
+
+	[[ nodiscard ]] const char* levelName ( ultralog::Level level )
+	{
+		switch ( level )
+		{
+			case ultralog::Level::warning:	return "WARN ";
+			case ultralog::Level::info:		return "INFO ";
+			case ultralog::Level::debug:	return "DEBUG";
+			case ultralog::Level::error:	return "ERROR";
+		}
+
+		return "ERROR";
+	}
+
+	[[ nodiscard ]] std::string makeLine ( ultralog::Level level, std::string_view message )
+	{
+		while ( ! message.empty () && ( message.back () == '\n' || message.back () == '\r' ) )
+			message.remove_suffix ( 1 );
+
+		const auto	isCut = message.size () > lineMax;
+
+		if ( isCut )
+			message = message.substr ( 0, lineMax );
+
+		SYSTEMTIME	t;
+		GetLocalTime ( &t );
+		auto		line = formatted ( "%02d:%02d:%02d.%03d [%5lu] | %s | ", t.wHour, t.wMinute, t.wSecond, t.wMilliseconds, GetCurrentThreadId (), levelName ( level ) );
+		line.append ( message );
+
+		if ( isCut )
+			line += " ... (line cut)";
+
+		line += '\n';
+		return line;
 	}
 
 	[[ nodiscard ]] size_t sizeWithCrLf ( const std::string& line )
@@ -74,11 +211,16 @@ namespace
 		return line.size () + size_t ( std::ranges::count ( line, '\n' ) );
 	}
 
+	// A continuation line that would read as a header gets a space in front
 	void appendWithCrLf ( std::string& out, const std::string& line )
 	{
 		for ( size_t begin = 0; begin < line.size (); )
 		{
 			const auto	end = std::min ( line.find ( '\n', begin ), line.size () );
+
+			if ( begin != 0 && std::string_view ( line ).substr ( begin ).starts_with ( runPrefix ) )
+				out += ' ';
+
 			out.append ( line, begin, end - begin );
 
 			if ( end < line.size () )
@@ -96,32 +238,175 @@ namespace
 		return inProgress != nullptr && inProgress () != 0;
 	}
 
-	// The test application has ReShade in its exe, whose statics end before ExitProcess and outside the loader lock
+	// An exe that holds this code ends its statics before ExitProcess and outside the loader lock
 	[[ nodiscard ]] bool isInsideExe ()
 	{
 		return reinterpret_cast<HMODULE> ( &__ImageBase ) == GetModuleHandleW ( nullptr );
 	}
 
-	// The failure goes into the waiting lines: it reaches the Log tab, and the file once writing works again
+	// Puts a line among the waiting ones and the recent ones; true when the writer should wake for a burst. forced: it
+	// is never dropped for the buffer being full (header, end line, the log's own errors)
+	[[ nodiscard ]] bool queue ( Log& l, std::string&& line, bool isForced, std::string_view filePrefix = {} )
+	{
+		std::unique_lock	lock ( l.pendingLock, lockTimeout );
+
+		if ( ! lock.owns_lock () )
+			return false;
+
+		auto	shouldWake = false;
+
+		if ( l.hasFile )
+		{
+			const auto	size = sizeWithCrLf ( line ) + filePrefix.size ();
+
+			if ( ! isForced && l.pending.size () + size > pendingMax )
+				++l.dropped;
+			else
+			{
+				shouldWake = l.pending.size () < wakeAt && l.pending.size () + size >= wakeAt;
+				l.pending.append ( filePrefix );
+				appendWithCrLf ( l.pending, line );
+			}
+
+			l.hasPending = true;
+		}
+
+		l.recentBytes += line.size ();
+		l.recent.push_back ( std::move ( line ) );
+
+		while ( l.recent.size () > recentMax || ( l.recentBytes > recentBytesMax && l.recent.size () > 1 ) )
+		{
+			l.recentBytes -= l.recent.front ().size ();
+			l.recent.pop_front ();
+		}
+
+		l.count.fetch_add ( 1, std::memory_order_release );
+		return shouldWake;
+	}
+
+	[[ nodiscard ]] bool readAt ( HANDLE file, uint64_t offset, void* data, DWORD size )
+	{
+		OVERLAPPED	where {};
+		where.Offset = DWORD ( offset );
+		where.OffsetHigh = DWORD ( offset >> 32 );
+		auto		got = DWORD ( 0 );
+		return ReadFile ( file, data, size, &got, &where ) && got == size;
+	}
+
+	[[ nodiscard ]] bool writeAt ( HANDLE file, uint64_t offset, const char* data, size_t size )
+	{
+		for ( size_t done = 0; done < size; )
+		{
+			OVERLAPPED	where {};
+			where.Offset = DWORD ( offset + done );
+			where.OffsetHigh = DWORD ( ( offset + done ) >> 32 );
+			auto		written = DWORD ( 0 );
+
+			if ( ! WriteFile ( file, data + done, DWORD ( std::min<size_t> ( size - done, pendingMax ) ), &written, &where ) || written == 0 )
+				return false;
+
+			done += written;
+		}
+
+		return true;
+	}
+
+	// The failure goes into the waiting lines: it reaches the viewers, and the file once writing works again
 	void reportFileError ( Log& l, const char* what )
 	{
 		const auto	error = GetLastError ();
 
 		if ( ! std::exchange ( l.hasWriteFailed, true ) )
-			reshade::log::message ( reshade::log::level::error, "%s the log file failed with error code %lu.", what, error );
+			(void) queue ( l, makeLine ( ultralog::Level::error, formatted ( "%s the log file failed with Windows error %lu.", what, error ) ), true );
 	}
 
-	// Timed locks: at exit the writer may have been ended holding one
-	void drain ()
+	// Where each run of the file's first size bytes begins. The first begins at 0 whatever the file starts with
+	[[ nodiscard ]] bool findRuns ( HANDLE file, uint64_t size, std::vector<uint64_t>& runs )
 	{
-		auto&				l = logger ();
+		std::vector<char>	buffer ( scanChunk + runBoundary.size () );
+		auto				carry = size_t ( 0 );
+		runs.push_back ( 0 );
+
+		for ( auto at = uint64_t ( 0 ); at < size; )
+		{
+			const auto	want = DWORD ( std::min<uint64_t> ( scanChunk, size - at ) );
+
+			if ( ! readAt ( file, at, buffer.data () + carry, want ) )
+				return false;
+
+			const std::string_view	view ( buffer.data (), carry + want );
+
+			for ( auto from = view.find ( runBoundary ); from != std::string_view::npos; from = view.find ( runBoundary, from + 1 ) )
+				runs.push_back ( at - carry + from + 1 );
+
+			carry = std::min ( view.size (), runBoundary.size () - 1 );
+			std::memmove ( buffer.data (), view.data () + view.size () - carry, carry );
+			at += want;
+		}
+
+		return true;
+	}
+
+	// The oldest whole runs go until what is left fits; the last run stays whatever its size. File lock held, writer thread
+	void trim ( Log& l )
+	{
+		l.isTrimPending = false;
+
+		std::vector<uint64_t>	runs;
+
+		if ( ! findRuns ( l.file, l.startOffset, runs ) )
+			return reportFileError ( l, "Reading" );
+
+		const auto	fits = std::ranges::find_if ( runs, [&l] ( const uint64_t at ) { return l.startOffset - at <= l.maxFileBytes; } );
+		const auto	cut = fits != runs.end () ? *fits : runs.back ();
+
+		if ( cut == 0 )
+			return;
+
+		std::vector<char>	buffer ( moveChunk );
+		const auto			end = l.writeOffset;
+		auto				to = uint64_t ( 0 );
+
+		for ( auto from = cut; from < end; )
+		{
+			const auto	size = DWORD ( std::min<uint64_t> ( moveChunk, end - from ) );
+
+			if ( ! readAt ( l.file, from, buffer.data (), size ) || ! writeAt ( l.file, to, buffer.data (), size ) )
+				return reportFileError ( l, "Trimming" );
+
+			from += size;
+			to += size;
+		}
+
+		LARGE_INTEGER	length {};
+		length.QuadPart = LONGLONG ( to );
+
+		if ( ! SetFilePointerEx ( l.file, length, nullptr, FILE_BEGIN ) || ! SetEndOfFile ( l.file ) )
+			return reportFileError ( l, "Shortening" );
+
+		l.writeOffset = to;
+		const auto	kept = size_t ( std::ranges::count_if ( runs, [cut] ( const uint64_t at ) { return at >= cut; } ) );
+		(void) queue ( l, makeLine ( ultralog::Level::info, formatted ( "The log's oldest runs went: %llu bytes off its start, %zu of %zu runs are left (limit %llu bytes).",
+																		  (unsigned long long) cut, kept, runs.size (), (unsigned long long) l.maxFileBytes ) ), true );
+	}
+
+	// mayTrim: the writer thread's, or the caller's when there is no writer thread
+	void drain ( Log& l, bool mayTrim )
+	{
+		const auto	isTrimming = mayTrim && l.isTrimPending.load ();
+
+		if ( ! l.hasPending && ! isTrimming )
+			return;
+
 		std::unique_lock	file ( l.fileLock, lockTimeout );
 
 		if ( ! file.owns_lock () )
 			return;
 
+		if ( isTrimming && l.file != INVALID_HANDLE_VALUE )
+			trim ( l );
+
 		size_t	lost = 0;
-		auto	isTruncating = false;
 		{
 			std::unique_lock	lock ( l.pendingLock, lockTimeout );
 
@@ -131,28 +416,39 @@ namespace
 			l.pending.swap ( l.draining );
 			l.hasPending = false;
 			lost = std::exchange ( l.dropped, size_t ( 0 ) );
-			isTruncating = std::exchange ( l.isTruncateWanted, false );
 		}
 
 		if ( l.file != INVALID_HANDLE_VALUE )
 		{
-			if ( isTruncating && ( ! SetFilePointerEx ( l.file, LARGE_INTEGER {}, nullptr, FILE_BEGIN ) || ! SetEndOfFile ( l.file ) ) )
-				reportFileError ( l, "Emptying" );
-
 			if ( lost != 0 )
+				l.draining += formatted ( "(%zu lines dropped, the log's buffer was full)\r\n", lost );
+
+			if ( ! l.draining.empty () )
 			{
-				char		note[ 80 ];
-				const auto	length = std::snprintf ( note, sizeof ( note ), "(%zu lines dropped, the log's buffer was full)\r\n", lost );
-				l.draining.append ( note, size_t ( std::clamp ( length, 0, int ( sizeof ( note ) ) - 1 ) ) );
+				if ( writeAt ( l.file, l.writeOffset, l.draining.data (), l.draining.size () ) )
+					l.writeOffset += l.draining.size ();
+				else
+					reportFileError ( l, "Writing to" );
 			}
-
-			auto	written = DWORD ( 0 );
-
-			if ( ! l.draining.empty () && ! WriteFile ( l.file, l.draining.data (), DWORD ( l.draining.size () ), &written, nullptr ) )
-				reportFileError ( l, "Writing to" );
 		}
 
 		l.draining.clear ();
+	}
+
+	void serviceAll ()
+	{
+		forEachLog ( [] ( Log& l ) { drain ( l, true ); } );
+	}
+
+	void append ( Log& l, std::string&& line, bool isForced, std::string_view filePrefix = {} )
+	{
+		const auto	shouldWake = queue ( l, std::move ( line ), isForced, filePrefix );
+		auto&		r = registry ();
+
+		if ( ! r.hasWriter )
+			drain ( l, true );
+		else if ( shouldWake )
+			SetEvent ( r.wake );
 	}
 
 	[[ nodiscard ]] bool isCrash ( DWORD code )
@@ -161,20 +457,27 @@ namespace
 			   || code == EXCEPTION_IN_PAGE_ERROR || code == EXCEPTION_ARRAY_BOUNDS_EXCEEDED;
 	}
 
+	[[ nodiscard ]] bool hasPendingLines ()
+	{
+		auto	has = false;
+		forEachLog ( [&has] ( const Log& l ) { has = has || l.hasPending; } );
+		return has;
+	}
+
 	// First chance, last of the vectored handlers, for a game that replaces our filter without calling it or ends the
 	// process on its own. Handled faults in a loop cost a drain at most every 250 ms, and only with lines waiting
 	LONG CALLBACK onException ( EXCEPTION_POINTERS* e )
 	{
-		auto&	l = logger ();
+		auto&	r = registry ();
 
-		if ( ! isCrash ( e->ExceptionRecord->ExceptionCode ) || ! l.hasPending )
+		if ( ! isCrash ( e->ExceptionRecord->ExceptionCode ) || ! hasPendingLines () )
 			return EXCEPTION_CONTINUE_SEARCH;
 
 		const auto	now = GetTickCount64 ();
-		auto		last = l.lastFaultDrain.load ();
+		auto		last = r.lastFaultDrain.load ();
 
-		if ( now - last >= faultDrainEveryMs && l.lastFaultDrain.compare_exchange_strong ( last, now ) )
-			drain ();
+		if ( now - last >= faultDrainEveryMs && r.lastFaultDrain.compare_exchange_strong ( last, now ) )
+			ultralog::flushAll ();
 
 		return EXCEPTION_CONTINUE_SEARCH;
 	}
@@ -189,8 +492,10 @@ namespace
 			return EXCEPTION_CONTINUE_SEARCH;
 
 		isInside = true;
-		drain ();
-		const auto	games = logger ().gamesFilter.load ();
+		auto&	r = registry ();
+		r.isCrashed = true;
+		ultralog::flushAll ();
+		const auto	games = r.gamesFilter.load ();
 		const auto	result = games != nullptr ? games ( e ) : EXCEPTION_CONTINUE_SEARCH;
 		isInside = false;
 		return result;
@@ -198,127 +503,128 @@ namespace
 
 	// Once, before the add-ons load, so their filters chain to ours. Never set again over theirs: an add-on that finds a
 	// filter over its own can't unload
-	void installFilter ( Log& l )
+	void installCrashHandlers ( Registry& r )
 	{
-		l.gamesFilter = SetUnhandledExceptionFilter ( &onUnhandled );
-		l.hasOwnFilter = true;
+		if ( r.crashHandler == nullptr )
+			r.crashHandler = AddVectoredExceptionHandler ( 0, &onException );
+
+		if ( ! r.hasOwnFilter )
+		{
+			r.gamesFilter = SetUnhandledExceptionFilter ( &onUnhandled );
+			r.hasOwnFilter = true;
+		}
 	}
 
 	// Ours goes only while it is the process's: a filter set over it may call it after the unload
-	void takeOutFilter ( Log& l )
+	void takeOutCrashHandlers ( Registry& r )
 	{
-		if ( ! l.hasOwnFilter )
+		if ( r.crashHandler != nullptr )
+			RemoveVectoredExceptionHandler ( r.crashHandler );
+		r.crashHandler = nullptr;
+
+		if ( ! r.hasOwnFilter )
 			return;
 
-		l.hasOwnFilter = false;
+		r.hasOwnFilter = false;
 
-		if ( const auto now = SetUnhandledExceptionFilter ( l.gamesFilter ); now != &onUnhandled )
+		if ( const auto now = SetUnhandledExceptionFilter ( r.gamesFilter ); now != &onUnhandled )
 		{
 			SetUnhandledExceptionFilter ( now );
-			reshade::log::message ( reshade::log::level::warning, "An unhandled exception filter (%p) was set over the log's own, which it may still call.",
-									reinterpret_cast<void*> ( now ) );
+
+			if ( auto* const first = find ( 1 ); first != nullptr )
+				(void) queue ( *first, makeLine ( ultralog::Level::warning, formatted ( "An unhandled exception filter (%p) was set over the log's own, which it may still call.",
+																					   reinterpret_cast<void*> ( now ) ) ), true );
 		}
 	}
 
 	// Idle priority and background mode (low I/O and memory priority too): the writer never gets ahead of a game thread
-	DWORD WINAPI writeLog ( void* )
+	DWORD WINAPI writeLogs ( void* )
 	{
-		auto&	l = logger ();
+		auto&	r = registry ();
 		SetThreadPriority ( GetCurrentThread (), THREAD_MODE_BACKGROUND_BEGIN );
 
-		while ( ! l.isStopping )
+		while ( ! r.isStopping )
 		{
-			WaitForSingleObject ( l.wake, drainEveryMs );
-			drain ();
+			WaitForSingleObject ( r.wake, drainEveryMs );
+			serviceAll ();
 		}
 
-		drain ();
+		serviceAll ();
 
 		// Ending needs the loader lock, which the DllMain that unloads ReShade holds: it ends the thread here instead
-		if ( l.shouldPark )
+		if ( r.shouldPark )
 		{
-			SetEvent ( l.parked );
+			SetEvent ( r.parked );
 			Sleep ( INFINITE );
 		}
 
 		return 0;
 	}
 
-	void startWriter ( Log& l )
+	[[ nodiscard ]] bool startWriter ( Registry& r )
 	{
-		if ( l.writer != nullptr )
-			return;
+		if ( r.writer != nullptr )
+			return true;
 
-		l.wake = CreateEventW ( nullptr, FALSE, FALSE, nullptr );
-		l.parked = CreateEventW ( nullptr, TRUE, FALSE, nullptr );
-		l.writer = l.wake != nullptr && l.parked != nullptr ? CreateThread ( nullptr, 0, &writeLog, nullptr, CREATE_SUSPENDED, nullptr ) : nullptr;
+		r.wake = CreateEventW ( nullptr, FALSE, FALSE, nullptr );
+		r.parked = CreateEventW ( nullptr, TRUE, FALSE, nullptr );
+		r.writer = r.wake != nullptr && r.parked != nullptr ? CreateThread ( nullptr, 0, &writeLogs, nullptr, CREATE_SUSPENDED, nullptr ) : nullptr;
 
-		if ( l.writer == nullptr )
-		{
-			reshade::log::message ( reshade::log::level::error, "Starting the log's writer thread failed with error code %lu: each line is written by the thread that logs it.",
-									GetLastError () );
-			return;
-		}
+		if ( r.writer == nullptr )
+			return false;
 
-		SetThreadPriority ( l.writer, THREAD_PRIORITY_IDLE );
-		ResumeThread ( l.writer );
-		l.hasWriter = true;
+		SetThreadPriority ( r.writer, THREAD_PRIORITY_IDLE );
+		ResumeThread ( r.writer );
+		r.hasWriter = true;
+		return true;
 	}
 
-	void stopWriter ( Log& l )
+	void stopWriter ( Registry& r )
 	{
-		if ( l.writer == nullptr )
+		if ( r.writer == nullptr )
 			return;
 
-		l.hasWriter = false;
+		r.hasWriter = false;
 
 		// ExitProcess has ended every other thread already
 		if ( ! isProcessExiting () )
 		{
-			l.shouldPark = ! isInsideExe ();
-			l.isStopping = true;
-			SetThreadPriority ( l.writer, THREAD_PRIORITY_NORMAL );
-			SetEvent ( l.wake );
+			r.shouldPark = ! isInsideExe ();
+			r.isStopping = true;
+			SetThreadPriority ( r.writer, THREAD_PRIORITY_NORMAL );
+			SetEvent ( r.wake );
 
-			if ( ! l.shouldPark )
+			if ( ! r.shouldPark )
 			{
-				if ( WaitForSingleObject ( l.writer, 5000 ) != WAIT_OBJECT_0 )
-					OutputDebugStringA ( "ReShade: the log's writer thread did not end in 5 s.\n" );
+				if ( WaitForSingleObject ( r.writer, 5000 ) != WAIT_OBJECT_0 )
+					OutputDebugStringA ( "ultralog: the writer thread did not end in 5 s.\n" );
 			}
 			else
 			{
-				if ( WaitForSingleObject ( l.parked, 5000 ) != WAIT_OBJECT_0 )
-					OutputDebugStringA ( "ReShade: the log's writer thread did not finish in 5 s, it is ended where it is.\n" );
+				if ( WaitForSingleObject ( r.parked, 5000 ) != WAIT_OBJECT_0 )
+					OutputDebugStringA ( "ultralog: the writer thread did not finish in 5 s, it is ended where it is.\n" );
 
 				// Safe here: parked in Sleep, it holds no lock, no heap and runs none of our code again
-				TerminateThread ( l.writer, 0 );
-				WaitForSingleObject ( l.writer, 1000 );
+				TerminateThread ( r.writer, 0 );
+				WaitForSingleObject ( r.writer, 1000 );
 			}
 		}
 
-		CloseHandle ( l.writer );
-		CloseHandle ( l.wake );
-		CloseHandle ( l.parked );
-		l.writer = l.wake = l.parked = nullptr;
+		CloseHandle ( r.writer );
+		CloseHandle ( r.wake );
+		CloseHandle ( r.parked );
+		r.writer = r.wake = r.parked = nullptr;
 	}
 
-	void closeLog ()
+	void closeFile ( Log& l )
 	{
-		auto&	l = logger ();
-
-		if ( l.crashHandler != nullptr )
-			RemoveVectoredExceptionHandler ( l.crashHandler );
-		l.crashHandler = nullptr;
-
-		stopWriter ( l );
-		takeOutFilter ( l );
-		drain ();
 		l.hasFile = false;
 
 		if ( std::unique_lock file ( l.fileLock, lockTimeout ); file.owns_lock () )
 		{
 			if ( l.file != INVALID_HANDLE_VALUE )
 				CloseHandle ( l.file );
+
 			l.file = INVALID_HANDLE_VALUE;
 			std::string ().swap ( l.draining );
 		}
@@ -331,12 +637,21 @@ namespace
 		}
 	}
 
-	// Ends with this module's statics: after DllMain's last lines (DLL), after WinMain returned (test application)
+	void shutdown ()
+	{
+		auto&	r = registry ();
+		stopWriter ( r );
+		takeOutCrashHandlers ( r );
+		ultralog::endRuns ();
+		forEachLog ( closeFile );
+	}
+
+	// Ends with this module's statics: after DllMain's last lines (DLL), after WinMain returned (exe)
 	struct LogEnd
 	{
 		~LogEnd ()
 		{
-			closeLog ();
+			shutdown ();
 		}
 	};
 
@@ -344,161 +659,178 @@ namespace
 }
 //-----------------------------------------------------------------------------
 
-bool reshade::ultra::openLog ( const std::filesystem::path& path, std::error_code& ec )
+bool ultralog::isValidName ( std::string_view name )
 {
-	auto&	l = logger ();
+	return ! name.empty () && name.size () <= namesMax && std::ranges::all_of ( name, [] ( const char c )
 	{
-		std::unique_lock	file ( l.fileLock );
-
-		if ( l.file != INVALID_HANDLE_VALUE )
-			CloseHandle ( l.file );
-
-		l.file = CreateFileW ( path.c_str (), GENERIC_WRITE, FILE_SHARE_READ, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr );
-		l.hasFile = l.file != INVALID_HANDLE_VALUE;
-
-		if ( ! l.hasFile )
-		{
-			ec.assign ( static_cast<int> ( GetLastError () ), std::system_category () );
-			return false;
-		}
-
-		l.hasWriteFailed = false;
-		l.draining.reserve ( pendingMax );
-	}
-
-	{
-		std::unique_lock	lock ( l.pendingLock );
-		l.pending.reserve ( pendingMax );
-	}
-
-	ec.clear ();
-	startWriter ( l );
-
-	if ( l.crashHandler == nullptr )
-		l.crashHandler = AddVectoredExceptionHandler ( 0, &onException );
-
-	if ( ! l.hasOwnFilter )
-		installFilter ( l );
-
-	return true;
+		return ( c >= 'a' && c <= 'z' ) || ( c >= 'A' && c <= 'Z' ) || ( c >= '0' && c <= '9' ) || c == '-' || c == '_';
+	} );
 }
 //-----------------------------------------------------------------------------
 
-void reshade::ultra::logLine ( std::string&& line )
+ultralog::Opened ultralog::open ( const std::filesystem::path& folder, std::string_view name, uint64_t maxBytesOfFile, std::string_view build )
 {
-	auto&	l = logger ();
-	auto	shouldWake = false;
+	if ( ! isValidName ( name ) )
+		return { none, OpenStatus::badName, {} };
+
+	if ( maxBytesOfFile < minBytes || maxBytesOfFile > maxBytes )
+		return { none, OpenStatus::badSize, {} };
+
+	auto&					r = registry ();
+	std::scoped_lock		guard ( r.openLock );
+	const auto				used = r.count.load ();
+
+	for ( auto i = uint32_t ( 0 ); i < used; ++i )
+		if ( const auto* const other = r.slots[ i ].load (); other != nullptr && _stricmp ( other->name.c_str (), std::string ( name ).c_str () ) == 0 )
+			return { other->id, OpenStatus::existing, {} };
+
+	if ( used >= logsMax )
+		return { none, OpenStatus::tooMany, {} };
+
+	auto*			l = new Log;
+	std::error_code	error;
+	l->id = used + 1;
+	l->name = name;
+	l->maxFileBytes = maxBytesOfFile;
+
+	std::error_code	ignored;
+	std::filesystem::create_directories ( folder, ignored );
+
+	const auto	path = folder / std::filesystem::path ( std::string ( name ) + ".log" );
+	l->file = CreateFileW ( path.c_str (), GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ, nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr );
+
+	if ( l->file == INVALID_HANDLE_VALUE )
+		error.assign ( int ( GetLastError () ), std::system_category () );
+	else if ( LARGE_INTEGER size {}; GetFileSizeEx ( l->file, &size ) )
 	{
-		std::unique_lock	lock ( l.pendingLock, lockTimeout );
-
-		if ( ! lock.owns_lock () )
-			return;
-
-		if ( l.hasFile )
-		{
-			const auto	size = sizeWithCrLf ( line );
-
-			if ( l.pending.size () + size > pendingMax )
-				++l.dropped;
-			else
-			{
-				shouldWake = l.pending.size () < wakeAt && l.pending.size () + size >= wakeAt;
-				appendWithCrLf ( l.pending, line );
-				l.hasPending = true;
-			}
-		}
-
-		l.recentBytes += line.size ();
-		l.recent.push_back ( std::move ( line ) );
-
-		while ( l.recent.size () > recentMax || ( l.recentBytes > recentBytesMax && l.recent.size () > 1 ) )
-		{
-			l.recentBytes -= l.recent.front ().size ();
-			l.recent.pop_front ();
-		}
-
-		l.count.fetch_add ( 1, std::memory_order_release );
+		l->startOffset = l->writeOffset = uint64_t ( size.QuadPart );
+		l->isTrimPending = l->startOffset > maxBytesOfFile;
+		l->hasFile = true;
 	}
-
-	if ( ! l.hasWriter )
-	{
-		if ( l.hasFile )
-			drain ();
-	}
-	else if ( shouldWake )
-		SetEvent ( l.wake );
-}
-//-----------------------------------------------------------------------------
-
-void reshade::ultra::flushLog ()
-{
-	drain ();
-}
-//-----------------------------------------------------------------------------
-
-void reshade::ultra::clearLog ()
-{
-	auto&	l = logger ();
-
-	if ( std::unique_lock lock ( l.pendingLock, lockTimeout ); lock.owns_lock () )
-	{
-		l.pending.clear ();
-		l.dropped = 0;
-		l.isTruncateWanted = true;
-		l.recent.clear ();
-		l.recentBytes = 0;
-	}
-
-	if ( l.hasWriter )
-		SetEvent ( l.wake );
 	else
-		drain ();
+	{
+		error.assign ( int ( GetLastError () ), std::system_category () );
+		CloseHandle ( std::exchange ( l->file, INVALID_HANDLE_VALUE ) );
+	}
+
+	(void) queue ( *l, runHeader ( build ), true, l->startOffset != 0 ? "\r\n" : "" );
+
+	r.slots[ l->id - 1 ].store ( l, std::memory_order_release );
+	r.count.store ( l->id, std::memory_order_release );
+
+	installCrashHandlers ( r );
+
+	if ( ! startWriter ( r ) )
+		(void) queue ( *l, makeLine ( Level::error, formatted ( "Starting the log's writer thread failed with Windows error %lu: each line is written by the thread that logs it.", GetLastError () ) ), true );
+
+	return { l->id, error ? OpenStatus::fileFailed : OpenStatus::opened, error };
 }
 //-----------------------------------------------------------------------------
 
-std::string reshade::ultra::logModuleName ( const void* module )
+bool ultralog::isKnown ( Id log )
 {
-	HMODULE	handle = nullptr;
-
-	if ( module == nullptr || ! GetModuleHandleExW ( GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT, static_cast<LPCWSTR> ( module ), &handle )
-		 || handle == g_module_handle )
-		return {};
-
-	wchar_t		path[ MAX_PATH ];
-	const auto	length = GetModuleFileNameW ( handle, path, MAX_PATH );
-
-	return length != 0 ? std::filesystem::path ( path, path + length ).filename ().u8string () : std::string ();
+	return find ( log ) != nullptr;
 }
 //-----------------------------------------------------------------------------
 
-uint64_t reshade::ultra::logLineCount ()
+void ultralog::write ( Id log, Level level, std::string_view message )
 {
-	return logger ().count.load ( std::memory_order_acquire );
+	if ( auto* const l = find ( log ); l != nullptr )
+		append ( *l, makeLine ( level, message ), false );
 }
 //-----------------------------------------------------------------------------
 
-bool reshade::ultra::copyLogLines ( uint64_t& seen, std::vector<std::string>& lines )
+void ultralog::flush ( Id log )
 {
-	auto&				l = logger ();
-	std::unique_lock	lock ( l.pendingLock, lockTimeout );
+	if ( auto* const l = find ( log ); l != nullptr )
+		drain ( *l, false );
+}
+//-----------------------------------------------------------------------------
+
+void ultralog::flushAll ()
+{
+	forEachLog ( [] ( Log& l ) { drain ( l, false ); } );
+}
+//-----------------------------------------------------------------------------
+
+void ultralog::endRuns ()
+{
+	if ( ! registry ().isCrashed )
+		forEachLog ( [] ( Log& l )
+		{
+			if ( l.hasFile && ! l.isEnded.exchange ( true ) )
+				(void) queue ( l, formatted ( "%s%s\n", runEndMarker.data (), timeText ().c_str () ), true );
+		} );
+
+	flushAll ();
+}
+//-----------------------------------------------------------------------------
+
+void ultralog::noteCrash ()
+{
+	registry ().isCrashed = true;
+	flushAll ();
+}
+//-----------------------------------------------------------------------------
+
+uint64_t ultralog::lineCount ( Id log )
+{
+	const auto* const	l = find ( log );
+	return l != nullptr ? l->count.load ( std::memory_order_acquire ) : 0;
+}
+//-----------------------------------------------------------------------------
+
+bool ultralog::copyLines ( Id log, uint64_t& seen, std::vector<std::string>& lines, size_t maxBytesOfLines )
+{
+	auto* const	l = find ( log );
+
+	if ( l == nullptr )
+		return true;
+
+	std::unique_lock	lock ( l->pendingLock, lockTimeout );
 
 	if ( ! lock.owns_lock () )
 		return true;
 
-	const auto	count = l.count.load ( std::memory_order_relaxed );
-	const auto	first = count - l.recent.size ();
+	const auto	count = l->count.load ( std::memory_order_relaxed );
+	const auto	first = count - l->recent.size ();
 	const auto	isComplete = seen >= first;
+	auto		bytes = size_t ( 0 );
+	auto		next = isComplete ? seen : first;
 
-	for ( auto i = isComplete ? seen : first; i < count; ++i )
-		lines.push_back ( l.recent[ size_t ( i - first ) ] );
+	for ( ; next < count; ++next )
+	{
+		const auto&	line = l->recent[ size_t ( next - first ) ];
 
-	seen = count;
+		if ( bytes != 0 && bytes + line.size () > maxBytesOfLines )
+			break;
+
+		lines.push_back ( line );
+		bytes += line.size ();
+	}
+
+	seen = std::min ( next, count );
 	return isComplete;
 }
 //-----------------------------------------------------------------------------
 
-void ReShadeFlushLog ()
+void ultralog::clearRecent ( Id log )
 {
-	reshade::ultra::flushLog ();
+	auto* const	l = find ( log );
+
+	if ( l == nullptr )
+		return;
+
+	if ( std::unique_lock lock ( l->pendingLock, lockTimeout ); lock.owns_lock () )
+	{
+		l->recent.clear ();
+		l->recentBytes = 0;
+	}
 }
 //-----------------------------------------------------------------------------
+
+std::string_view ultralog::lastRun ( std::string_view fileText )
+{
+	const auto	at = fileText.rfind ( runBoundary );
+	return at != std::string_view::npos ? fileText.substr ( at + 1 ) : fileText;
+}

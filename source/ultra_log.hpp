@@ -8,33 +8,99 @@
 #include <cstdint>
 #include <filesystem>
 #include <string>
+#include <string_view>
 #include <system_error>
 #include <vector>
 
 //-----------------------------------------------------------------------------
 
-// What reshade::log::message writes into: a line waits in memory and a background thread writes it to the file, so no
-// thread that logs waits for the disk. A crash or the end of the process writes what is left on the spot
-namespace reshade::ultra
+// Named logs in one folder, each <name>.log, written the same way by every part of ultraGame. No dependency on ReShade
+// (nothing but the standard library and Windows): ultraReShade compiles it in, and so does any process without ReShade.
+//
+// A log is appended to, never put aside. Each run starts with a header line and a clean exit ends with an end line, both
+// at the start of a line:
+//   -- run start 2026-11-20 14:03:22.123 pid 1234 exe "game.exe" build "6.8.0.0 development 64-bit"
+//   -- run end 2026-11-20 14:09:00.456
+// A run (from its header to the next header) without an end line did not end cleanly: the process crashed or was killed.
+// The lines between are "HH:MM:SS.mmm [thread] | LEVEL | text" (ERROR, WARN, INFO, DEBUG), CRLF in the file.
+//
+// Whoever opens a log names its maximum size. At the start, on the writer thread, a file over its size loses its oldest
+// whole runs until it fits; the run before this one stays whole whatever its size, and nothing of the new run is touched.
+//
+// One background thread per process writes every log's lines, so no thread that logs waits for the disk. One process
+// writes a file (others may read it). Every function may be called from any thread
+namespace ultralog
 {
-	[[ nodiscard ]] bool openLog ( const std::filesystem::path& path, std::error_code& ec );
+	using Id = uint32_t;
 
-	// One finished line, ending in '\n'
-	void logLine ( std::string&& line );
+	inline constexpr Id	none = 0;
 
-	// Writes every waiting line now, on the calling thread
-	void flushLog ();
+	enum class Level : uint32_t
+	{
+		error = 1,
+		warning = 2,
+		info = 3,
+		debug = 4
+	};
 
-	// Empties the file and the recent lines
-	void clearLog ();
+	inline constexpr uint64_t			minBytes = uint64_t ( 64 ) << 10;
+	inline constexpr uint64_t			maxBytes = uint64_t ( 1 ) << 30;
+	inline constexpr size_t				namesMax = 64;
+	inline constexpr size_t				logsMax = 64;
+	inline constexpr std::string_view	runStartMarker = "-- run start ";
+	inline constexpr std::string_view	runEndMarker = "-- run end ";
 
-	// An add-on's name for its lines when it is not registered: its file name; empty for ReShade itself
-	[[ nodiscard ]] std::string logModuleName ( const void* module );
+	enum class OpenStatus
+	{
+		opened,
+		existing,		// the name was open already: its id, size and folder stay
+		badName,		// not 1 to namesMax of letters, digits, '-' and '_'
+		badSize,		// outside minBytes to maxBytes
+		tooMany,		// logsMax logs are open
+		fileFailed		// the lines are kept in memory for viewers but not written (error says why)
+	};
 
-	// Lines logged since the start, an atomic read for the Log tab's every frame
-	[[ nodiscard ]] uint64_t logLineCount ();
+	struct Opened
+	{
+		Id					id = none;
+		OpenStatus			status = OpenStatus::badName;
+		std::error_code		error;
+	};
 
-	// The recent lines after line number seen, which moves on to the newest. False when some of them are no longer
-	// in memory: lines then holds every recent line
-	[[ nodiscard ]] bool copyLogLines ( uint64_t& seen, std::vector<std::string>& lines );
+	[[ nodiscard ]] bool isValidName ( std::string_view name );
+
+	// Opens folder/name.log (the folder is made), appends the run's header and starts the writer thread with the first log.
+	// build is any text naming this program's version, shown in the header
+	[[ nodiscard ]] Opened open ( const std::filesystem::path& folder, std::string_view name, uint64_t maxBytesOfFile, std::string_view build );
+
+	[[ nodiscard ]] bool isKnown ( Id log );
+
+	// One line, with time, thread and level; message's trailing newlines are dropped and a line beyond 32 KiB is cut.
+	// Nothing for an unknown log
+	void write ( Id log, Level level, std::string_view message );
+
+	// Writes the lines waiting to the file now, on the calling thread (a crash handler's last step)
+	void flush ( Id log );
+	void flushAll ();
+
+	// Ends this run in every log that has not ended it: the end line, then everything waiting is written. Not after the
+	// process crashed (an unhandled exception passed through here, or noteCrash): the missing end line is how it shows
+	void endRuns ();
+
+	// The process ends in a crash that no unhandled exception filter saw (its exit status says so): no log gets an end line
+	// any more, and what waits is written
+	void noteCrash ();
+
+	// Recent lines for viewers: up to 10000 lines or 4 MB per log, each ending in '\n' (the file's CRLF is not in them)
+	[[ nodiscard ]] uint64_t lineCount ( Id log );
+
+	// The lines after line number seen, which moves on to the last one taken. At most maxBytesOfLines of them when that is
+	// less than all (always one). False when some lines are no longer in memory: lines then starts at the oldest kept
+	[[ nodiscard ]] bool copyLines ( Id log, uint64_t& seen, std::vector<std::string>& lines, size_t maxBytesOfLines = SIZE_MAX );
+
+	// Forgets the recent lines; the file keeps its lines
+	void clearRecent ( Id log );
+
+	// The last run of a log file's text: from its last header line to the end, the whole text without one
+	[[ nodiscard ]] std::string_view lastRun ( std::string_view fileText );
 }

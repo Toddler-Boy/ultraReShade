@@ -12,7 +12,7 @@
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
 #include "ultra_home.hpp"
-#include "ultra_log.hpp"
+#include "ultra_main_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_display.hpp"
 #include "ultra_test_home.hpp"
@@ -83,8 +83,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	g_reshade_dll_path = get_module_path(hInstance);
 	g_target_executable_path = g_reshade_dll_path;
 
-	std::error_code ec;
-
 	// The run's own index, home and cache in its -work-dir, so several runs at once never share an ini, log or shader cache
 	const std::filesystem::path work_dir = reshade::ultra::seedTestHome(g_target_executable_path);
 	if (work_dir.empty())
@@ -95,7 +93,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	if (g_reshade_base_path.empty())
 		return EXIT_FAILURE;
 
-	reshade::log::open_log_file(reshade::ultra::logPath(), ec);
+	(void)reshade::ultra::openMainLog();
 	reshade::ultra::logHome();
 
 	reshade::ultra::TestCheck check;
@@ -1097,7 +1095,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		reshade::ultra::shareEffectCache(work_dir / L"cache");
 
 	// Ends as a game does, add-ons loaded: returning would destroy ReShade's statics while its threads still run
-	reshade::ultra::flushLog();
+	ultralog::flushAll();
 	ExitProcess(static_cast<UINT>(exit_code));
 }
 
