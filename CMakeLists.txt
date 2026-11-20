@@ -83,13 +83,15 @@ set(RESHADE_SOURCE
   source/state_block.hpp
   source/ultra_addon_reload.cpp
   source/ultra_addon_reload.hpp
-  source/ultra_config.cpp
-  source/ultra_config.hpp
   source/ultra_constant_buffers.cpp
   source/ultra_effect_reload.cpp
   source/ultra_effect_reload.hpp
+  source/ultra_effect_settings.cpp
+  source/ultra_effect_settings.hpp
   source/ultra_file_watch.cpp
   source/ultra_file_watch.hpp
+  source/ultra_home.cpp
+  source/ultra_home.hpp
   source/ultra_json.cpp
   source/ultra_json.hpp
   source/ultra_json_watch.cpp
@@ -100,6 +102,8 @@ set(RESHADE_SOURCE
   source/ultra_resource_ids.cpp
   source/ultra_overlay.cpp
   source/ultra_overlay.hpp
+  source/ultra_pass_through.cpp
+  source/ultra_pass_through.hpp
   source/ultra_splash.cpp
   source/ultra_splash.hpp
 )

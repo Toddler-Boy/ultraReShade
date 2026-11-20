@@ -8,7 +8,8 @@
 #include "ini_file.hpp"
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
-#include "ultra_config.hpp"
+#include "ultra_home.hpp"
+#include "ultra_pass_through.hpp"
 #include <Windows.h>
 #include <Psapi.h>
 #include <delayimp.h> // Delay-load helpers
@@ -21,8 +22,6 @@ HMODULE g_module_handle = nullptr;
 std::filesystem::path g_reshade_dll_path;
 std::filesystem::path g_reshade_base_path;
 std::filesystem::path g_target_executable_path;
-
-extern bool resolve_path(std::filesystem::path &path, std::error_code &ec, const std::filesystem::path &base);
 
 /// <summary>
 /// Checks whether the current application is an UWP app.
@@ -51,30 +50,6 @@ bool is_windows7()
 }
 
 /// <summary>
-/// Returns the path that should be used as base for relative paths.
-/// </summary>
-std::filesystem::path get_base_path(bool default_to_target_executable_path = false)
-{
-	const std::filesystem::path reshade_dll_parent_path = g_reshade_dll_path.parent_path();
-	const std::filesystem::path target_executable_parent_path = g_target_executable_path.parent_path();
-
-	std::error_code ec;
-	std::filesystem::path path_override;
-
-	// Cannot use global config here yet, since it uses base path for look up, so look at config file next to target executable instead
-	if (reshade::ini_file(reshade::ultra::basePathConfig(target_executable_parent_path)).get("INSTALL", "BasePath", path_override) &&
-		resolve_path(path_override, ec, reshade_dll_parent_path) && std::filesystem::is_directory(path_override, ec))
-		return path_override;
-
-	WCHAR buf[4096];
-	path_override.assign(buf, buf + GetEnvironmentVariableW(L"RESHADE_BASE_PATH_OVERRIDE", buf, ARRAYSIZE(buf)));
-	if (resolve_path(path_override, ec, reshade_dll_parent_path) && std::filesystem::is_directory(path_override, ec))
-		return path_override;
-
-	return default_to_target_executable_path ? target_executable_parent_path : reshade_dll_parent_path;
-}
-
-/// <summary>
 /// Returns the path to the Windows System32 directory.
 /// </summary>
 std::filesystem::path get_system_path()
@@ -100,6 +75,9 @@ std::filesystem::path get_module_path(HMODULE module)
 static PVOID s_exception_handler_handle = nullptr;
 #endif
 
+// A proxy in an exe ultraGame did not install into: its exports forward to the system DLL, nothing else runs
+static bool s_is_pass_through = false;
+
 BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 {
 	switch (fdwReason)
@@ -117,50 +95,24 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 			const bool is_d3d = _wcsnicmp(module_name.c_str(), L"d3d", 3) == 0;
 			const bool is_dxgi = _wcsicmp(module_name.c_str(), L"dxgi") == 0;
 			const bool is_opengl = _wcsicmp(module_name.c_str(), L"opengl32") == 0;
-			const bool is_dinput = _wcsnicmp(module_name.c_str(), L"dinput", 6) == 0;
-			const bool is_asi = g_reshade_dll_path.extension() == L".asi";
 
-			// UWP apps do not have write access to the application directory, so never default the base path to it for them
-			const bool default_base_to_target_executable_path = !is_d3d && !is_dxgi && !is_opengl && !is_dinput && !is_asi && !is_uwp_app();
-
-			g_reshade_base_path = get_base_path(default_base_to_target_executable_path);
-
-			const reshade::ini_file &config = reshade::global_config();
-
-			// When ReShade is not loaded by proxy, only actually load when a configuration file exists for the target executable
-			// This e.g. prevents loading the implicit Vulkan layer when not explicitly enabled for an application
-			if (default_base_to_target_executable_path && !GetEnvironmentVariableW(L"RESHADE_DISABLE_LOADING_CHECK", nullptr, 0))
+			// Only in an exe ultraGame installed into: the index names its home, which is the base path. Elsewhere a proxy only
+			// forwards to the system DLL, and the Vulkan layer does not load
+			g_reshade_base_path = reshade::ultra::findHome(g_target_executable_path);
+			if (g_reshade_base_path.empty())
 			{
-#ifndef NDEBUG
-				// Avoid loading in the ReShade test application
-				if (g_target_executable_path.filename() ==
-#ifndef _WIN64
-						L"ReShade32.exe"
-#else
-						L"ReShade64.exe"
-#endif
-						)
-				{
-					return FALSE;
-				}
-#endif
-
-				std::error_code ec;
-				if (!std::filesystem::exists(config.path(), ec))
-				{
-#ifndef NDEBUG
-					// Log was not yet opened at this point, so this only writes to debug output
-					reshade::log::message(reshade::log::level::warning, "ReShade was not enabled for '%s'! Aborting initialization ...", g_target_executable_path.u8string().c_str());
-#endif
-					return FALSE; // Make the 'LoadLibrary' call that loaded this instance fail
-				}
+				const std::filesystem::path system_dll = reshade::ultra::proxiedSystemDll(hModule);
+				s_is_pass_through = !system_dll.empty() && reshade::ultra::startPassThrough(hModule, system_dll);
+				return s_is_pass_through ? TRUE : FALSE; // FALSE makes the 'LoadLibrary' call that loaded this instance fail
 			}
 
-			if (config.get("INSTALL", "Logging") || (!config.has("INSTALL", "Logging") && !GetEnvironmentVariableW(L"RESHADE_DISABLE_LOGGING", nullptr, 0)))
+			// The log opens before the settings are read, so a problem with them is in it
+			if (!GetEnvironmentVariableW(L"RESHADE_DISABLE_LOGGING", nullptr, 0))
 			{
 				std::filesystem::path log_path = reshade::ultra::logPath();
 
 				std::error_code ec;
+				std::filesystem::create_directories(g_reshade_base_path, ec);
 				if (!reshade::log::open_log_file(log_path, ec))
 				{
 					// Try a different file if the default failed to open (e.g. because currently in use by another ReShade instance)
@@ -196,7 +148,9 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 #endif
 				static_cast<unsigned int>(std::hash<std::string>()(g_target_executable_path.stem().u8string()) & 0xFFFFFFFF));
 
-			reshade::ultra::logConfigLayers();
+			reshade::ultra::logHome();
+
+			const reshade::ini_file &config = reshade::global_config();
 
 			// Check if another ReShade instance was already loaded into the process
 			if (HMODULE modules[1024]; K32EnumProcessModules(GetCurrentProcess(), modules, sizeof(modules), &fdwReason)) // Use kernel32 variant which is available in DllMain
@@ -375,6 +329,7 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 		}
 		break;
 	case DLL_PROCESS_DETACH:
+		if (!s_is_pass_through)
 		{
 			reshade::log::message(reshade::log::level::info, "Exiting ...");
 

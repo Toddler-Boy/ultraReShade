@@ -245,7 +245,7 @@ void reshade::runtime::ultra_reload_changed_effects ()
 
 	ultra::followEffectSearchPaths ( this, _effect_search_paths );
 
-	if ( is_loading () || _is_in_preset_transition )
+	if ( is_loading () )
 		return;
 
 	const auto	changed = ultra::takeEffectChanges ( this );

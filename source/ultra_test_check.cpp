@@ -316,6 +316,25 @@ namespace
 		reshade::log::message ( reshade::log::level::info, "Test application: %zu file watches %s in frame %zu.", files.paths.size (), isWatching ? "start" : "end", frameIndex () );
 	}
 
+	// -log-techniques <frame>: the techniques that render in that frame, in render order
+	struct TechniqueOrder
+	{
+		std::optional<size_t>	frame;
+		bool					isListening = false;
+	};
+
+	TechniqueOrder	order;
+
+	void onTechniqueRendered ( reshade::api::effect_runtime* runtime, reshade::api::effect_technique technique, reshade::api::command_list*, reshade::api::resource_view, reshade::api::resource_view )
+	{
+		if ( order.frame != frameIndex () )
+			return;
+
+		char	name[ 128 ] {};
+		runtime->get_technique_name ( technique, name );
+		reshade::log::message ( reshade::log::level::info, "Test application: technique '%s' renders in frame %zu.", name, frameIndex () );
+	}
+
 	// -run-exclusive-at <frame>: queued after that frame's effects, runs at the next present
 	struct ExclusiveCallTest
 	{
@@ -494,6 +513,12 @@ namespace
 
 		files.presentThread = GetCurrentThreadId ();
 
+		if ( order.frame.has_value () && ! order.isListening )
+		{
+			order.isListening = true;
+			reshade::register_event<reshade::addon_event::reshade_render_technique> ( onTechniqueRendered );
+		}
+
 		if ( exclusive.frame.has_value () && ! exclusive.isAsked && frameIndex () >= *exclusive.frame )
 		{
 			exclusive.isAsked = true;
@@ -563,6 +588,23 @@ reshade::ultra::TestCheck::TestCheck ()
 			}
 
 			ids.path = std::filesystem::absolute ( argv[ ++i ] );
+			continue;
+		}
+
+		if ( _wcsicmp ( argv[ i ], L"-log-techniques" ) == 0 )
+		{
+			wchar_t*	end = nullptr;
+			const auto	frame = i + 1 < argc ? std::wcstoull ( argv[ i + 1 ], &end, 10 ) : 0;
+
+			if ( i + 1 >= argc || end == argv[ i + 1 ] || *end != L'\0' )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: -log-techniques needs a frame number." );
+				isCommandLineValid = false;
+				break;
+			}
+
+			order.frame = static_cast<size_t> ( frame );
+			++i;
 			continue;
 		}
 
@@ -694,7 +736,7 @@ bool reshade::ultra::isReShadeLoaded ()
 bool reshade::ultra::TestCheck::needsNumberedFrames () const
 {
 	return captureFrame.has_value () || dump.frame.has_value () || ! ids.path.empty () || ! changes.toggles.empty () || changes.reloadEvery != 0 || files.unwatchAt.has_value ()
-		|| exclusive.frame.has_value ();
+		|| exclusive.frame.has_value () || order.frame.has_value ();
 }
 //-----------------------------------------------------------------------------
 

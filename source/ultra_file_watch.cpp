@@ -53,6 +53,15 @@ namespace
 		void operator() ( HANDLE handle ) const { CloseHandle ( handle ); }
 	};
 
+	struct KnownFile
+	{
+		std::wstring	name;
+		uint64_t		size = 0;
+		FILETIME		time {};
+	};
+
+	using KnownFiles = std::map<std::wstring, KnownFile>;		// by upper case name
+
 	struct Watch
 	{
 		void*				owner = nullptr;		// the add-on's module, or a client's callback
@@ -61,6 +70,7 @@ namespace
 		std::wstring		folderKey;				// upper case
 		std::wstring		match;					// upper case: the file's name, or the pattern of a folder watch
 		bool				isFolder = false;
+		KnownFiles			told;					// its files as of its start and its last change: only a difference is news
 	};
 
 	struct Change
@@ -80,15 +90,6 @@ namespace
 		std::wstring	renamedTo;
 		bool			exists = false;
 	};
-
-	struct KnownFile
-	{
-		std::wstring	name;
-		uint64_t		size = 0;
-		FILETIME		time {};
-	};
-
-	using KnownFiles = std::map<std::wstring, KnownFile>;		// by upper case name
 
 	struct Folder
 	{
@@ -336,11 +337,16 @@ namespace
 		return folder.pending.emplace_back ( Pending { name } );
 	}
 
-	[[ nodiscard ]] KnownFiles listFiles ( const Folder& folder )
+	[[ nodiscard ]] bool isWatchedName ( const Folder& folder, const std::wstring& upperName )
+	{
+		return std::ranges::any_of ( watches, [ &folder, &upperName ] ( const Watch& watch ) { return watch.folderKey == folder.key && matches ( watch, upperName ); } );
+	}
+
+	[[ nodiscard ]] KnownFiles listFiles ( const std::wstring& folder )
 	{
 		KnownFiles			files;
 		WIN32_FIND_DATAW	data {};
-		const auto			search = FindFirstFileExW ( joinPath ( folder.path, L"*" ).c_str (), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH );
+		const auto			search = FindFirstFileExW ( joinPath ( folder, L"*" ).c_str (), FindExInfoBasic, &data, FindExSearchNameMatch, nullptr, FIND_FIRST_EX_LARGE_FETCH );
 
 		if ( search == INVALID_HANDLE_VALUE )
 			return files;
@@ -356,16 +362,17 @@ namespace
 		return files;
 	}
 
-	// Changes were missed: every file there counts as modified or created, every known one missing as deleted
+	// Changes were missed: every watched file there counts as changed, every known one missing as deleted
 	void resync ( Folder& folder )
 	{
-		const auto	files = listFiles ( folder );
+		const auto	files = listFiles ( folder.path );
 
 		for ( const auto& [ key, file ] : files )
-			pendingFor ( folder, file.name ).exists = true;
+			if ( isWatchedName ( folder, key ) )
+				pendingFor ( folder, file.name ).exists = true;
 
 		for ( const auto& [ key, file ] : folder.known )
-			if ( ! files.contains ( key ) )
+			if ( ! files.contains ( key ) && isWatchedName ( folder, key ) )
 				pendingFor ( folder, file.name ).exists = false;
 
 		folder.lastChange = Clock::now ();
@@ -374,14 +381,24 @@ namespace
 	void forgetKnown ( Folder& folder )
 	{
 		for ( const auto& [ key, file ] : folder.known )
-			pendingFor ( folder, file.name ).exists = false;
+			if ( isWatchedName ( folder, key ) )
+				pendingFor ( folder, file.name ).exists = false;
 
 		folder.lastChange = Clock::now ();
 	}
 
-	// A rename's old and new name come one after the other, though other names may come between them on a share
+	// A rename's old and new name come one after the other, though other names may come between them on a share. Names no
+	// watch matches are left out, so a log written beside a watched file never holds its changes back
 	void record ( Folder& folder, DWORD action, const std::wstring& name )
 	{
+		if ( ! isWatchedName ( folder, upper ( name ) ) )
+		{
+			if ( action == FILE_ACTION_RENAMED_OLD_NAME || action == FILE_ACTION_RENAMED_NEW_NAME )
+				folder.renamedName.clear ();
+
+			return;
+		}
+
 		auto&	entry = pendingFor ( folder, name );
 		entry.exists = action != FILE_ACTION_REMOVED && action != FILE_ACTION_RENAMED_OLD_NAME;
 
@@ -432,40 +449,58 @@ namespace
 		return std::nullopt;
 	}
 
-	[[ nodiscard ]] bool isDirectory ( const std::wstring& path )
-	{
-		const auto	attributes = GetFileAttributesW ( path.c_str () );
-		return attributes != INVALID_FILE_ATTRIBUTES && ( attributes & FILE_ATTRIBUTE_DIRECTORY ) != 0;
-	}
-
-	[[ nodiscard ]] std::optional<KnownFile> fileInfo ( const Folder& folder, const std::wstring& name )
+	// Null for a missing name and a folder's
+	[[ nodiscard ]] std::optional<KnownFile> fileInfo ( const std::wstring& folder, const std::wstring& name )
 	{
 		WIN32_FILE_ATTRIBUTE_DATA	data {};
 
-		if ( ! GetFileAttributesExW ( joinPath ( folder.path, name ).c_str (), GetFileExInfoStandard, &data ) )
+		if ( ! GetFileAttributesExW ( joinPath ( folder, name ).c_str (), GetFileExInfoStandard, &data ) || ( data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY ) != 0 )
 			return std::nullopt;
 
 		return KnownFile { name, uint64_t ( data.nFileSizeHigh ) << 32 | data.nFileSizeLow, data.ftLastWriteTime };
 	}
 
+	[[ nodiscard ]] bool isSameFile ( const KnownFile& a, const KnownFile& b )
+	{
+		return a.size == b.size && CompareFileTime ( &a.time, &b.time ) == 0;
+	}
+
+	// The watch's files as they are when it starts: what happened to them before is no news to it, also where the folder
+	// reports it only afterwards
+	[[ nodiscard ]] KnownFiles currentFiles ( const Watch& watch )
+	{
+		if ( ! watch.isFolder )
+		{
+			KnownFiles	files;
+
+			if ( const auto info = fileInfo ( watch.folder, watch.match ); info.has_value () )
+				files.emplace ( watch.match, *info );
+
+			return files;
+		}
+
+		auto	files = listFiles ( watch.folder );
+		std::erase_if ( files, [ &watch ] ( const auto& file ) { return ! isMatch ( watch.match, file.first ); } );
+		return files;
+	}
+
 	// A share may report a rename as a deletion and a creation: a created file with the size and time a deleted one
 	// had is that file renamed
-	void pairRenames ( Folder& folder, std::vector<std::optional<api::file_change>>& kinds )
+	void pairRenames ( Folder& folder, std::vector<std::optional<api::file_change>>& kinds, const std::vector<std::optional<KnownFile>>& infos )
 	{
 		for ( size_t created = 0; created < folder.pending.size (); ++created )
 		{
 			if ( kinds[ created ] != api::file_change::created )
 				continue;
 
-			const auto	info = fileInfo ( folder, folder.pending[ created ].name );
+			const auto&	info = infos[ created ];
 
 			for ( size_t deleted = 0; info.has_value () && deleted < folder.pending.size (); ++deleted )
 			{
 				auto&		entry = folder.pending[ deleted ];
 				const auto	it = folder.known.find ( upper ( entry.name ) );
 
-				if ( kinds[ deleted ] != api::file_change::deleted || ! entry.renamedTo.empty () || it == folder.known.end () || it->second.size != info->size
-					 || CompareFileTime ( &it->second.time, &info->time ) != 0 )
+				if ( kinds[ deleted ] != api::file_change::deleted || ! entry.renamedTo.empty () || it == folder.known.end () || ! isSameFile ( it->second, *info ) )
 					continue;
 
 				entry.renamedTo = folder.pending[ created ].name;
@@ -487,8 +522,69 @@ namespace
 		return handle == INVALID_HANDLE_VALUE && GetLastError () == ERROR_SHARING_VIOLATION;
 	}
 
-	// The folder was quiet long enough: one change per name and watch. A rename between two names a watch matches is a
-	// rename for it; otherwise the new name was created and the old one deleted
+	// What the watch hears of the name: nothing while it is as the watch last knew it. A rename from a name the watch knew
+	// is a rename for it; otherwise the new name was created and the old one deleted
+	[[ nodiscard ]] std::optional<api::file_change> changeFor ( const Watch& watch, const Folder& folder, const std::vector<std::optional<api::file_change>>& kinds,
+																const std::vector<std::optional<KnownFile>>& infos, size_t i )
+	{
+		const auto&	entry = folder.pending[ i ];
+		const auto	upperName = upper ( entry.name );
+
+		if ( ! matches ( watch, upperName ) )
+			return std::nullopt;
+
+		const auto&	info = infos[ i ];
+		const auto	told = watch.told.find ( upperName );
+
+		if ( told == watch.told.end () )
+		{
+			if ( ! info.has_value () )
+				return std::nullopt;
+
+			const auto	upperFrom = upper ( entry.renamedFrom );
+			return kinds[ i ] == api::file_change::renamed && matches ( watch, upperFrom ) && watch.told.contains ( upperFrom ) ? api::file_change::renamed
+																															   : api::file_change::created;
+		}
+
+		if ( ! info.has_value () )
+			return api::file_change::deleted;
+
+		return isSameFile ( told->second, *info ) ? std::nullopt : std::optional ( api::file_change::modified );
+	}
+
+	// One change per name and watch, from what each watch knew; a name renamed to one the watch hears as renamed is not
+	// also deleted
+	void tellWatch ( Watch& watch, Folder& folder, const std::vector<std::optional<api::file_change>>& kinds, const std::vector<std::optional<KnownFile>>& infos )
+	{
+		std::vector<std::optional<api::file_change>>	changes;
+
+		for ( size_t i = 0; i < folder.pending.size (); ++i )
+			changes.push_back ( changeFor ( watch, folder, kinds, infos, i ) );
+
+		for ( size_t i = 0; i < folder.pending.size (); ++i )
+		{
+			if ( ! changes[ i ].has_value () )
+				continue;
+
+			const auto&	entry = folder.pending[ i ];
+			const auto	upperName = upper ( entry.name );
+
+			if ( infos[ i ].has_value () )
+				watch.told.insert_or_assign ( upperName, *infos[ i ] );
+			else
+				watch.told.erase ( upperName );
+
+			const auto	target = findPending ( folder, entry.renamedTo );
+
+			if ( *changes[ i ] == api::file_change::deleted && target != nullptr && changes[ static_cast<size_t> ( target - folder.pending.data () ) ] == api::file_change::renamed )
+				continue;
+
+			auto	oldPath = *changes[ i ] == api::file_change::renamed ? toUtf8 ( joinPath ( folder.path, entry.renamedFrom ) ) : std::string ();
+			ready.push_back ( { watch.owner, watch.callback, toUtf8 ( joinPath ( folder.path, entry.name ) ), std::move ( oldPath ), *changes[ i ] } );
+		}
+	}
+
+	// The folder was quiet long enough
 	void settle ( Folder& folder )
 	{
 		const auto	now = Clock::now ();
@@ -506,60 +602,27 @@ namespace
 			resync ( folder );
 		}
 
+		std::vector<std::optional<KnownFile>>			infos;
 		std::vector<std::optional<api::file_change>>	kinds;
 
 		for ( const auto& entry : folder.pending )
-			kinds.push_back ( entry.exists && isDirectory ( joinPath ( folder.path, entry.name ) ) ? std::nullopt : kindOf ( folder, entry ) );
-
-		pairRenames ( folder, kinds );
-
-		for ( size_t i = 0; i < folder.pending.size (); ++i )
 		{
-			const auto&	entry = folder.pending[ i ];
-
-			if ( ! kinds[ i ].has_value () )
-				continue;
-
-			const auto	upperName = upper ( entry.name );
-			const auto	upperFrom = upper ( entry.renamedFrom );
-			const auto	upperTo = upper ( entry.renamedTo );
-			auto		isRenamedAway = false;
-
-			if ( const auto target = findPending ( folder, entry.renamedTo ); *kinds[ i ] == api::file_change::deleted && target != nullptr )
-				isRenamedAway = kinds[ static_cast<size_t> ( target - folder.pending.data () ) ] == api::file_change::renamed;
-
-			for ( const auto& watch : watches )
-			{
-				if ( watch.folderKey != folder.key || ! matches ( watch, upperName ) )
-					continue;
-
-				auto		change = *kinds[ i ];
-				std::string	oldPath;
-
-				if ( change == api::file_change::renamed )
-				{
-					if ( matches ( watch, upperFrom ) )
-						oldPath = toUtf8 ( joinPath ( folder.path, entry.renamedFrom ) );
-					else
-						change = api::file_change::created;
-				}
-				else if ( isRenamedAway && matches ( watch, upperTo ) )
-					continue;
-
-				ready.push_back ( { watch.owner, watch.callback, toUtf8 ( joinPath ( folder.path, entry.name ) ), std::move ( oldPath ), change } );
-			}
+			infos.push_back ( entry.exists ? fileInfo ( folder.path, entry.name ) : std::nullopt );
+			kinds.push_back ( entry.exists && ! infos.back ().has_value () ? std::nullopt : kindOf ( folder, entry ) );
 		}
 
+		pairRenames ( folder, kinds, infos );
+
+		for ( auto& watch : watches )
+			if ( watch.folderKey == folder.key )
+				tellWatch ( watch, folder, kinds, infos );
+
 		for ( size_t i = 0; i < folder.pending.size (); ++i )
 		{
-			const auto&	entry = folder.pending[ i ];
-
-			const auto	info = entry.exists && kinds[ i ].has_value () ? fileInfo ( folder, entry.name ) : std::nullopt;
-
-			if ( info.has_value () )
-				folder.known.insert_or_assign ( upper ( entry.name ), *info );
+			if ( infos[ i ].has_value () )
+				folder.known.insert_or_assign ( upper ( folder.pending[ i ].name ), *infos[ i ] );
 			else
-				folder.known.erase ( upper ( entry.name ) );
+				folder.known.erase ( upper ( folder.pending[ i ].name ) );
 		}
 
 		folder.pending.clear ();
@@ -641,7 +704,7 @@ namespace
 			reopen ( folder, ERROR_SUCCESS );
 		else if ( error == ERROR_SUCCESS || error == ERROR_NOTIFY_ENUM_DIR )
 		{
-			reshade::log::message ( reshade::log::level::warning, "File watch: too many changes at once in '%s'; its files are reported as modified.", toUtf8 ( folder.path ).c_str () );
+			reshade::log::message ( reshade::log::level::warning, "File watch: too many changes at once in '%s'; its watched files are compared with what was last seen.", toUtf8 ( folder.path ).c_str () );
 			folder.needsResync = true;
 		}
 		else
@@ -692,7 +755,7 @@ namespace
 				continue;
 
 			if ( folder->needsList )
-				folder->known = listFiles ( *folder );
+				folder->known = listFiles ( folder->path );
 
 			if ( folder->needsResync )
 			{
@@ -849,6 +912,8 @@ namespace
 			folders.push_back ( std::move ( folder ) );
 		}
 
+		// Under the lock, so a change after this is recorded for the watch and one before is in its files
+		watch.told = currentFiles ( watch );
 		watches.push_back ( std::move ( watch ) );
 		wakeWatcher ();
 		return true;

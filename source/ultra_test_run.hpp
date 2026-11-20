@@ -48,6 +48,14 @@ namespace reshade::ultra
 		std::optional<std::string>	value;		// a write without one removes the key
 	};
 
+	// Keyboard messages to the test window: the keys go down in order in that frame and up in reverse two frames later, so a
+	// chord (Ctrl+Tab) is held while its last key is pressed
+	struct TestKeys
+	{
+		size_t					frame = 0;
+		std::vector<unsigned>	virtualKeys;
+	};
+
 	struct TestOptions
 	{
 		std::optional<api::device_api>	api;				// -api dx11|dx12
@@ -73,6 +81,7 @@ namespace reshade::ultra
 		bool							isCheckingLogLines = false;	// -check-log-lines: in frame 2 the Log tab's copy of new lines, also past the lines kept
 		size_t							handledFaults = 0;	// -handled-faults <n>: n access violations caught in every frame, the frame times every 120 frames
 		std::vector<TestConfigAccess>	configAccesses;		// -set-config <frame> <section> <key> <value|->, -get-config <frame> <section> <key>
+		std::vector<TestKeys>			keys;				// -key-at <frame> <virtual key>[+<virtual key>...]
 		TestDlssSettings				dlss;				// -dlss <frames per mode> [-dlss-warmup <ms>] (D3D12, 64-bit): the app as a game that ships DLSS, ultra_test_dlss.hpp
 		bool							isValid = true;		// false: an option was malformed, the log says which
 	};
@@ -110,6 +119,7 @@ namespace reshade::ultra
 		void shrinkWindow ();
 		void checkBackground ( const char* when );
 		void causeHandledFaults ();
+		void postKeys ();
 
 		size_t									frames;
 		std::optional<size_t>					resizeAt;
@@ -124,6 +134,8 @@ namespace reshade::ultra
 		bool									isCheckingLogLines;
 		size_t									handledFaults;
 		std::vector<TestConfigAccess>			configAccesses;
+		std::vector<TestKeys>					keys;
+		std::vector<TestKeys>					pendingKeyUps;
 		std::chrono::steady_clock::time_point	frameStart;
 		std::chrono::duration<double, std::milli>	framesTime {};
 		std::chrono::duration<double, std::milli>	faultsTime {};

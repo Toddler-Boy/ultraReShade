@@ -43,9 +43,9 @@ void ReShadeGetBasePath(char *path, size_t *size)
 	}
 }
 
-bool ReShadeGetConfigValue(void *, reshade::api::effect_runtime *runtime, const char *section, const char *key, char *value, size_t *size)
+bool ReShadeGetConfigValue(void *, reshade::api::effect_runtime *, const char *section, const char *key, char *value, size_t *size)
 {
-	reshade::ini_file &config = (runtime != nullptr) ? reshade::ini_file::load_cache(static_cast<reshade::runtime *>(runtime)->get_config_path()) : reshade::global_config();
+	const reshade::ini_file &config = reshade::global_config();
 
 	std::vector<std::string> elements;
 	config.get(section != nullptr ? section : std::string(), key != nullptr ? key : std::string(), elements);
@@ -82,11 +82,17 @@ bool ReShadeGetConfigValue(void *, reshade::api::effect_runtime *runtime, const 
 
 void ReShadeSetConfigValue(void *module, reshade::api::effect_runtime *runtime, const char *section, const char *key, const char *value)
 {
-	return ReShadeSetConfigArray(module, runtime, section, key, value, value != nullptr ? std::strlen(value) : 0);
+	if (value == nullptr)
+		return ReShadeSetConfigArray(module, runtime, section, key, nullptr, 0);
+
+	reshade::global_config().set(section != nullptr ? section : std::string(), key != nullptr ? key : std::string(), std::string(value));
+
+	if (runtime != nullptr)
+		static_cast<reshade::runtime *>(runtime)->load_config();
 }
 void ReShadeSetConfigArray(void *, reshade::api::effect_runtime *runtime, const char *section, const char *key, const char *value, size_t size)
 {
-	reshade::ini_file &config = (runtime != nullptr) ? reshade::ini_file::load_cache(static_cast<reshade::runtime *>(runtime)->get_config_path()) : reshade::global_config();
+	reshade::ini_file &config = reshade::global_config();
 
 	if (value != nullptr)
 	{
@@ -134,8 +140,11 @@ bool ReShadeCreateEffectRuntime(reshade::api::device_api api, void *opaque_devic
 		return false;
 	*out_runtime = nullptr;
 
-	if (opaque_swapchain == nullptr || config_path == nullptr)
+	if (opaque_swapchain == nullptr)
 		return false;
+
+	if (config_path != nullptr && *config_path != '\0')
+		reshade::log::message(reshade::log::level::warning, "An add-on created an effect runtime with its own settings file '%s', which is not used: every effect runtime uses the home's.", config_path);
 
 	reshade::api::swapchain *swapchain_impl = nullptr;
 	reshade::api::command_queue *graphics_queue_impl = nullptr;
@@ -218,7 +227,7 @@ bool ReShadeCreateEffectRuntime(reshade::api::device_api api, void *opaque_devic
 		return false;
 	}
 
-	const auto runtime = new reshade::runtime(swapchain_impl, graphics_queue_impl, std::filesystem::u8path(config_path), false);
+	const auto runtime = new reshade::runtime(swapchain_impl, graphics_queue_impl, false);
 	if (!runtime->on_init())
 	{
 		ReShadeDestroyEffectRuntime(runtime);

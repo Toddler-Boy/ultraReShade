@@ -1387,6 +1387,24 @@ std::filesystem::path reshade::ultra::resolveJsonPath ( const char* path )
 }
 //-----------------------------------------------------------------------------
 
+void reshade::ultra::JsonFree::operator() ( json::value* root ) const
+{
+	delete root;
+}
+//-----------------------------------------------------------------------------
+
+reshade::ultra::JsonTree reshade::ultra::readJsonFile ( const std::filesystem::path& file, json::error& error )
+{
+	return JsonTree ( readFile ( toUtf8 ( file.native () ).c_str (), &error ) );
+}
+//-----------------------------------------------------------------------------
+
+bool reshade::ultra::writeJsonFile ( const std::filesystem::path& file, const json::value& root, json::error& error )
+{
+	return writeFile ( nullptr, toUtf8 ( file.native () ).c_str (), &root, &error );
+}
+//-----------------------------------------------------------------------------
+
 #if defined(RESHADE_TEST_APPLICATION)
 
 void reshade::ultra::setJsonWriteFault ( JsonWriteFault fault )

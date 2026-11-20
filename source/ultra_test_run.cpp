@@ -427,6 +427,39 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 			continue;
 		}
 
+		if ( isOption ( arg, L"-key-at" ) )
+		{
+			TestKeys	press;
+			const auto	frame = i + 2 < argc ? parseCount ( argv[ i + 1 ] ) : std::nullopt;
+
+			for ( std::wstring chord = i + 2 < argc ? argv[ i + 2 ] : L""; ! chord.empty (); )
+			{
+				const auto	plus = chord.find ( L'+' );
+				const auto	key = parseCount ( chord.substr ( 0, plus ).c_str () );
+
+				if ( ! key.has_value () || *key == 0 || *key > 254 )
+				{
+					press.virtualKeys.clear ();
+					break;
+				}
+
+				press.virtualKeys.push_back ( static_cast<unsigned> ( *key ) );
+				chord = plus == std::wstring::npos ? L"" : chord.substr ( plus + 1 );
+			}
+
+			if ( ! frame.has_value () || press.virtualKeys.empty () )
+			{
+				reshade::log::message ( reshade::log::level::error, "Test application: -key-at needs a frame and virtual key numbers (1 to 254) joined by +." );
+				options.isValid = false;
+				break;
+			}
+
+			press.frame = *frame;
+			options.keys.push_back ( press );
+			i += 2;
+			continue;
+		}
+
 		if ( isOption ( arg, L"-buffer-size-at" ) )
 		{
 			TestSwitch	change;
@@ -703,7 +736,7 @@ reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window
 	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), exitHandlerMs ( options.exitHandlerMs ),
 	  terminateAt ( options.terminateAt ), stressLines ( options.stressLines ),
 	  stressThreads ( options.stressThreads ), isLoggingFrames ( options.isLoggingFrames ), isLoggingThroughAddons ( options.isLoggingThroughAddons ),
-	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), configAccesses ( options.configAccesses ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
+	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), configAccesses ( options.configAccesses ), keys ( options.keys ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
 	  holdsClock ( options.frames != 0 || options.resizeAt.has_value () || options.reloadEvery != 0 || options.crashAt.has_value () || ! options.switches.empty () )
 {
 }
@@ -778,6 +811,8 @@ bool reshade::ultra::TestFrames::next ()
 		if ( access.frame == current )
 			accessConfig ( access );
 
+	postKeys ();
+
 	if ( crashAt == current )
 		crash ( current );
 
@@ -794,6 +829,27 @@ bool reshade::ultra::TestFrames::next ()
 		causeHandledFaults ();
 
 	return true;
+}
+//-----------------------------------------------------------------------------
+
+void reshade::ultra::TestFrames::postKeys ()
+{
+	for ( const auto& press : keys )
+	{
+		if ( press.frame != current )
+			continue;
+
+		for ( const auto key : press.virtualKeys )
+			PostMessageW ( window, WM_KEYDOWN, key, 1 );
+
+		pendingKeyUps.push_back ( { current + 2, std::vector<unsigned> ( press.virtualKeys.rbegin (), press.virtualKeys.rend () ) } );
+		reshade::log::message ( reshade::log::level::info, "Test application: keys down in frame %zu (%zu).", current, press.virtualKeys.size () );
+	}
+
+	for ( const auto& release : pendingKeyUps )
+		if ( release.frame == current )
+			for ( const auto key : release.virtualKeys )
+				PostMessageW ( window, WM_KEYUP, key, static_cast<LPARAM> ( 0xC0000001 ) );
 }
 //-----------------------------------------------------------------------------
 
@@ -900,7 +956,9 @@ bool reshade::ultra::printTestUsage ()
 		"Runs stay behind every window and never take the focus; -show for a normal window.\n"
 		"Agents and scripts run it through C:/dev/ultraGame/Tools/test-run.sh <owner> [--limit s] <options>.\n"
 		"\n"
-		"Run       -work-dir <dir>  -owner <name>  -show  -frames <n>  -cold-cache  -config-layered\n"
+		"Run       -work-dir <dir> (needed: the run's index, home and cache)  -owner <name>  -show  -frames <n>  -cold-cache\n"
+		"Keys      -key-at <frame> <virtual key>[+<virtual key>...]  (keyboard messages to the window: down in that frame, up two frames later; 36 is Home)\n"
+		"Home      -addons <name,name,...>  -addon-build <folder>  -curated-key <name> <virtual key>  -no-effects  (the run's own home: add-on order, [ADDON] AddonBuildPath, a curated [INPUT] key)\n"
 		"Scene     -api dx11|dx12  -scene cube|head  -size <w>x<h>  -fov <degrees>  -env <file.hdr>  -sss on|off  -jitter on|off\n"
 		"Load      -draws <n> <scale>  (D3D11: the model n more times a frame at scale times its size, no depth test)\n"
 		"HDR       -hdr off|scrgb|pq  -paper-white <nits>  -peak <nits>\n"
@@ -908,7 +966,7 @@ bool reshade::ultra::printTestUsage ()
 		"Switches  -resize-at <frame>  -buffer-size-at <frame> <w>x<h>  -fullscreen-at <frame>  -windowed-at <frame>\n"
 		"          -random-switches <seed> [fullscreen]  (fullscreen needs -show)\n"
 		"Devices   -probe-devices <n>  (D3D11: n devices, each presenting once and released, before the run's own)\n"
-		"Add-ons   -reload-every <n>  -reload-effects-every <n>  -toggle-technique-at <frame> <file.fx> <technique>  -constants root|cbv|table\n"
+		"Add-ons   -reload-every <n>  -reload-effects-every <n>  -toggle-technique-at <frame> <file.fx> <technique>  -log-techniques <frame>  -constants root|cbv|table\n"
 		"          -run-exclusive-at <frame>\n"
 		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"
 		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"

@@ -9,6 +9,7 @@
 #include <vector>
 #include <unordered_map>
 #include <filesystem>
+#include "ultra_json.hpp"
 
 extern std::filesystem::path g_reshade_dll_path;
 extern std::filesystem::path g_reshade_base_path;
@@ -22,29 +23,22 @@ inline std::string_view trim(std::string_view str, const char chars[] = " \t")
 
 namespace reshade
 {
+	/// <summary>
+	/// The 'config' of reshade-user.json over reshade.json's, [INPUT] over ultraGame's hotkeys (its settings.json, kept whole): a section is an object, a key a value or an array.
+	/// Writes go only into the user file and only where they differ from what is below.
+	/// </summary>
 	class ini_file
 	{
 	public:
-		/// <summary>
-		/// Opens the INI file at the specified <paramref name="path"/>.
-		/// </summary>
-		/// <param name="path">Path to the INI file to access.</param>
-		explicit ini_file(const std::filesystem::path &path);
-		/// <summary>
-		/// Opens the curated INI file at <paramref name="path"/> with the user INI file at <paramref name="user_path"/> on top.
-		/// Reads see both (the user file wins), writes go only into the user file and only where they differ from the curated file.
-		/// </summary>
-		ini_file(const std::filesystem::path &path, const std::filesystem::path &user_path);
+		ini_file(const std::filesystem::path &path, const std::filesystem::path &user_path, const std::filesystem::path &app_path);
 
 		/// <summary>
-		/// Gets the path to this INI file.
+		/// Gets the path to the curated file.
 		/// </summary>
 		const std::filesystem::path &path() const { return _path; }
 
-		bool is_layered() const { return !_user_path.empty(); }
-
 		/// <summary>
-		/// While one exists on a thread, writes there to keys no layer has record the value as the default instead (layered files only; other files ignore writes meanwhile).
+		/// While one exists on a thread, writes there to keys no layer has record the value as the default instead.
 		/// </summary>
 		class defaults_scope
 		{
@@ -72,7 +66,7 @@ namespace reshade
 			const value_type *const found = find(section, key);
 			if (found == nullptr)
 				return false;
-			value = convert<T>(*found, 0);
+			value = convert<T>(found->items, 0);
 			return true;
 		}
 		template <typename T, size_t SIZE>
@@ -82,7 +76,7 @@ namespace reshade
 			if (found == nullptr)
 				return false;
 			for (size_t i = 0; i < SIZE; ++i)
-				values[i] = convert<T>(*found, i);
+				values[i] = convert<T>(found->items, i);
 			return true;
 		}
 		template <typename T>
@@ -93,14 +87,14 @@ namespace reshade
 				return false;
 			if constexpr (std::is_same_v<T, std::string>)
 			{
-				values = *found;
+				values = found->items;
 			}
 			else if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>)
 			{
-				values.resize(found->size());
-				for (size_t i = 0; i < found->size(); ++i)
+				values.resize(found->items.size());
+				for (size_t i = 0; i < found->items.size(); ++i)
 				{
-					std::string value = convert<std::string>(*found, i);
+					std::string value = convert<std::string>(found->items, i);
 					if (const size_t equals_sign = value.find('=');
 						equals_sign != std::string::npos)
 						values[i] = { value.substr(0, equals_sign), value.substr(equals_sign + 1) };
@@ -110,9 +104,9 @@ namespace reshade
 			}
 			else
 			{
-				values.resize(found->size());
-				for (size_t i = 0; i < found->size(); ++i)
-					values[i] = convert<T>(*found, i);
+				values.resize(found->items.size());
+				for (size_t i = 0; i < found->items.size(); ++i)
+					values[i] = convert<T>(found->items, i);
 			}
 			return true;
 		}
@@ -137,125 +131,127 @@ namespace reshade
 			value_type v;
 			if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, const char *>)
 			{
-				v.assign(1, value);
+				v.items.assign(1, value);
 			}
 			else if constexpr (std::is_same_v<T, bool>)
 			{
-				v.assign(1, value ? "1" : "0");
+				v.items.assign(1, value ? "1" : "0");
+				v.is_flag = true;
 			}
 			else if constexpr (std::is_same_v<T, std::filesystem::path>)
 			{
-				v.assign(1, value.u8string());
+				v.items.assign(1, value.u8string());
 			}
 			else
 			{
-				v.assign(1, std::to_string(value));
+				v.items.assign(1, std::to_string(value));
 			}
 			assign(section, key, std::move(v));
 		}
 		template <typename T, size_t SIZE>
 		void set(const std::string &section, const std::string &key, const T(&values)[SIZE], const size_t size = SIZE)
 		{
-			value_type v(size);
+			value_type v;
+			v.items.resize(size);
+			v.is_list = true;
 			for (size_t i = 0; i < size; ++i)
-				v[i] = std::to_string(values[i]);
+				v.items[i] = std::to_string(values[i]);
 			assign(section, key, std::move(v));
 		}
 		template <typename T>
 		void set(const std::string &section, const std::string &key, const std::vector<T> &values)
 		{
 			value_type v;
+			v.is_list = true;
 			if constexpr (std::is_same_v<T, std::string>)
 			{
-				v = values;
+				v.items = values;
 			}
 			else if constexpr (std::is_same_v<T, bool>)
 			{
-				v.resize(values.size());
+				v.items.resize(values.size());
 				for (size_t i = 0; i < values.size(); ++i)
-					v[i] = values[i] ? "1" : "0";
+					v.items[i] = values[i] ? "1" : "0";
+				v.is_flag = true;
 			}
 			else if constexpr (std::is_same_v<T, std::filesystem::path>)
 			{
-				v.resize(values.size());
+				v.items.resize(values.size());
 				for (size_t i = 0; i < values.size(); ++i)
-					v[i] = values[i].u8string();
+					v.items[i] = values[i].u8string();
 			}
 			else if constexpr (std::is_same_v<T, std::pair<std::string, std::string>>)
 			{
-				v.resize(values.size());
+				v.items.resize(values.size());
 				for (size_t i = 0; i < values.size(); ++i)
 				{
 					const std::pair<std::string, std::string> &value = values[i];
-					v[i] = value.first;
+					v.items[i] = value.first;
 					if (!value.second.empty())
-						v[i] += '=' + value.second;
+						v.items[i] += '=' + value.second;
 				}
 			}
 			else
 			{
-				v.resize(values.size());
+				v.items.resize(values.size());
 				for (size_t i = 0; i < values.size(); ++i)
-					v[i] = std::to_string(values[i]);
+					v.items[i] = std::to_string(values[i]);
 			}
 			assign(section, key, std::move(v));
 		}
 
 		void set(const std::string &section, const std::string &key, std::string &&value)
 		{
-			assign(section, key, value_type(1, std::forward<std::string>(value)));
+			value_type v;
+			v.items.assign(1, std::move(value));
+			assign(section, key, std::move(v));
 		}
 		void set(const std::string &section, const std::string &key, std::vector<std::string> &&values)
 		{
-			assign(section, key, std::forward<std::vector<std::string>>(values));
+			value_type v;
+			v.items = std::move(values);
+			v.is_list = true;
+			assign(section, key, std::move(v));
 		}
 
 		/// <summary>
-		/// Removes all values (of the user file, when layered).
-		/// </summary>
-		void clear()
-		{
-			_sections.clear();
-			mark_modified();
-		}
-
-		/// <summary>
-		/// Removes the specified <paramref name="key"/> from the <paramref name="section"/> (from the user file, when layered, so the curated value applies again).
+		/// Removes the specified <paramref name="key"/> from the <paramref name="section"/> of the user file, so the value below applies again.
 		/// </summary>
 		void remove_key(const std::string &section, const std::string &key);
 
 		/// <summary>
-		/// Loads all values from disk.
+		/// The curated file's member beside 'config' (null when it has none), and the user file's.
 		/// </summary>
-		bool load();
+		const json::value *curated_member(const char *name) const;
+		const json::value *user_member(const char *name) const;
 		/// <summary>
-		/// Saves all changes to this INI file to disk.
+		/// The member of ultraGame's settings.json (null when it has none).
+		/// </summary>
+		const json::value *app_member(const char *name) const;
+		/// <summary>
+		/// Replaces the user file's member (null removes it); saved with the next flush.
+		/// </summary>
+		void set_user_member(const char *name, ultra::JsonTree value);
+
+		/// <summary>
+		/// Loads what changed on disk since the last load.
+		/// </summary>
+		void load();
+		/// <summary>
+		/// Saves the user file when something changed.
 		/// </summary>
 		bool save();
 
 		/// <summary>
-		/// Saves all changes to INI files that were loaded through <see cref="load_cache"/> to disk.
+		/// Saves all changes to files that were loaded through <see cref="load_cache"/> to disk, once they are a second old.
 		/// </summary>
 		static bool flush_cache();
 		static bool flush_cache(const std::filesystem::path &path);
 
 		/// <summary>
-		/// Removes all INI files from cache, without saving changes.
+		/// Gets the specified file from cache or opens it when it was not cached yet.
 		/// </summary>
-		static void clear_cache();
-		static void clear_cache(const std::filesystem::path &path);
-
-		/// <summary>
-		/// Gets the specified INI file from cache.
-		/// </summary>
-		/// <param name="path">Absolute path to the INI file to access.</param>
-		/// <returns>Reference to the cached data.</returns>
-		static ini_file *find_cache(const std::filesystem::path &path);
-
-		/// <summary>
-		/// Gets the specified INI file from cache or opens it when it was not cached yet.
-		/// </summary>
-		/// <param name="path">Absolute path to the INI file to access.</param>
+		/// <param name="path">Absolute path to the curated file.</param>
 		/// <returns>Reference to the cached data.</returns>
 		static ini_file &load_cache(const std::filesystem::path &path);
 
@@ -287,44 +283,49 @@ namespace reshade
 				return i < values.size() ? std::filesystem::u8path(values[i]) : std::filesystem::path();
 		}
 
-		using sections_type = std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>>;
-
-		const std::vector<std::string> *find(const std::string &section, const std::string &key) const;
-		void assign(const std::string &section, const std::string &key, std::vector<std::string> &&value);
-		void mark_modified()
+		/// <summary>
+		/// A key's value: its items as text (a scalar is one item), whether it is written as an array, and as booleans.
+		/// </summary>
+		struct value_type
 		{
-			_modified = true;
-			_modified_at = std::filesystem::file_time_type::clock::now();
-		}
-
-		static bool read(const std::filesystem::path &path, int share_flag, sections_type &sections);
-		bool load_curated();
-
-		/// <summary>
-		/// Describes a single value in an INI file.
-		/// </summary>
-		using value_type = std::vector<std::string>;
-		/// <summary>
-		/// Describes a section of multiple key/value pairs in an INI file.
-		/// </summary>
+			std::vector<std::string> items;
+			bool is_list = false;
+			bool is_flag = false;
+		};
 		using section_type = std::unordered_map<std::string, value_type>;
+		using sections_type = std::unordered_map<std::string, section_type>;
+
+		// A file of the home as last read: its whole tree, the 'config' object as sections, and when it was written
+		struct layer
+		{
+			ultra::JsonTree document;
+			sections_type sections;
+			std::filesystem::file_time_type modified_at = std::filesystem::file_time_type::min();
+			bool is_failed = false;
+		};
+
+		const value_type *find(const std::string &section, const std::string &key) const;
+		void assign(const std::string &section, const std::string &key, value_type &&value);
+		void mark_modified();
+
+		void load_layer(const std::filesystem::path &path, layer &into, const char *config_name, bool is_required);
 
 		const std::filesystem::path _path;
-		// The user file when layered, else the file itself
-		std::unordered_map<std::string, section_type> _sections;
+		const std::filesystem::path _user_path;
+		const std::filesystem::path _app_path;
+
+		layer _curated;
+		layer _user;
+		layer _app;
 		bool _modified = false;
 		std::filesystem::file_time_type _modified_at;
 
-		const std::filesystem::path _user_path;
-		sections_type _curated;
-		std::filesystem::file_time_type _curated_modified_at = std::filesystem::file_time_type::min();
-		// What ReShade writes for keys no file has, recorded in a defaults_scope: writing it again is no change
+		// What ReShade writes for keys no layer has, recorded in a defaults_scope: writing it again is no change
 		sections_type _defaults;
-		bool _is_user_file_broken = false;
 	};
 
 	/// <summary>
-	/// Global configuration that can be used for general settings that are not specific to an effect runtime instance.
+	/// The home's settings, shared by every effect runtime of the process.
 	/// </summary>
 	ini_file &global_config();
 }

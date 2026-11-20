@@ -6,8 +6,11 @@
 #pragma once
 
 #include <filesystem>
+#include <memory>
 
 #include <Windows.h>
+
+namespace reshade::json { struct value; struct error; }
 
 //-----------------------------------------------------------------------------
 
@@ -15,6 +18,18 @@
 // layers, ultra_json_watch.cpp the change notifications on top of the file watch
 namespace reshade::ultra
 {
+	struct JsonFree
+	{
+		void operator() ( json::value* root ) const;
+	};
+
+	// A whole tree owned inside ReShade (its members through the ReShadeJson functions)
+	using JsonTree = std::unique_ptr<json::value, JsonFree>;
+
+	// Null with error set when the file is missing, unreadable or not json
+	[[ nodiscard ]] JsonTree readJsonFile ( const std::filesystem::path& file, json::error& error );
+	[[ nodiscard ]] bool writeJsonFile ( const std::filesystem::path& file, const json::value& root, json::error& error );
+
 	// UTF-8, absolute or relative to ReShade's base path; empty for a null or empty path
 	[[ nodiscard ]] std::filesystem::path resolveJsonPath ( const char* path );
 

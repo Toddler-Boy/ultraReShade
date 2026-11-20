@@ -182,10 +182,9 @@ function(ultra_finish_targets)
 endfunction()
 
 # ReShadeTest64.exe / ReShadeTest32.exe: upstream's test application (source/dll_main_test_app.cpp), the whole
-# runtime with overlay and add-ons in a resizable window. Base path is its own folder (ReShade.ini, shaders, add-ons).
+# runtime with overlay and add-ons in a resizable window. Base path is its home from the index ULTRAGAME_INDEX names.
 # Command line: -d3d9, -d3d10, -d3d11 (default), -d3d12, -opengl, -vulkan, -width N, -height N, -vsync, -validation,
-# -work-dir <folder> (base path for that run: ini and preset seeded from the exe folder's, log, screenshots, shader cache),
-# -config-layered (the seeded ini is an ultragame.ini with [INSTALL] UltraGameConfig=1, read with ultragame-user.ini on top),
+# -work-dir <folder> (a shader cache seeded for that run),
 # -capture <frame> <file.png> (that frame after the effects, without the overlay); exit codes in source/ultra_test_check.hpp
 function(ultra_add_test_app)
   add_executable(ReShadeTest WIN32)
@@ -197,7 +196,7 @@ function(ultra_add_test_app)
   list(FILTER sources EXCLUDE REGEX "\\.hlsl$|ultra_dll_entry\\.cpp$")
   target_sources(ReShadeTest PRIVATE ${sources} source/dll_main_test_app.cpp source/ultra_test_scene.cpp source/ultra_test_scene.hpp
     source/ultra_test_model.cpp source/ultra_test_model.hpp source/ultra_test_check.cpp source/ultra_test_check.hpp source/ultra_test_run.cpp source/ultra_test_run.hpp
-    source/ultra_test_display.cpp source/ultra_test_display.hpp
+    source/ultra_test_display.cpp source/ultra_test_display.hpp source/ultra_test_home.cpp source/ultra_test_home.hpp
     source/ultra_test_environment.cpp source/ultra_test_environment.hpp source/ultra_test_json.cpp source/ultra_test_json.hpp)
 
   foreach(property INCLUDE_DIRECTORIES COMPILE_DEFINITIONS COMPILE_OPTIONS LINK_LIBRARIES LINK_OPTIONS CXX_STANDARD CXX_STANDARD_REQUIRED)

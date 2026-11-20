@@ -194,49 +194,22 @@ void reshade::load_addons()
 	else if (is_loading)
 		log::message(log::level::info, "Add-ons unload when the last device goes ([ADDON] KeepLoaded=0).");
 
-	ini_file &config = global_config();
+	const ini_file &config = global_config();
 
 	addon_all_loaded = true;
 
-	std::vector<std::string> disabled_addons;
-	config.get("ADDON", "DisabledAddons", disabled_addons);
-
-#if RESHADE_VERBOSE_LOG
-	log::message(log::level::info, "Loading built-in add-ons ...");
-#endif
-
-#if 1
+	// Their events need an add-on of this module to belong to
 	{	addon_info &info = addon_loaded_info.emplace_back();
-		info.name = "Generic Depth";
-		info.description = "Automatic depth buffer detection that works in the majority of games.";
-		info.author = "crosire";
+		info.name = "ultraReShade";
+		info.description = "Constant buffer contents and stable resource IDs for add-ons.";
+		info.author = "Michael Hartmann";
 		info.api_version = RESHADE_API_VERSION;
 		info.external = false;
-
-		if (std::find(disabled_addons.cbegin(), disabled_addons.cend(), info.name) == disabled_addons.cend())
-		{
-			info.handle = g_module_handle;
-
-			register_addon_depth();
-		}
+		info.handle = g_module_handle;
 	}
-	{	addon_info &info = addon_loaded_info.emplace_back();
-		info.name = "Effect Runtime Sync";
-		info.description = "Adds preset synchronization between different effect runtime instances, e.g. to have changes in a desktop window reflect in VR.";
-		info.author = "crosire";
-		info.api_version = RESHADE_API_VERSION;
-		info.external = false;
 
-		if (std::find(disabled_addons.cbegin(), disabled_addons.cend(), info.name) == disabled_addons.cend())
-		{
-			info.handle = g_module_handle;
-
-			register_addon_effect_runtime_sync();
-		}
-	}
 	register_addon_constant_buffers();
 	register_addon_resource_ids();
-#endif
 
 	// Initialize any add-ons that were registered externally
 	const std::vector<addon_info> loaded_info_copy = addon_loaded_info;
@@ -259,73 +232,98 @@ void reshade::load_addons()
 		}
 	}
 
-	if (!is_loading)
-		return;
-
-	// Get directory from where to load add-ons from
-	std::filesystem::path addon_search_path = g_reshade_base_path;
-	if (config.get("ADDON", "AddonPath", addon_search_path))
-		addon_search_path = g_reshade_base_path / addon_search_path;
-
-	log::message(log::level::info, "Searching for add-ons (*.addon"
-#ifndef _WIN64
-		", *.addon32"
-#else
-		", *.addon64"
-#endif
-		") in '%s' ...", addon_search_path.u8string().c_str());
-
-	ultra::startAddonReload(addon_search_path);
-
-	std::error_code ec;
-	for (std::filesystem::path path : std::filesystem::directory_iterator(addon_search_path, std::filesystem::directory_options::skip_permission_denied, ec))
+	// reshade.json's list is the load order and the whole truth: built-in add-ons by name, the others by file name in [ADDON] AddonPath
+	const json::value *const addons = config.curated_member("addons");
+	if (ReShadeJsonGetType(addons) != json::type::array)
 	{
+		addon_all_loaded = false;
+		log::message(log::level::error, "reshade.json has no list of add-ons (addons), so none loads!");
+		return;
+	}
+
+	std::filesystem::path addon_search_path;
+	config.get("ADDON", "AddonPath", addon_search_path);
+	const bool has_addon_path = addon_search_path.is_absolute();
+	if (is_loading)
+	{
+		if (has_addon_path)
+			ultra::startAddonReload(addon_search_path);
+		else
+			log::message(log::level::error, "[ADDON] AddonPath is not an absolute path ('%s'), so no add-on file loads!", addon_search_path.u8string().c_str());
+	}
+
+	for (size_t i = 0, count = ReShadeJsonGetSize(addons); i < count; ++i)
+	{
+		const char *text = nullptr;
+		size_t length = 0;
+		if (!ReShadeJsonGetString(ReShadeJsonAt(addons, i, nullptr), &text, &length) || length == 0)
+		{
+			addon_all_loaded = false;
+			log::message(log::level::error, "Add-on %zu in reshade.json is no name, it is left out.", i);
+			continue;
+		}
+
+		const std::string name(text, length);
+		const std::filesystem::path path = std::filesystem::u8path(name);
+
+		if (path.extension() != L".addon" &&
+			path.extension() != L".addon32" &&
+			path.extension() != L".addon64")
+		{
+			if (name == "Generic Depth" || name == "Effect Runtime Sync")
+			{
+				addon_info &info = addon_loaded_info.emplace_back();
+				info.name = name;
+				info.author = "crosire";
+				info.api_version = RESHADE_API_VERSION;
+				info.external = false;
+				info.handle = g_module_handle;
+
+				if (name == "Generic Depth")
+				{
+					info.description = "Automatic depth buffer detection that works in the majority of games.";
+					register_addon_depth();
+				}
+				else
+				{
+					info.description = "Adds preset synchronization between different effect runtime instances, e.g. to have changes in a desktop window reflect in VR.";
+					register_addon_effect_runtime_sync();
+				}
+			}
+			else
+			{
+				addon_all_loaded = false;
+				log::message(log::level::error, "reshade.json names add-on \"%s\", which is no built-in one and no add-on file, it is left out.", name.c_str());
+			}
+			continue;
+		}
+
+		if (!is_loading || !has_addon_path)
+			continue;
+
 		if (path.extension() != L".addon" &&
 #ifndef _WIN64
 			path.extension() != L".addon32")
 #else
 			path.extension() != L".addon64")
 #endif
+		{
+			addon_all_loaded = false;
+			log::message(log::level::error, "Add-on '%s' in reshade.json is not built for this bitness, it is left out.", name.c_str());
 			continue;
+		}
 
-#if RESHADE_ADDON == 1
-		// Indicate that add-ons exist that could not be loaded because this build of ReShade has only limited add-on functionality
-		addon_all_loaded = false;
-
-		log::message(log::level::warning, "Skipped loading add-on from '%s' because this build of ReShade has only limited add-on functionality.", path.u8string().c_str());
-#else
 		// Avoid loading library again that has already been loaded externally
-		if (const auto it =	std::find_if(addon_loaded_info.cbegin(), addon_loaded_info.cend(),
-				[&path](const addon_info &info) { return path.filename().u8string() == info.file; });
-			it != addon_loaded_info.cend())
-		{
-			assert(it->external);
+		if (std::any_of(addon_loaded_info.cbegin(), addon_loaded_info.cend(),
+				[&path](const addon_info &info) { return path.filename().u8string() == info.file; }))
 			continue;
-		}
 
-		// Avoid loading library altogether when it is found in the disabled add-on list
-		if (addon_info info;
-			std::find_if(disabled_addons.cbegin(), disabled_addons.cend(),
-				[file_name = path.filename().u8string(), &info](const std::string_view addon_name) {
-					const size_t at_pos = addon_name.find('@');
-					if (at_pos == std::string_view::npos)
-						return false;
-					info.name = addon_name.substr(0, at_pos);
-					info.file = addon_name.substr(at_pos + 1);
-					return file_name == info.file;
-				}) != disabled_addons.cend())
-		{
-			info.handle = nullptr;
-			info.external = false;
-			addon_loaded_info.push_back(std::move(info));
-			continue;
-		}
-
-		log::message(log::level::info, "Loading add-on from '%s' ...", path.u8string().c_str());
+		const std::filesystem::path file = addon_search_path / path;
+		log::message(log::level::info, "Loading add-on from '%s' ...", file.u8string().c_str());
 
 		// Use 'LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR' to temporarily add add-on search path to the list of directories 'LoadLibraryEx' will use to resolve DLL dependencies
-		const std::filesystem::path source = ultra::addonSource(path);
-		const std::filesystem::path load_path = ultra::addonLoadPath(source, path.parent_path());
+		const std::filesystem::path source = ultra::addonSource(file);
+		const std::filesystem::path load_path = ultra::addonLoadPath(source, file.parent_path());
 		if (load_path.empty())
 		{
 			addon_all_loaded = false;
@@ -334,22 +332,8 @@ void reshade::load_addons()
 		const HMODULE module = LoadLibraryExW(load_path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
 		if (module == nullptr)
 		{
-			const DWORD error_code = GetLastError();
-
-			if (error_code == ERROR_DLL_INIT_FAILED && !addon_loaded_info.empty() && path.filename().u8string() == addon_loaded_info.back().file)
-			{
-				// Avoid logging an error if loading failed because the add-on is disabled
-				assert(addon_loaded_info.back().handle == nullptr);
-
-				addon_loaded_info.back().external = false;
-
-				log::message(log::level::warning, "> Add-on failed to initialize or is disabled. Skipped.");
-			}
-			else
-			{
-				addon_all_loaded = false;
-				log::message(log::level::error, "Failed to load add-on from '%s' with error code %lu!", path.u8string().c_str(), error_code);
-			}
+			addon_all_loaded = false;
+			log::message(log::level::error, "Failed to load add-on from '%s' with error code %lu!", file.u8string().c_str(), GetLastError());
 			continue;
 		}
 
@@ -357,19 +341,8 @@ void reshade::load_addons()
 		const auto init_func = reinterpret_cast<bool(*)(HMODULE addon_module, HMODULE reshade_module)>(GetProcAddress(module, "AddonInit"));
 		if (init_func != nullptr && !init_func(module, g_module_handle))
 		{
-			if (!addon_loaded_info.empty() && path.filename().u8string() == addon_loaded_info.back().file)
-			{
-				assert(addon_loaded_info.back().handle == nullptr);
-
-				addon_loaded_info.back().external = false;
-
-				log::message(log::level::warning, "> Add-on failed to initialize or is disabled. Skipped.");
-			}
-			else
-			{
-				addon_all_loaded = false;
-				log::message(log::level::error, "Failed to load add-on from '%s' because initialization was not successful!", path.u8string().c_str());
-			}
+			addon_all_loaded = false;
+			log::message(log::level::error, "Failed to load add-on from '%s' because initialization was not successful!", file.u8string().c_str());
 
 			FreeLibrary(module);
 			continue;
@@ -383,15 +356,11 @@ void reshade::load_addons()
 		else
 		{
 			addon_all_loaded = false;
-			log::message(log::level::warning, "No add-on was registered by '%s'. Unloading again ...", path.u8string().c_str());
+			log::message(log::level::warning, "No add-on was registered by '%s'. Unloading again ...", file.u8string().c_str());
 
 			FreeLibrary(module);
 		}
-#endif
 	}
-
-	if (ec)
-		log::message(log::level::warning, "Failed to iterate all files in '%s' with error code %d!", addon_search_path.u8string().c_str(), ec.value());
 }
 void reshade::unload_addons()
 {
@@ -564,21 +533,6 @@ bool ReShadeRegisterAddon(void *module, uint32_t api_version)
 		// Prevent registration if another add-on with the same name already exists
 		reshade::log::message(reshade::log::level::error, "Failed to register add-on, because another one with the same name (\"%s\") was already registered!", info.name.c_str());
 		return false;
-	}
-
-	if (std::vector<std::string> disabled_addons;
-		reshade::global_config().get("ADDON", "DisabledAddons", disabled_addons) &&
-		std::find_if(disabled_addons.cbegin(), disabled_addons.cend(),
-			[&info](const std::string_view addon_name) {
-				const size_t at_pos = addon_name.find('@');
-				if (at_pos == std::string_view::npos)
-					return addon_name == info.name;
-				return (at_pos == 0 || addon_name.substr(0, at_pos) == info.name) && addon_name.substr(at_pos + 1) == info.file;
-			}) != disabled_addons.cend())
-	{
-		info.handle = nullptr;
-		reshade::addon_loaded_info.push_back(std::move(info));
-		return false; // Disable this add-on
 	}
 
 	reshade::log::message(reshade::log::level::info, "Registered add-on \"%s\" v%hu.%hu.%hu.%hu using ReShade API version %u.", info.name.c_str(), info.version.number.major, info.version.number.minor, info.version.number.build, info.version.number.revision, api_version);

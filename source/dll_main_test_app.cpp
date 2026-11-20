@@ -11,10 +11,11 @@
 #include "addon_manager.hpp"
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
-#include "ultra_config.hpp"
+#include "ultra_home.hpp"
 #include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_display.hpp"
+#include "ultra_test_home.hpp"
 #include "ultra_test_dlss.hpp"
 #include "ultra_test_run.hpp"
 #include "ultra_test_scene.hpp"
@@ -31,7 +32,6 @@ extern std::filesystem::path g_reshade_dll_path;
 extern std::filesystem::path g_reshade_base_path;
 extern std::filesystem::path g_target_executable_path;
 
-extern std::filesystem::path get_base_path(bool default_to_target_executable_path = false);
 extern std::filesystem::path get_module_path(HMODULE module);
 
 extern "C" PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *pName);
@@ -85,47 +85,18 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	std::error_code ec;
 
-	std::filesystem::path work_dir;
-	bool is_config_layered = false;
-	{	int argc = 0;
-		LPWSTR *const argv = CommandLineToArgvW(GetCommandLineW(), &argc);
-		for (int i = 1; argv != nullptr && i < argc; ++i)
-		{
-			if (_wcsicmp(argv[i], L"-work-dir") == 0 && i + 1 < argc)
-				work_dir = std::filesystem::absolute(argv[i + 1], ec);
-			is_config_layered |= _wcsicmp(argv[i], L"-config-layered") == 0;
-		}
-		LocalFree(argv);
-	}
+	// The run's own index, home and cache in its -work-dir, so several runs at once never share an ini, log or shader cache
+	const std::filesystem::path work_dir = reshade::ultra::seedTestHome(g_target_executable_path);
+	if (work_dir.empty())
+		return EXIT_FAILURE;
+	reshade::ultra::seedEffectCache(work_dir / L"cache");
 
-	// One folder per run, so several runs at once never share an ini, log, preset, screenshot or shader cache
-	if (!work_dir.empty())
-	{
-		std::filesystem::create_directories(work_dir / L"cache", ec);
-		if (!std::filesystem::is_directory(work_dir / L"cache", ec))
-			return EXIT_FAILURE;
-		// -config-layered: a curated ultragame.ini instead, from the exe folder's when it has one, else from its ReShade.ini
-		if (!std::filesystem::exists(work_dir / L"ReShade.ini", ec) && !reshade::ultra::isCuratedConfigFile(work_dir / L"ultragame.ini"))
-		{
-			const std::filesystem::path exe_folder = g_reshade_dll_path.parent_path();
-			const std::filesystem::path config_path = work_dir / (is_config_layered ? L"ultragame.ini" : L"ReShade.ini");
-			const bool has_curated = is_config_layered && std::filesystem::exists(exe_folder / L"ultragame.ini", ec);
-			std::filesystem::copy_file(exe_folder / (has_curated ? L"ultragame.ini" : L"ReShade.ini"), config_path, ec);
-			reshade::ini_file config(config_path);
-			config.set("GENERAL", "IntermediateCachePath", work_dir / L"cache");
-			if (is_config_layered)
-				config.set("INSTALL", "UltraGameConfig", 1);
-			config.save();
-			std::filesystem::copy_file(exe_folder / L"ReShadePreset.ini", work_dir / L"ReShadePreset.ini", ec);
-		}
-		reshade::ultra::seedEffectCache(work_dir / L"cache");
-		SetEnvironmentVariableW(L"RESHADE_BASE_PATH_OVERRIDE", work_dir.c_str());
-	}
-
-	g_reshade_base_path = get_base_path();
+	g_reshade_base_path = reshade::ultra::findHome(g_target_executable_path);
+	if (g_reshade_base_path.empty())
+		return EXIT_FAILURE;
 
 	reshade::log::open_log_file(reshade::ultra::logPath(), ec);
-	reshade::ultra::logConfigLayers();
+	reshade::ultra::logHome();
 
 	reshade::ultra::TestCheck check;
 	if (!check.isValid())

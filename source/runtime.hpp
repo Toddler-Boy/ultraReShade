@@ -8,6 +8,7 @@
 #include "reshade_api.hpp"
 #include "state_block.hpp"
 #include "imgui_code_editor.hpp"
+#include "ultra_effect_settings.hpp"
 #include "ultra_splash.hpp"
 #include <atomic>
 #include <thread>
@@ -15,6 +16,7 @@
 #include <memory>
 #include <filesystem>
 #include <mutex>
+#include <optional>
 #include <shared_mutex>
 
 namespace reshade
@@ -30,7 +32,7 @@ namespace reshade
 	class __declspec(uuid("77FF8202-5BEC-42AD-8CE0-397F3E84EAA6")) runtime : public api::effect_runtime
 	{
 	public:
-		runtime(api::swapchain *swapchain, api::command_queue *graphics_queue, const std::filesystem::path &config_path, bool is_vr);
+		runtime(api::swapchain *swapchain, api::command_queue *graphics_queue, bool is_vr);
 		~runtime();
 
 		bool on_init();
@@ -54,11 +56,6 @@ namespace reshade
 		api::resource get_back_buffer(uint32_t index) final { return _swapchain->get_back_buffer(index); }
 		uint32_t get_back_buffer_count() const final { return _swapchain->get_back_buffer_count(); }
 		uint32_t get_current_back_buffer_index() const final { return _swapchain->get_current_back_buffer_index(); }
-
-		/// <summary>
-		/// Gets the path to the configuration file used by this effect runtime.
-		/// </summary>
-		const std::filesystem::path &get_config_path() const { return _config_path; }
 
 		/// <summary>
 		/// Gets a boolean indicating whether effects are being loaded.
@@ -180,12 +177,14 @@ namespace reshade
 	private:
 		static void check_for_update();
 
-		void load_current_preset();
-		void save_current_preset(class ini_file &preset) const;
+		// Before effects load: the home's files into '_effect_settings' and the saved preprocessor definitions
+		void read_effect_settings();
+		// The values, states and order of the effects, once they are loaded
+		void load_effect_settings();
+		// The user's effects into reshade-user.json, after each change
+		void save_effect_settings();
 
-		bool switch_to_next_preset(std::filesystem::path filter_path, bool reversed = false);
-
-		bool load_effect(const std::filesystem::path &source_file, const class ini_file &preset, size_t effect_index, size_t permutation_index, bool force_load = false, bool preprocess_required = false);
+		bool load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool force_load = false, bool preprocess_required = false);
 		void destroy_effect(size_t effect_index, bool unload = true);
 
 		// While the effect files compile, their effects, textures and techniques are being added to on the worker threads
@@ -225,6 +224,7 @@ namespace reshade
 		void reload_effects(bool force_load_all = false);
 		void destroy_effects();
 
+		[[nodiscard]] bool wants_effect_cache() const { return !_no_effect_cache && _has_effect_cache; }
 		bool load_effect_cache(const std::string &id, const std::string &type, std::string &data) const;
 		bool save_effect_cache(const std::string &id, const std::string &type, const std::string &data) const;
 		void clear_effect_cache();
@@ -235,6 +235,7 @@ namespace reshade
 		void render_technique(technique &technique, api::command_list *cmd_list, api::resource back_buffer_resource, api::resource_view back_buffer_rtv, api::resource_view back_buffer_rtv_srgb, size_t permutation_index);
 
 		void save_texture(const texture &texture);
+		[[nodiscard]] bool has_screenshot_folder();
 		void update_texture(texture &texture, uint32_t width, uint32_t height, uint32_t depth, const void *pixels);
 
 		void reset_uniform_value(uniform &variable);
@@ -256,7 +257,9 @@ namespace reshade
 			set_uniform_value(variable, values, 4, 0);
 		}
 
-		bool get_preprocessor_definition(const std::string &effect_name, const std::string &name, int scope_mask, std::vector<std::pair<std::string, std::string>> *&scope, std::vector<std::pair<std::string, std::string>>::iterator &value) const;
+		// A scope: an effect file's name, empty for the preset scope, or "GLOBAL"; the runtime's definitions over the saved ones
+		auto effective_preprocessor_definitions(const std::string &scope) const -> ultra::Definitions;
+		auto find_preprocessor_definition(const std::string &effect_name, const std::string &name, int scope_mask) const -> std::optional<std::string>;
 
 		bool get_texture_data(api::resource resource, api::resource_usage state, uint8_t *pixels, api::format quantization_format);
 
@@ -290,9 +293,7 @@ namespace reshade
 		static unsigned int s_latest_version[3];
 
 		bool _is_initialized = false;
-		bool _preset_is_incomplete = false;
-		bool _preset_save_successful = true;
-		std::filesystem::path _config_path;
+		bool _settings_save_successful = true;
 
 		bool _ignore_shortcuts = false;
 		bool _force_shortcut_modifiers = true;
@@ -313,13 +314,18 @@ namespace reshade
 		#pragma region Effect Loading
 		bool _no_debug_info = true;
 		bool _no_effect_cache = false;
+		// [GENERAL] IntermediateCachePath is an absolute folder that exists or could be made
+		bool _has_effect_cache = false;
 		bool _no_reload_on_init = false;
 		bool _performance_mode = false;
 		bool _effect_load_skipping = false;
 		unsigned int _reload_key_data[4] = {};
 
-		std::vector<std::pair<std::string, std::string>> _global_preprocessor_definitions;
-		std::unordered_map<std::string, std::vector<std::pair<std::string, std::string>>> _preset_preprocessor_definitions;
+		// Saved: [GENERAL] PreprocessorDefinitions, and per effect file ({} for the preset scope) those of the home's files
+		ultra::Definitions _global_preprocessor_definitions;
+		std::unordered_map<std::string, ultra::Definitions> _preset_preprocessor_definitions;
+		// Set by add-ons, in memory only: by scope (see 'effective_preprocessor_definitions'), an empty value takes the saved one away
+		std::unordered_map<std::string, ultra::Definitions> _runtime_preprocessor_definitions;
 		std::vector<std::pair<size_t, size_t>> _reload_required_effects;
 
 		std::filesystem::path _effect_cache_path;
@@ -394,7 +400,8 @@ namespace reshade
 		unsigned int _screenshot_jpeg_quality = 90;
 		unsigned int _screenshot_key_data[4] = {};
 		std::filesystem::path _screenshot_sound_path;
-		std::filesystem::path _screenshot_path;
+		std::filesystem::path _screenshot_path; // From ultraGame's settings, absolute; empty: no screenshots, for the reason below (logged at the first one asked for)
+		std::string _screenshot_path_problem;
 		std::string _screenshot_name;
 		std::filesystem::path _screenshot_post_save_command;
 		std::string _screenshot_post_save_command_arguments;
@@ -408,22 +415,12 @@ namespace reshade
 		std::chrono::high_resolution_clock::time_point _last_screenshot_time;
 		#pragma endregion
 
-		#pragma region Preset Switching
-		unsigned int _prev_preset_key_data[4] = {};
-		unsigned int _next_preset_key_data[4] = {};
-		unsigned int _preset_transition_duration = 1000;
-		std::filesystem::path _startup_preset_path;
-		std::filesystem::path _current_preset_path;
-
-		bool _is_in_preset_transition = false;
-		std::chrono::high_resolution_clock::time_point _last_preset_switching_time;
-
-		struct preset_shortcut
-		{
-			std::filesystem::path preset_path;
-			unsigned int key_data[4] = {};
-		};
-		std::vector<preset_shortcut> _preset_shortcuts;
+		#pragma region Effect Settings
+		// Read at each load of the effects, on the render thread; the loading workers read it too
+		ultra::EffectSettings _effect_settings;
+		// The states add-ons gave the route's techniques ('name@file'): a reload keeps these over reshade.json's start states
+		std::unordered_map<std::string, bool> _route_technique_states;
+		bool _wants_effect_settings_save = false;
 		#pragma endregion
 
 #if RESHADE_GUI
@@ -435,6 +432,8 @@ namespace reshade
 
 		void load_config_gui(const class ini_file &config);
 		void save_config_gui(class ini_file &config) const;
+		void save_overlay_window(class ini_file &config) const;
+		void draw_overlay_window();
 
 		void load_custom_style();
 		void save_custom_style() const;
@@ -465,9 +464,7 @@ namespace reshade
 		unsigned int _show_fps = 2;
 		unsigned int _show_clock = false;
 		unsigned int _show_frametime = false;
-		unsigned int _show_preset_name = false;
 		bool _show_screenshot_message = true;
-		bool _show_preset_transition_message = true;
 		unsigned int _reload_count = 0;
 
 		bool _is_font_scaling = false;
@@ -498,16 +495,19 @@ namespace reshade
 		api::resource_view _vr_overlay_target = {};
 
 		ultra::SplashState _ultra_splash;
-		bool _ultra_tab_placed = false;
+
+		// The overlay window, [OVERLAY] Position and Size as fractions of the back buffer, Tab the selected tab's name
+		float _overlay_position[2] = { 0.02f, 0.04f };
+		float _overlay_size[2] = { 0.4f, 0.9f };
+		std::string _overlay_tab;
+		// The back buffer size the window was placed for from the fractions; a new size places it again
+		float _overlay_placed_for[2] = {};
+		bool _is_overlay_tab_selected = false;
 		#pragma endregion
 
 		#pragma region Overlay Home
 		char _effect_filter[32] = {};
 		bool _variable_editor_tabs = false;
-		bool _auto_save_preset = true;
-		bool _preset_is_modified = false;
-		bool _inherit_current_preset = false;
-		std::filesystem::path _template_preset_path;
 		bool _was_preprocessor_popup_edited = false;
 		size_t _focused_effect = std::numeric_limits<size_t>::max();
 		size_t _selected_technique = std::numeric_limits<size_t>::max();

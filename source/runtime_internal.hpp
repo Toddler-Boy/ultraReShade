@@ -176,6 +176,8 @@ namespace reshade
 		bool hidden = false;
 		bool enabled = false;
 		bool enabled_in_screenshot = true;
+		// One of the route's effects (reshade.json): never in the overlay, never saved
+		bool is_route = false;
 
 		uint32_t query_base_index = 0;
 
@@ -214,6 +216,8 @@ namespace reshade
 		bool addon = false;
 
 		unsigned int rendering = 0;
+		// A file of the route's effects: its values and definitions come from reshade.json
+		bool is_route = false;
 		bool skipped = false;
 		bool created = false;
 		bool compiled = false;

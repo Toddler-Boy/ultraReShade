@@ -239,14 +239,6 @@ namespace
 		for ( const auto runtime : objects.runtimes )
 		{
 			send<addon_event::init_effect_runtime> ( callbacks, runtime );
-
-			size_t	size = 0;
-			runtime->get_current_preset_path ( nullptr, &size );
-			std::string	preset ( size, '\0' );
-			runtime->get_current_preset_path ( preset.data (), &size );
-			preset.resize ( std::min ( size, preset.size () ) );		// filled, the size no longer counts the terminating null
-
-			send<addon_event::reshade_set_current_preset_path> ( callbacks, runtime, preset.c_str () );
 			send<addon_event::reshade_reloaded_effects> ( callbacks, runtime );
 		}
 	}

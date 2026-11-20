@@ -5,13 +5,16 @@
 
 #include "ini_file.hpp"
 #include "dll_log.hpp"
-#include "ultra_config.hpp"
+#include "ultra_home.hpp"
+#include <reshade_ultra_json.hpp>
 #include <mutex>
 #include <shared_mutex>
 #include <cctype> // std::toupper
 #include <cassert>
-#include <algorithm> // std::min, std::sort, std::transform
-#include <utf8/core.h>
+#include <charconv>
+#include <cstring>
+#include <optional>
+#include <algorithm> // std::sort
 
 static std::shared_mutex s_ini_cache_mutex;
 static std::unordered_map<std::filesystem::path::string_type, std::unique_ptr<reshade::ini_file>> s_ini_cache;
@@ -19,14 +22,11 @@ static thread_local bool s_is_recording_defaults = false;
 
 reshade::ini_file &reshade::global_config()
 {
-	return ini_file::load_cache(g_reshade_base_path / std::filesystem::u8path(ultra::configBaseName() + ".ini"));
+	return ini_file::load_cache(ultra::curatedSettingsPath());
 }
 
-reshade::ini_file::ini_file(const std::filesystem::path &path) : _path(path)
-{
-	load();
-}
-reshade::ini_file::ini_file(const std::filesystem::path &path, const std::filesystem::path &user_path) : _path(path), _user_path(user_path)
+reshade::ini_file::ini_file(const std::filesystem::path &path, const std::filesystem::path &user_path, const std::filesystem::path &app_path) :
+	_path(path), _user_path(user_path), _app_path(app_path)
 {
 	load();
 }
@@ -40,83 +40,177 @@ reshade::ini_file::defaults_scope::~defaults_scope()
 	s_is_recording_defaults = false;
 }
 
-static const std::vector<std::string> *find_in(const std::unordered_map<std::string, std::unordered_map<std::string, std::vector<std::string>>> &sections, const std::string &section, const std::string &key)
+namespace
 {
-	const auto it1 = sections.find(section);
-	if (it1 == sections.end())
-		return nullptr;
-	const auto it2 = it1->second.find(key);
-	return it2 != it1->second.end() ? &it2->second : nullptr;
-}
-
-// As 'save' writes the value: elements that differ only there are the same value
-static std::string serialize(const std::vector<std::string> &elements)
-{
-	std::string value;
-	for (const std::string &element : elements)
+	// Json's number grammar: such a text is written as a number, any other as a string
+	bool is_plain_number(std::string_view text)
 	{
-		// Empty elements mess with escaped commas, so simply skip them
-		if (element.empty())
-			continue;
+		size_t i = 0;
+		const auto digits = [&text, &i]() {
+			const size_t start = i;
+			while (i < text.size() && text[i] >= '0' && text[i] <= '9')
+				++i;
+			return i - start;
+		};
 
-		value.reserve(value.size() + element.size() + 1);
-		for (const char c : element)
-			value.append(c == ',' ? 2 : 1, c);
-		value += ','; // Separate multiple values with a comma
+		if (i < text.size() && text[i] == '-')
+			++i;
+		const size_t start = i;
+		if (digits() == 0 || (text[start] == '0' && i - start > 1))
+			return false;
+		if (i < text.size() && text[i] == '.' && (++i, digits() == 0))
+			return false;
+		if (i < text.size() && (text[i] == 'e' || text[i] == 'E'))
+		{
+			if (++i < text.size() && (text[i] == '+' || text[i] == '-'))
+				++i;
+			if (digits() == 0)
+				return false;
+		}
+		return i == text.size();
 	}
 
-	// Remove the last comma
-	if (!value.empty())
+	// The text a json number reads back as: ReShade's "0.500000" and the file's 0.5 are the same value
+	std::string number_text(double number)
 	{
-		assert(value.back() == ',');
-		value.pop_back();
+		char buffer[32] = {};
+		const auto [end, ec] = std::to_chars(buffer, buffer + sizeof(buffer), number);
+		return std::string(buffer, end);
 	}
 
-	return value;
+	std::string normalized(const std::string &text)
+	{
+		if (!is_plain_number(text))
+			return text;
+
+		if (text.find_first_of(".eE") == std::string::npos)
+		{
+			int64_t integer = 0;
+			if (const auto [end, ec] = std::from_chars(text.data(), text.data() + text.size(), integer); ec == std::errc())
+				return std::to_string(integer);
+		}
+
+		double number = 0.0;
+		std::from_chars(text.data(), text.data() + text.size(), number);
+		return number_text(number);
+	}
+
+	bool is_same(const std::vector<std::string> &a, const std::vector<std::string> &b)
+	{
+		return std::ranges::equal(a, b, [](const std::string &x, const std::string &y) { return normalized(x) == normalized(y); });
+	}
+
+	// A scalar's text as ReShade's settings hold it; nullopt for a value that is no scalar
+	std::optional<std::string> scalar_text(const reshade::json::value *value)
+	{
+		const char *text = nullptr;
+		size_t length = 0;
+		int64_t integer = 0;
+		double number = 0.0;
+		bool flag = false;
+
+		switch (ReShadeJsonGetType(value))
+		{
+		case reshade::json::type::null:
+			return std::string();
+		case reshade::json::type::boolean:
+			ReShadeJsonGetBool(value, &flag);
+			return std::string(flag ? "1" : "0");
+		case reshade::json::type::integer:
+			ReShadeJsonGetInt(value, &integer);
+			return std::to_string(integer);
+		case reshade::json::type::number:
+			ReShadeJsonGetNumber(value, &number);
+			return number_text(number);
+		case reshade::json::type::string:
+			ReShadeJsonGetString(value, &text, &length);
+			return std::string(text, length);
+		case reshade::json::type::array:
+		case reshade::json::type::object:
+			break;
+		}
+		return std::nullopt;
+	}
+
+	void set_scalar(reshade::json::value *target, const std::string &text, bool is_flag)
+	{
+		if (is_flag)
+		{
+			ReShadeJsonSetBool(target, text != "0" && !text.empty());
+			return;
+		}
+
+		if (is_plain_number(text))
+		{
+			const std::string value = normalized(text);
+			int64_t integer = 0;
+			if (const auto [end, ec] = std::from_chars(value.data(), value.data() + value.size(), integer); ec == std::errc() && end == value.data() + value.size())
+			{
+				ReShadeJsonSetInt(target, integer);
+				return;
+			}
+
+			double number = 0.0;
+			std::from_chars(value.data(), value.data() + value.size(), number);
+			if (ReShadeJsonSetNumber(target, number))
+				return;
+		}
+
+		ReShadeJsonSetString(target, text.data(), text.size());
+	}
+
+	bool case_insensitive_less(std::string a, std::string b)
+	{
+		std::transform(a.begin(), a.end(), a.begin(), [](std::string::value_type c) { return static_cast<std::string::value_type>(std::toupper(c)); });
+		std::transform(b.begin(), b.end(), b.begin(), [](std::string::value_type c) { return static_cast<std::string::value_type>(std::toupper(c)); });
+		return a < b;
+	}
+
+	template <typename Sections>
+	auto find_in(Sections &sections, const std::string &section, const std::string &key) -> decltype(&sections.begin()->second.begin()->second)
+	{
+		const auto it1 = sections.find(section);
+		if (it1 == sections.end())
+			return nullptr;
+		const auto it2 = it1->second.find(key);
+		return it2 != it1->second.end() ? &it2->second : nullptr;
+	}
 }
 
-const std::vector<std::string> *reshade::ini_file::find(const std::string &section, const std::string &key) const
+// The hotkeys are ultraGame's alone: [INPUT] of the user file does not count
+const reshade::ini_file::value_type *reshade::ini_file::find(const std::string &section, const std::string &key) const
 {
-	if (const value_type *const value = find_in(_sections, section, key))
+	if (const value_type *const value = section != "INPUT" ? find_in(_user.sections, section, key) : nullptr)
 		return value;
-	return is_layered() ? find_in(_curated, section, key) : nullptr;
+	if (const value_type *const value = find_in(_curated.sections, section, key))
+		return value;
+	return find_in(_app.sections, section, key);
 }
 
 void reshade::ini_file::assign(const std::string &section, const std::string &key, value_type &&value)
 {
-	if (!is_layered())
-	{
-		if (s_is_recording_defaults)
-			return;
-		_sections[section][key] = std::move(value);
-		mark_modified();
-		return;
-	}
-
-	const value_type *const curated = find_in(_curated, section, key);
-	const value_type *const user = find_in(_sections, section, key);
+	const value_type *const below = find_in(_curated.sections, section, key) != nullptr ? find_in(_curated.sections, section, key) : find_in(_app.sections, section, key);
+	const value_type *const user = find_in(_user.sections, section, key);
 
 	if (s_is_recording_defaults)
 	{
-		if (curated == nullptr && user == nullptr)
+		if (below == nullptr && user == nullptr)
 			_defaults[section][key] = std::move(value);
 		return;
 	}
 
-	const std::string serialized = serialize(value);
-
-	if (const value_type *const fallback = curated != nullptr ? curated : find_in(_defaults, section, key);
-		fallback != nullptr && serialize(*fallback) == serialized)
+	if (const value_type *const fallback = below != nullptr ? below : find_in(_defaults, section, key);
+		fallback != nullptr && is_same(fallback->items, value.items))
 	{
 		if (user != nullptr)
 			remove_key(section, key);
 		return;
 	}
 
-	if (user != nullptr && serialize(*user) == serialized)
+	if (user != nullptr && is_same(user->items, value.items) && user->is_list == value.is_list)
 		return;
 
-	_sections[section][key] = std::move(value);
+	_user.sections[section][key] = std::move(value);
 	mark_modified();
 }
 
@@ -125,156 +219,153 @@ void reshade::ini_file::remove_key(const std::string &section, const std::string
 	if (s_is_recording_defaults)
 		return;
 
-	const auto it1 = _sections.find(section);
-	if (it1 == _sections.end())
+	const auto it1 = _user.sections.find(section);
+	if (it1 == _user.sections.end())
 		return;
 	const auto it2 = it1->second.find(key);
 	if (it2 == it1->second.end())
 		return;
 	it1->second.erase(it2);
-	if (it1->second.empty() && is_layered())
-		_sections.erase(it1);
+	if (it1->second.empty())
+		_user.sections.erase(it1);
 	mark_modified();
 }
 
-bool reshade::ini_file::read(const std::filesystem::path &path, int share_flag, sections_type &sections)
+void reshade::ini_file::mark_modified()
 {
-	FILE *const file = _wfsopen(path.c_str(), L"r", share_flag);
-	if (file == nullptr)
-		return false;
-
-	// Remove BOM (0xefbbbf means 0xfeff)
-	if (fgetc(file) != utf8::bom[0] || fgetc(file) != utf8::bom[1] || fgetc(file) != utf8::bom[2])
-		fseek(file, 0, SEEK_SET);
-
-	std::string line_data, section;
-	line_data.resize(BUFSIZ);
-	while (fgets(line_data.data(), static_cast<int>(line_data.size() + 1), file))
-	{
-		size_t line_length;
-		while ((line_length = std::strlen(line_data.data())) == line_data.size() && line_data.back() != '\n')
-		{
-			line_data.resize(line_data.size() + BUFSIZ);
-			if (!fgets(line_data.data() + line_length, static_cast<int>(line_data.size() - line_length + 1), file))
-				break;
-		}
-
-		const std::string_view line = trim(std::string_view(line_data.data(), line_length), " \t\r\n");
-
-		if (line.empty() || line[0] == ';' || line[0] == '/' || line[0] == '#')
-			continue;
-
-		// Read section name
-		if (line[0] == '[')
-		{
-			section = trim(line.substr(0, line.find(']')), " \t[]");
-			continue;
-		}
-
-		// Read section content
-		const size_t assign_index = line.find('=');
-		if (assign_index != std::string::npos)
-		{
-			const std::string_view key = trim(line.substr(0, assign_index));
-			const std::string_view value = trim(line.substr(assign_index + 1));
-
-			if (value.empty())
-			{
-				sections[section].insert({ std::string(key), {} });
-				continue;
-			}
-
-			// Append to key if it already exists
-			std::vector<std::string> &elements = sections[section][std::string(key)];
-			for (size_t offset = 0, base = 0, len = value.size(); offset <= len;)
-			{
-				// Treat ",," as an escaped comma and only split on single ","
-				const size_t found = std::min(value.find(',', offset), len);
-				if (found + 1 < len && value[found + 1] == ',')
-				{
-					offset = found + 2;
-				}
-				else
-				{
-					std::string &element = elements.emplace_back();
-					element.reserve(found - base);
-
-					while (base < found)
-					{
-						const char c = value[base++];
-						element += c;
-
-						if (c == ',' && base < found && value[base] == ',')
-							base++; // Skip second comma in a ",," escape sequence
-					}
-
-					offset = base = found + 1;
-				}
-			}
-		}
-		else
-		{
-			sections[section].insert({ std::string(line), {} });
-		}
-	}
-
-	fclose(file);
-
-	return true;
+	_modified = true;
+	_modified_at = std::filesystem::file_time_type::clock::now();
 }
 
-bool reshade::ini_file::load()
+const reshade::json::value *reshade::ini_file::curated_member(const char *name) const
 {
-	if (is_layered())
-		load_curated();
+	return ReShadeJsonFind(_curated.document.get(), name);
+}
+const reshade::json::value *reshade::ini_file::user_member(const char *name) const
+{
+	return ReShadeJsonFind(_user.document.get(), name);
+}
+const reshade::json::value *reshade::ini_file::app_member(const char *name) const
+{
+	return ReShadeJsonFind(_app.document.get(), name);
+}
+void reshade::ini_file::set_user_member(const char *name, ultra::JsonTree value)
+{
+	if (_user.document == nullptr)
+		_user.document.reset(ReShadeJsonCreate(json::type::object));
 
-	const std::filesystem::path &path = is_layered() ? _user_path : _path;
+	if (value == nullptr)
+		ReShadeJsonRemove(_user.document.get(), name);
+	else
+		ReShadeJsonAssign(ReShadeJsonMember(_user.document.get(), name), value.get());
 
+	mark_modified();
+}
+
+// A layer is read again only when its file was written since; a missing file is an empty layer (an error only where required)
+void reshade::ini_file::load_layer(const std::filesystem::path &path, layer &into, const char *config_name, bool is_required)
+{
 	std::error_code ec;
 	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(path, ec);
-	if (!ec && _modified_at >= modified_at)
-		return true; // Skip loading if there was no modification to the file since it was last loaded
-
-	// Clear when file does not exist too
-	_sections.clear();
-
-	if (!read(path, SH_DENYWR, _sections))
-	{
-		// A user file that cannot be read is left out, the curated file still applies
-		if (is_layered() && !ec && !_is_user_file_broken)
-			log::message(log::level::error, "Failed to read '%s', the changes in it are ignored!", path.u8string().c_str());
-		_is_user_file_broken = is_layered() && !ec;
-		return false;
-	}
-
-	_is_user_file_broken = false;
-	_modified = false;
-	_modified_at = modified_at;
-
-	return true;
-}
-
-// Without share restrictions, so the add-on's own writes into it never fail while ReShade reads
-bool reshade::ini_file::load_curated()
-{
-	std::error_code ec;
-	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(_path, ec);
-	// A missing one is an empty layer (only the global one must exist), one gone meanwhile keeps what it had
 	if (ec)
-		return false;
-	if (_curated_modified_at >= modified_at)
-		return true;
+	{
+		if (into.document != nullptr || into.modified_at != std::filesystem::file_time_type::min() || (is_required && !into.is_failed))
+		{
+			if (is_required)
+				log::message(log::level::error, "'%s' does not exist, its settings are missing!", path.u8string().c_str());
+			into = {};
+			into.is_failed = is_required;
+		}
+		return;
+	}
+	if (into.modified_at == modified_at)
+		return;
+
+	json::error error;
+	ultra::JsonTree document = ultra::readJsonFile(path, error);
+	if (document == nullptr)
+	{
+		log::message(log::level::error, "%s The settings in it are not used.", error.message);
+		into.sections.clear();
+		into.document.reset();
+		into.modified_at = modified_at;
+		into.is_failed = true;
+		return;
+	}
 
 	sections_type sections;
-	if (!read(_path, _SH_DENYNO, sections))
+	const json::value *const config = ReShadeJsonFind(document.get(), config_name);
+	const bool is_one_section = std::strcmp(config_name, "hotkeys") == 0;
+
+	for (size_t i = 0, count = ReShadeJsonGetSize(config); i < count; ++i)
 	{
-		log::message(log::level::error, "Failed to read '%s', the settings read from it before stay in use!", _path.u8string().c_str());
-		return false;
+		const char *section_name = nullptr;
+		const json::value *const section = ReShadeJsonAt(config, i, &section_name);
+
+		const auto add_key = [&path, &sections](const std::string &section_name, const char *key_name, const json::value *value) {
+			value_type &target = sections[section_name][key_name];
+			if (ReShadeJsonGetType(value) == json::type::array)
+			{
+				target.is_list = true;
+				for (size_t k = 0, items = ReShadeJsonGetSize(value); k < items; ++k)
+				{
+					if (std::optional<std::string> text = scalar_text(ReShadeJsonAt(value, k, nullptr)))
+						target.items.push_back(std::move(*text));
+					else
+						log::message(log::level::error, "'%s': [%s] %s holds a list or object in its list, which is left out.", path.u8string().c_str(), section_name.c_str(), key_name);
+				}
+			}
+			else if (std::optional<std::string> text = scalar_text(value))
+			{
+				target.is_flag = ReShadeJsonGetType(value) == json::type::boolean;
+				target.items.push_back(std::move(*text));
+			}
+			else
+			{
+				log::message(log::level::error, "'%s': [%s] %s is an object, which no setting can be; it is left out.", path.u8string().c_str(), section_name.c_str(), key_name);
+				sections[section_name].erase(key_name);
+			}
+		};
+
+		if (is_one_section)
+		{
+			add_key("INPUT", section_name, section);
+			continue;
+		}
+
+		if (ReShadeJsonGetType(section) != json::type::object)
+		{
+			log::message(log::level::error, "'%s': config member '%s' is no section (an object), it is left out.", path.u8string().c_str(), section_name);
+			continue;
+		}
+
+		for (size_t k = 0, keys = ReShadeJsonGetSize(section); k < keys; ++k)
+		{
+			const char *key_name = nullptr;
+			const json::value *const value = ReShadeJsonAt(section, k, &key_name);
+			add_key(section_name, key_name, value);
+		}
 	}
 
-	_curated = std::move(sections);
-	_curated_modified_at = modified_at;
-	return true;
+	if (config != nullptr && ReShadeJsonGetType(config) != json::type::object)
+		log::message(log::level::error, "'%s': '%s' is no object, its settings are not used.", path.u8string().c_str(), config_name);
+	else if (config == nullptr && is_required)
+		log::message(log::level::error, "'%s' has no '%s', its settings are missing!", path.u8string().c_str(), config_name);
+
+	into.document = std::move(document);
+	into.sections = std::move(sections);
+	into.modified_at = modified_at;
+	into.is_failed = false;
+}
+
+void reshade::ini_file::load()
+{
+	load_layer(_path, _curated, "config", true);
+	load_layer(_app_path, _app, "hotkeys", true);
+
+	// Own changes not saved yet win over the file
+	if (!_modified)
+		load_layer(_user_path, _user, "config", false);
 }
 
 bool reshade::ini_file::save()
@@ -285,88 +376,87 @@ bool reshade::ini_file::save()
 	// Reset state even on failure to avoid 'flush_cache' repeatedly trying and failing to save
 	_modified = false;
 
-	const std::filesystem::path &path = is_layered() ? _user_path : _path;
-
-	std::error_code ec;
-	const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(path, ec);
-	if (!ec && (modified_at - _modified_at) > std::chrono::seconds(2))
+	if (_user.is_failed)
 	{
-		if (is_layered())
-			log::message(log::level::error, "'%s' changed on disk since it was read, so the changes made since are not saved!", path.u8string().c_str());
-		return false; // File exists and was modified on disk and therefore may have different data, so cannot save
+		log::message(log::level::error, "'%s' is not saved: the file there could not be read, and saving would lose what it holds.", _user_path.u8string().c_str());
+		return false;
 	}
 
-	std::string data;
+	std::error_code ec;
+	if (const std::filesystem::file_time_type modified_at = std::filesystem::last_write_time(_user_path, ec);
+		!ec && modified_at != _user.modified_at)
+	{
+		log::message(log::level::error, "'%s' changed on disk since it was read, so the changes made since are not saved!", _user_path.u8string().c_str());
+		return false;
+	}
+
+	ultra::JsonTree document(ReShadeJsonCreate(json::type::object));
+	ReShadeJsonSetInt(ReShadeJsonMember(document.get(), "schema"), 1);
+	json::value *const config = ReShadeJsonMember(document.get(), "config");
+	ReShadeJsonSetType(config, json::type::object);
+
 	std::vector<std::string> section_names, key_names;
-
-	section_names.reserve(_sections.size());
-	for (const std::pair<const std::string, section_type> &section : _sections)
+	for (const std::pair<const std::string, section_type> &section : _user.sections)
 		section_names.push_back(section.first);
-
-	// Sort sections to generate consistent files
-	std::sort(section_names.begin(), section_names.end(),
-		[](std::string a, std::string b) {
-			std::transform(a.begin(), a.end(), a.begin(), [](std::string::value_type c) { return static_cast<std::string::value_type>(std::toupper(c)); });
-			std::transform(b.begin(), b.end(), b.begin(), [](std::string::value_type c) { return static_cast<std::string::value_type>(std::toupper(c)); });
-			return a < b;
-		});
+	std::sort(section_names.begin(), section_names.end(), case_insensitive_less);
 
 	for (const std::string &section_name : section_names)
 	{
-		if (const section_type &keys = _sections.at(section_name); !keys.empty())
+		const section_type &keys = _user.sections.at(section_name);
+		if (keys.empty())
+			continue;
+
+		key_names.clear();
+		for (const std::pair<const std::string, value_type> &key : keys)
+			key_names.push_back(key.first);
+		std::sort(key_names.begin(), key_names.end(), case_insensitive_less);
+
+		json::value *const section = ReShadeJsonMember(config, section_name.c_str());
+		ReShadeJsonSetType(section, json::type::object);
+
+		for (const std::string &key_name : key_names)
 		{
-			key_names.clear();
-			key_names.reserve(keys.size());
-			for (const std::pair<const std::string, value_type> &key : keys)
-				key_names.push_back(key.first);
+			const value_type &value = keys.at(key_name);
+			json::value *const target = ReShadeJsonMember(section, key_name.c_str());
 
-			std::sort(key_names.begin(), key_names.end(),
-				[](std::string a, std::string b) {
-					std::transform(a.begin(), a.end(), a.begin(), [](std::string::value_type c) { return static_cast<std::string::value_type>(std::toupper(c)); });
-					std::transform(b.begin(), b.end(), b.begin(), [](std::string::value_type c) { return static_cast<std::string::value_type>(std::toupper(c)); });
-					return a < b;
-				});
-
-			// Empty section should have been sorted to the top, so do not need to append it before keys
-			if (!section_name.empty())
-				data += '[' + section_name + ']' + '\n';
-
-			for (const std::string &key_name : key_names)
+			if (value.is_list)
 			{
-				data += key_name + '=';
-				data += serialize(keys.at(key_name));
-				data += '\n';
+				ReShadeJsonSetType(target, json::type::array);
+				for (size_t i = 0; i < value.items.size(); ++i)
+					set_scalar(ReShadeJsonInsert(target, i), value.items[i], value.is_flag);
 			}
-
-			data += '\n';
+			else
+			{
+				set_scalar(target, value.items.empty() ? std::string() : value.items.front(), value.is_flag);
+			}
 		}
 	}
 
+	bool has_members = ReShadeJsonGetSize(config) != 0;
+	for (size_t i = 0, count = ReShadeJsonGetSize(_user.document.get()); i < count; ++i)
+	{
+		const char *name = nullptr;
+		const json::value *const member = ReShadeJsonAt(_user.document.get(), i, &name);
+		if (std::strcmp(name, "schema") == 0 || std::strcmp(name, "config") == 0)
+			continue;
+
+		ReShadeJsonAssign(ReShadeJsonMember(document.get(), name), member);
+		has_members = true;
+	}
+
 	// No user file while there is no change
-	if (is_layered() && data.empty() && ec)
+	if (!has_members && ec)
 		return true;
 
-	FILE *const file = _wfsopen(path.c_str(), L"w", SH_DENYWR);
-	if (file == nullptr)
+	json::error error;
+	if (!ultra::writeJsonFile(_user_path, *document, error))
 	{
-		if (is_layered())
-			log::message(log::level::error, "Failed to open '%s' for writing, the changes are not saved!", path.u8string().c_str());
-		return false;
-	}
-	const size_t file_size_written = fwrite(data.data(), 1, data.size(), file);
-	fclose(file);
-	if (file_size_written != data.size())
-	{
-		if (is_layered())
-			log::message(log::level::error, "Failed to write '%s' completely!", path.u8string().c_str());
+		log::message(log::level::error, "%s", error.message);
 		return false;
 	}
 
-	// Flush stream to disk before updating last write time
-	_modified_at = std::filesystem::last_write_time(path, ec);
-
-	assert(!ec && (is_layered() || std::filesystem::file_size(path, ec) > 0));
-
+	_user.modified_at = std::filesystem::last_write_time(_user_path, ec);
+	_user.document = std::move(document);
 	return true;
 }
 
@@ -394,30 +484,6 @@ bool reshade::ini_file::flush_cache(const std::filesystem::path &path)
 	return it != s_ini_cache.end() && it->second->save();
 }
 
-void reshade::ini_file::clear_cache()
-{
-	const std::unique_lock<std::shared_mutex> lock(s_ini_cache_mutex);
-
-	s_ini_cache.clear();
-}
-void reshade::ini_file::clear_cache(const std::filesystem::path &path)
-{
-	assert(!path.empty() && path.is_absolute());
-
-	const std::unique_lock<std::shared_mutex> lock(s_ini_cache_mutex);
-
-	s_ini_cache.erase(path);
-}
-
-reshade::ini_file *reshade::ini_file::find_cache(const std::filesystem::path &path)
-{
-	assert(!path.empty() && path.is_absolute());
-
-	const std::shared_lock<std::shared_mutex> lock(s_ini_cache_mutex);
-
-	const auto it = s_ini_cache.find(path);
-	return it != s_ini_cache.end() ? it->second.get() : nullptr;
-}
 reshade::ini_file &reshade::ini_file::load_cache(const std::filesystem::path &path)
 {
 	assert(!path.empty() && path.is_absolute());
@@ -427,11 +493,10 @@ reshade::ini_file &reshade::ini_file::load_cache(const std::filesystem::path &pa
 	const auto insert = s_ini_cache.try_emplace(path);
 	const auto it = insert.first;
 
-	// Only construct when actually adding a new entry to the cache, since the 'ini_file' constructor performs a costly load of the file
+	// Only construct when actually adding a new entry to the cache, since the constructor performs a costly load of the files
 	if (insert.second)
-		it->second = ultra::isCuratedConfig(path) ? std::make_unique<ini_file>(path, ultra::userConfigPath(path)) : std::make_unique<ini_file>(path);
-	// Don't reload file when it was just loaded or there are still modifications pending
-	else if (!it->second->_modified)
+		it->second = std::make_unique<ini_file>(path, ultra::userSettingsPath(), ultra::appSettingsPath());
+	else
 		it->second->load();
 
 	return *it->second;
