@@ -303,7 +303,6 @@ void reshade::runtime::load_config_gui(const ini_file &config)
 	config.get("OVERLAY", "ShowFPS", _show_fps);
 	config.get("OVERLAY", "ShowFrameTime", _show_frametime);
 	config.get("OVERLAY", "ShowScreenshotMessage", _show_screenshot_message);
-	config.get("OVERLAY", "TutorialProgress", _tutorial_index);
 	config.get("OVERLAY", "VariableListHeight", _variable_editor_height);
 	config.get("OVERLAY", "VariableListUseTabs", _variable_editor_tabs);
 	config.get("OVERLAY", "Position", _overlay_position);
@@ -356,7 +355,6 @@ void reshade::runtime::save_config_gui(ini_file &config) const
 	config.set("OVERLAY", "ShowFPS", _show_fps);
 	config.set("OVERLAY", "ShowFrameTime", _show_frametime);
 	config.set("OVERLAY", "ShowScreenshotMessage", _show_screenshot_message);
-	config.set("OVERLAY", "TutorialProgress", _tutorial_index);
 	config.set("OVERLAY", "VariableListHeight", _variable_editor_height);
 	config.set("OVERLAY", "VariableListUseTabs", _variable_editor_tabs);
 	save_overlay_window(config);
@@ -978,7 +976,7 @@ void reshade::runtime::draw_gui()
 #endif
 
 	ImVec2 viewport_offset = ImVec2(0, 0);
-	const bool show_spinner = _reload_count > 1 && _tutorial_index != 0;
+	const bool show_spinner = _reload_count > 1;
 
 	ultra::drawSplash(_ultra_splash, { _device, ImGui::GetBackgroundDrawList(), imgui_io.DisplaySize.x, imgui_io.DisplaySize.y, imgui_io.DeltaTime, _effects.size(), _reload_remaining_effects.load(), is_loading(), _show_overlay });
 
@@ -1046,19 +1044,6 @@ void reshade::runtime::draw_gui()
 						ImGui::SameLine();
 						ImGui::TextColored(COLOR_YELLOW, _("Use gamepad instead: Press 'left + right shoulder + start button' to open the configuration overlay."));
 					}
-				}
-				else if (_tutorial_index == 0)
-				{
-					const std::string label = _("ReShade is now installed successfully! Press '%s' to start the tutorial.");
-					const size_t key_offset = label.find("%s");
-
-					ImGui::TextUnformatted(label.c_str(), label.c_str() + key_offset);
-					ImGui::SameLine(0.0f, 0.0f);
-					ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1, 1, 1, 1));
-					ImGui::TextUnformatted(input::key_name(_overlay_key_data).c_str());
-					ImGui::PopStyleColor();
-					ImGui::SameLine(0.0f, 0.0f);
-					ImGui::TextUnformatted(label.c_str() + key_offset + 2, label.c_str() + label.size());
 				}
 				else
 				{
@@ -1498,25 +1483,8 @@ void reshade::runtime::draw_overlay_window()
 
 void reshade::runtime::draw_gui_home()
 {
-	std::string tutorial_text;
-
-	// It is not possible to follow some of the tutorial steps while performance mode is active, so skip them
-	if (_performance_mode && _tutorial_index <= 3)
-		_tutorial_index = 4;
-
 	const float auto_save_button_spacing = 2.0f;
 	const float button_width = 12.5f * ImGui::GetFontSize();
-
-	if (_tutorial_index == 0)
-	{
-		tutorial_text = static_cast<std::string &&>(_(
-			"Welcome! Since this is the first time you start ReShade, we'll go through a quick tutorial covering the most important features.\n\n"
-			"If you have difficulties reading this text, press the 'Ctrl' key and adjust the font size with your mouse wheel. "
-			"The window size is variable as well, just grab the right edge and move it around.\n\n"
-			"You can also use the keyboard for navigation in case mouse input does not work. Use the arrow keys to navigate, space bar to confirm an action or enter a control and the 'Esc' key to leave a control. "
-			"Press 'Ctrl + Tab' to switch between tabs and windows (use this to focus this page in case the other navigation keys do not work at first).\n\n"
-			"Click on the 'Continue' button to continue the tutorial."));
-	}
 
 	if (_reload_remaining_effects != std::numeric_limits<size_t>::max())
 	{
@@ -1524,120 +1492,103 @@ void reshade::runtime::draw_gui_home()
 		return; // Cannot show techniques and variables while effects are loading, since they are being modified in other threads during that time
 	}
 
-	if (_tutorial_index > 1)
+	if (imgui::search_input_box(_effect_filter, sizeof(_effect_filter), -((_variable_editor_tabs ? 1 : 2) * (_imgui_context->Style.ItemSpacing.x + 2.0f + button_width))))
 	{
-		if (imgui::search_input_box(_effect_filter, sizeof(_effect_filter), -((_variable_editor_tabs ? 1 : 2) * (_imgui_context->Style.ItemSpacing.x + 2.0f + button_width))))
+		_effects_expanded_state = 3;
+
+		for (technique &tech : _techniques)
 		{
-			_effects_expanded_state = 3;
+			std::string_view label = tech.annotation_as_string("ui_label");
+			if (label.empty())
+				label = tech.name;
 
-			for (technique &tech : _techniques)
-			{
-				std::string_view label = tech.annotation_as_string("ui_label");
-				if (label.empty())
-					label = tech.name;
-
-				tech.hidden = tech.is_route || tech.annotation_as_int("hidden") != 0 || !(string_contains(label, _effect_filter) || string_contains(_effects[tech.effect_index].source_file.filename().u8string(), _effect_filter));
-			}
+			tech.hidden = tech.is_route || tech.annotation_as_int("hidden") != 0 || !(string_contains(label, _effect_filter) || string_contains(_effects[tech.effect_index].source_file.filename().u8string(), _effect_filter));
 		}
-
-		ImGui::SameLine();
-
-		if (ImGui::Button(_("Active to top"), ImVec2(auto_save_button_spacing + button_width, 0)))
-		{
-			std::vector<size_t> technique_indices = _technique_sorting;
-
-			for (auto it = technique_indices.begin(), target_it = it; it != technique_indices.end(); ++it)
-			{
-				const technique &tech = _techniques[*it];
-
-				if (tech.enabled || tech.toggle_key_data[0] != 0)
-				{
-					target_it = std::rotate(target_it, it, std::next(it));
-				}
-			}
-
-			reorder_techniques(std::move(technique_indices));
-
-			save_effect_settings();
-		}
-
-		if (!_variable_editor_tabs)
-		{
-			ImGui::SameLine();
-
-			if (ImGui::Button((_effects_expanded_state & 2) ? _("Collapse all") : _("Expand all"), ImVec2(auto_save_button_spacing + button_width, 0)))
-				_effects_expanded_state = (~_effects_expanded_state & 2) | 1;
-		}
-
-		if (_tutorial_index == 2)
-		{
-			tutorial_text = static_cast<std::string &&>(_(
-				"This is the list of effects. It contains all effects exposed by effect files (.fx) found in the effect search paths specified in the settings.\n\n"
-				"Enter text in the \"Search\" box at the top to filter it and search for specific effects.\n\n"
-				"Click on an effect to enable or disable it or drag it to a new location in the list to change the order in which the effects are applied (from top to bottom).\n"
-				"Use the right mouse button and click on an item to open a context menu with additional options."));
-
-			ImGui::PushStyleColor(ImGuiCol_Border, COLOR_RED);
-		}
-
-		ImGui::Spacing();
-
-		if (!_last_reload_successful)
-		{
-			ImGui::PushTextWrapPos();
-			ImGui::PushStyleColor(ImGuiCol_Text, COLOR_RED);
-			ImGui::TextUnformatted(_("There were errors loading some effects."));
-			ImGui::TextUnformatted(_("Hover the cursor over any red entries below to see the related error messages and/or check the log for more details if there are none."));
-			ImGui::PopStyleColor();
-			ImGui::PopTextWrapPos();
-			ImGui::Spacing();
-		}
-
-		if (!_effects_enabled)
-		{
-			ImGui::Text(_("Effects are disabled. Press '%s' to enable them again."), input::key_name(_effects_key_data).c_str());
-			ImGui::Spacing();
-		}
-
-		float bottom_height = _variable_editor_height;
-		bottom_height = std::max(bottom_height, 20.0f);
-		bottom_height = ImGui::GetFrameHeightWithSpacing() + _imgui_context->Style.ItemSpacing.y + (
-			_performance_mode ? 0 : (17 /* splitter */ + (bottom_height + (_tutorial_index == 3 ? 175 : 0))));
-		bottom_height = std::min(bottom_height, ImGui::GetContentRegionAvail().y - 20.0f);
-
-		// The list only takes the height its techniques need, so the variables below get the rest of the window
-		ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, ImGui::GetContentRegionAvail().y - bottom_height));
-		if (ImGui::BeginChild("##techniques", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY))
-		{
-			if (_effect_load_skipping && _show_force_load_effects_button)
-			{
-				const size_t skipped_effects = std::count_if(_effects.cbegin(), _effects.cend(),
-					[](const effect &effect) { return effect.skipped; });
-
-				if (skipped_effects > 0)
-				{
-					char label[64] = "";
-					ImFormatString(label, IM_ARRAYSIZE(label), _("Force load all effects (%zu remaining)") + "###force_reload_button", skipped_effects);
-
-					if (ImGui::ButtonEx(label, ImVec2(ImGui::GetContentRegionAvail().x, 0)))
-					{
-						reload_effects(true);
-
-						ImGui::EndChild();
-						return;
-					}
-				}
-			}
-
-			draw_technique_editor();
-		}
-		ImGui::EndChild();
-
-		if (_tutorial_index == 2)
-			ImGui::PopStyleColor();
 	}
 
-	if (_tutorial_index > 2 && !_performance_mode)
+	ImGui::SameLine();
+
+	if (ImGui::Button(_("Active to top"), ImVec2(auto_save_button_spacing + button_width, 0)))
+	{
+		std::vector<size_t> technique_indices = _technique_sorting;
+
+		for (auto it = technique_indices.begin(), target_it = it; it != technique_indices.end(); ++it)
+		{
+			const technique &tech = _techniques[*it];
+
+			if (tech.enabled || tech.toggle_key_data[0] != 0)
+			{
+				target_it = std::rotate(target_it, it, std::next(it));
+			}
+		}
+
+		reorder_techniques(std::move(technique_indices));
+
+		save_effect_settings();
+	}
+
+	if (!_variable_editor_tabs)
+	{
+		ImGui::SameLine();
+
+		if (ImGui::Button((_effects_expanded_state & 2) ? _("Collapse all") : _("Expand all"), ImVec2(auto_save_button_spacing + button_width, 0)))
+			_effects_expanded_state = (~_effects_expanded_state & 2) | 1;
+	}
+
+	ImGui::Spacing();
+
+	if (!_last_reload_successful)
+	{
+		ImGui::PushTextWrapPos();
+		ImGui::PushStyleColor(ImGuiCol_Text, COLOR_RED);
+		ImGui::TextUnformatted(_("There were errors loading some effects."));
+		ImGui::TextUnformatted(_("Hover the cursor over any red entries below to see the related error messages and/or check the log for more details if there are none."));
+		ImGui::PopStyleColor();
+		ImGui::PopTextWrapPos();
+		ImGui::Spacing();
+	}
+
+	if (!_effects_enabled)
+	{
+		ImGui::Text(_("Effects are disabled. Press '%s' to enable them again."), input::key_name(_effects_key_data).c_str());
+		ImGui::Spacing();
+	}
+
+	float bottom_height = _variable_editor_height;
+	bottom_height = std::max(bottom_height, 20.0f);
+	bottom_height = ImGui::GetFrameHeightWithSpacing() + _imgui_context->Style.ItemSpacing.y + (
+		_performance_mode ? 0 : (17 /* splitter */ + bottom_height));
+	bottom_height = std::min(bottom_height, ImGui::GetContentRegionAvail().y - 20.0f);
+
+	// The list only takes the height its techniques need, so the variables below get the rest of the window
+	ImGui::SetNextWindowSizeConstraints(ImVec2(0.0f, 0.0f), ImVec2(FLT_MAX, ImGui::GetContentRegionAvail().y - bottom_height));
+	if (ImGui::BeginChild("##techniques", ImVec2(0, 0), ImGuiChildFlags_Borders | ImGuiChildFlags_AutoResizeY))
+	{
+		if (_effect_load_skipping && _show_force_load_effects_button)
+		{
+			const size_t skipped_effects = std::count_if(_effects.cbegin(), _effects.cend(),
+				[](const effect &effect) { return effect.skipped; });
+
+			if (skipped_effects > 0)
+			{
+				char label[64] = "";
+				ImFormatString(label, IM_ARRAYSIZE(label), _("Force load all effects (%zu remaining)") + "###force_reload_button", skipped_effects);
+
+				if (ImGui::ButtonEx(label, ImVec2(ImGui::GetContentRegionAvail().x, 0)))
+				{
+					reload_effects(true);
+
+					ImGui::EndChild();
+					return;
+				}
+			}
+		}
+
+		draw_technique_editor();
+	}
+	ImGui::EndChild();
+
+	if (!_performance_mode)
 	{
 		ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(0, 0));
 		ImGui::ButtonEx("##splitter", ImVec2(ImGui::GetContentRegionAvail().x, 5));
@@ -1654,100 +1605,36 @@ void reshade::runtime::draw_gui_home()
 			save_config();
 		}
 
-		if (_tutorial_index == 3)
-		{
-			tutorial_text = static_cast<std::string &&>(_(
-				"This is the list of variables. It contains all tweakable options the active effects expose. Values here apply in real-time.\n\n"
-				"Press 'Ctrl' and click on a widget to manually edit the value (can also hold 'Ctrl' while adjusting the value in a widget to have it ignore any minimum or maximum values).\n"
-				"Use the right mouse button and click on an item to open a context menu with additional options.\n\n"
-				"Once you have finished tweaking the effects, be sure to enable the 'Performance Mode' check box. "
-				"This will reload all effects into a more optimal representation that can give a performance boost, but disables variable tweaking and this list."));
-
-			ImGui::PushStyleColor(ImGuiCol_Border, COLOR_RED);
-		}
-
-		const float bottom_height = ImGui::GetFrameHeightWithSpacing() + _imgui_context->Style.ItemSpacing.y + (_tutorial_index == 3 ? 175 : 0);
+		const float bottom_height = ImGui::GetFrameHeightWithSpacing() + _imgui_context->Style.ItemSpacing.y;
 
 		if (ImGui::BeginChild("##variables", ImVec2(0, -bottom_height), ImGuiChildFlags_Borders))
 			draw_variable_editor();
 		ImGui::EndChild();
-
-		if (_tutorial_index == 3)
-			ImGui::PopStyleColor();
 	}
 
-	if (_tutorial_index > 3)
+	ImGui::Spacing();
+
+	if (ImGui::Button(ICON_FK_REFRESH " " + _("Reload"), ImVec2(-(auto_save_button_spacing + button_width), 0)))
 	{
-		ImGui::Spacing();
+		load_config(); // Reload configuration too
 
-		if (ImGui::Button(ICON_FK_REFRESH " " + _("Reload"), ImVec2(-(auto_save_button_spacing + button_width), 0)))
-		{
-			load_config(); // Reload configuration too
+		if (!_no_effect_cache && (_imgui_context->IO.KeyCtrl || _imgui_context->IO.KeyShift))
+			clear_effect_cache();
 
-			if (!_no_effect_cache && (_imgui_context->IO.KeyCtrl || _imgui_context->IO.KeyShift))
-				clear_effect_cache();
-
-			reload_effects();
-		}
-
-		ImGui::SetItemTooltip(_("Reload all effects (can hold 'Ctrl' while clicking to clear the effect cache before loading)."));
-
-		ImGui::SameLine();
-
-		if (ImGui::Checkbox(_("Performance Mode"), &_performance_mode))
-		{
-			save_config();
-			reload_effects(); // Reload effects after switching
-		}
-
-		ImGui::SetItemTooltip(_("Reload all effects into a more optimal representation that can give a performance boost, but disables variable tweaking."));
+		reload_effects();
 	}
-	else
+
+	ImGui::SetItemTooltip(_("Reload all effects (can hold 'Ctrl' while clicking to clear the effect cache before loading)."));
+
+	ImGui::SameLine();
+
+	if (ImGui::Checkbox(_("Performance Mode"), &_performance_mode))
 	{
-		const float max_frame_width = ImGui::GetContentRegionAvail().x;
-		const float max_frame_height = ImGui::GetContentRegionAvail().y - ImGui::GetFrameHeight() - _imgui_context->Style.ItemSpacing.y;
-		const float required_frame_height =
-			ImGui::CalcTextSize(tutorial_text.data(), tutorial_text.data() + tutorial_text.size(), false, max_frame_width - _imgui_context->Style.FramePadding.x * 2).y +
-			_imgui_context->Style.FramePadding.y * 2;
-
-		if (ImGui::BeginChild("##tutorial", ImVec2(max_frame_width, std::min(max_frame_height, required_frame_height)), ImGuiChildFlags_FrameStyle))
-		{
-			ImGui::PushTextWrapPos();
-			ImGui::TextUnformatted(tutorial_text.data(), tutorial_text.data() + tutorial_text.size());
-			ImGui::PopTextWrapPos();
-		}
-		ImGui::EndChild();
-
-		if (_tutorial_index == 0)
-		{
-			// The steps after the welcome start at 2, the effect list
-			if (ImGui::Button(_("Continue") + "###tutorial_button", ImVec2(max_frame_width * 0.66666666f, 0)))
-			{
-				_tutorial_index = 2;
-
-				save_config();
-			}
-
-			ImGui::SameLine();
-
-			if (ImGui::Button(_("Skip Tutorial"), ImVec2(max_frame_width * 0.33333333f - _imgui_context->Style.ItemSpacing.x, 0)))
-			{
-				_tutorial_index = 4;
-
-				save_config();
-			}
-		}
-		else
-		{
-			if (ImGui::Button((_tutorial_index == 3 ? _("Finish") : _("Continue")) + "###tutorial_button", ImVec2(max_frame_width, 0)))
-			{
-				_tutorial_index++;
-
-				if (_tutorial_index == 4)
-					save_config();
-			}
-		}
+		save_config();
+		reload_effects(); // Reload effects after switching
 	}
+
+	ImGui::SetItemTooltip(_("Reload all effects into a more optimal representation that can give a performance boost, but disables variable tweaking."));
 }
 void reshade::runtime::draw_gui_settings()
 {
@@ -1944,9 +1831,6 @@ void reshade::runtime::draw_gui_settings()
 			}
 		}
 #endif
-
-		if (ImGui::Button(_("Restart tutorial"), ImVec2(ImGui::CalcItemWidth(), 0)))
-			_tutorial_index = 0;
 
 		modified |= ImGui::Checkbox(_("Show screenshot message"), &_show_screenshot_message);
 
