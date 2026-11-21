@@ -249,9 +249,6 @@ set(RESHADE_SOURCE
   source/hook_manager.cpp
   source/hook_manager.hpp
   source/imgui_config.cpp
-  source/imgui_function_table.cpp
-  source/imgui_function_table_19300.cpp
-  source/imgui_function_table_19300.hpp
   source/ini_file.cpp
   source/ini_file.hpp
   source/input.cpp
@@ -505,7 +502,6 @@ target_sources(
       include/reshade_api_pipeline.hpp
       include/reshade_api_resource.hpp
       include/reshade_events.hpp
-      include/reshade_overlay.hpp
   PRIVATE
     ${RESHADE_SOURCE}
     ${RESHADE_SOURCE_OPENGL}

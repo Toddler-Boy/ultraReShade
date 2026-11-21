@@ -143,7 +143,6 @@ void reshade::runtime::draw_gui()
 	_ignore_shortcuts = false;
 
 	if (!show_message_window && !_show_overlay
-		&& !has_addon_event<addon_event::reshade_overlay>()
 		&& !ultra::wantsSplashFrame(_ultra_splash, is_loading())
 		)
 	{
@@ -316,7 +315,6 @@ void reshade::runtime::draw_gui()
 	else
 		::ultra::ui::forgetMouseOver();
 
-	invoke_addon_event<addon_event::reshade_overlay>(this);
 
 	// Disable keyboard shortcuts while typing into input boxes
 	_ignore_shortcuts |= ImGui::IsAnyItemActive();

@@ -6,7 +6,6 @@
 #pragma once
 
 #include "reshade_events.hpp"
-#include "reshade_overlay.hpp"
 #include <charconv>
 
 // Current version of the ReShade API
@@ -259,14 +258,6 @@ namespace reshade
 		// Check that the ReShade module supports the used API
 		if (func == nullptr || !func(addon_module, RESHADE_API_VERSION))
 			return false;
-
-#if defined(IMGUI_VERSION_NUM)
-		const auto imgui_func = reinterpret_cast<const imgui_function_table *(*)(uint32_t)>(
-			GetProcAddress(static_cast<HMODULE>(reshade_module), "ReShadeGetImGuiFunctionTable"));
-		// Check that the ReShade module was built with Dear ImGui support and supports the used version
-		if (imgui_func == nullptr || !(imgui_function_table_instance() = imgui_func(IMGUI_VERSION_NUM)))
-			return false;
-#endif
 
 		return true;
 #endif
