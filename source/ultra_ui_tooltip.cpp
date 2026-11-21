@@ -80,7 +80,7 @@ namespace ultra::ui
 		const ImVec2	box ( textW + padX * 2.0f, lineH * float ( lines.size () ) + padY * 2.0f );
 		const auto		mouse = ImGui::GetMousePos ();
 
-		ImGui::SetNextWindowPos ( ImVec2 ( mouse.x, mouse.y + theme::px ( theme::rowHeight ) * 0.5f + theme::px ( theme::tipGap ) ) );
+		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( mouse.x, mouse.y + theme::px ( theme::rowHeight ) * 0.5f + theme::px ( theme::tipGap ) ), box ) );
 		// Full strength over a dimmed row too: it explains why that row is off
 		ImGui::PushStyleVar ( ImGuiStyleVar_Alpha, 1.0f );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( 0.0f, 0.0f ) );

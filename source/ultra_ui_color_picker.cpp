@@ -196,7 +196,7 @@ namespace ultra::ui
 		// The picker opens a gap under the swatch, at its left edge
 		const auto		gap = theme::px ( theme::pickerGap );
 		const ImVec2	popupSize ( gap * 3.0f + theme::px ( theme::pickerSquare ) + theme::px ( theme::pickerHueWidth ), gap * 2.0f + theme::px ( theme::pickerSquare ) );
-		ImGui::SetNextWindowPos ( ImVec2 ( pos.x, max.y + theme::px ( theme::menuGap ) ) );
+		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( pos.x, max.y + theme::px ( theme::menuGap ) ), popupSize ) );
 		ImGui::SetNextWindowSize ( popupSize );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( 0.0f, 0.0f ) );
 		ImGui::PushStyleVar ( ImGuiStyleVar_PopupBorderSize, 0.0f );

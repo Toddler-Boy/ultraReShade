@@ -30,6 +30,12 @@ namespace ultra::ui::draw
 		return channel ( IM_COL32_R_SHIFT ) | channel ( IM_COL32_G_SHIFT ) | channel ( IM_COL32_B_SHIFT ) | channel ( IM_COL32_A_SHIFT );
 	}
 
+	ImVec2 onScreen ( const ImVec2 pos, const ImVec2 size )
+	{
+		const auto	display = ImGui::GetIO ().DisplaySize;
+		return ImVec2 ( std::max ( 0.0f, std::min ( pos.x, display.x - size.x ) ), std::max ( 0.0f, std::min ( pos.y, display.y - size.y ) ) );
+	}
+
 	void shadow ( ImDrawList* drawList, ImVec2 min, ImVec2 max, float rounding, float alpha )
 	{
 		// Rings from wide and faint to tight, stacking to a soft falloff; ReShade's ImGui has no shadow primitive

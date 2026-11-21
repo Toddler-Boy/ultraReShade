@@ -16,6 +16,9 @@ namespace ultra::ui::draw
 	[[ nodiscard ]] ImU32 color ( ImU32 c, float alpha = 1.0f );
 	[[ nodiscard ]] ImU32 mix ( ImU32 a, ImU32 b, float t );
 
+	// Where a box of that size wanted at pos goes so it stays on the screen: moved up and left only as far as needed
+	[[ nodiscard ]] ImVec2 onScreen ( ImVec2 pos, ImVec2 size );
+
 	// A soft drop shadow under a rounded box, drawn before it; reaches past the window's clip rect
 	void shadow ( ImDrawList* drawList, ImVec2 min, ImVec2 max, float rounding, float alpha = 1.0f );
 

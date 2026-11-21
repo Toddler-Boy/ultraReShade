@@ -112,11 +112,12 @@ namespace ultra::ui
 
 		// The list opens a gap under the box, as wide as it
 		const auto	pad = theme::px ( theme::menuPad );
-		ImGui::SetNextWindowPos ( ImVec2 ( pos.x, max.y + theme::px ( theme::menuGap ) ) );
+		const ImVec2	listSize ( width, rowH * float ( names.size () ) + pad * 2.0f );
+		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( pos.x, max.y + theme::px ( theme::menuGap ) ), listSize ) );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( 0.0f, 0.0f ) );
 		ImGui::PushStyleVar ( ImGuiStyleVar_PopupBorderSize, 0.0f );
 		ImGui::PushStyleColor ( ImGuiCol_PopupBg, IM_COL32 ( 0, 0, 0, 0 ) );
-		ImGui::SetNextWindowSize ( ImVec2 ( width, rowH * float ( names.size () ) + pad * 2.0f ) );
+		ImGui::SetNextWindowSize ( listSize );
 
 		const auto	edit = list ( popupId, index, names, width );
 
