@@ -132,7 +132,7 @@ namespace reshade
 #endif
 	}
 
-	// The file the add-on's code was loaded from (module null: this add-on): in a development build of ultraReShade, which loads add-ons
+	// The file the add-on's code was loaded from (module null: this add-on): with Developer mode on, which loads add-ons
 	// from copies, the file the copy was made from. False, path empty, where the module is none of an add-on's, the path does not fit
 	// capacity (in characters) or this ReShade has no such function
 	inline bool get_addon_source ( void* module, wchar_t* path, uint32_t capacity )

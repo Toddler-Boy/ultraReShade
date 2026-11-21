@@ -238,7 +238,7 @@ void reshade::ultra::stopEffectReload ()
 // Queued like the overlay's reload, so update_effects recompiles right after, outside any add-on event
 void reshade::runtime::ultra_reload_changed_effects ()
 {
-	if ( ! ultra::isAddonReloadEnabled || ultra::isInAddonEvent () )
+	if ( ultra::isInAddonEvent () )
 		return;
 
 	ultra::followEffectSearchPaths ( this, _effect_search_paths );

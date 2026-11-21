@@ -13,6 +13,7 @@
 #include <reshade_ultra.hpp>
 
 #include "dll_log.hpp"
+#include "ultra_home.hpp"
 #include "ultra_main_log.hpp"
 #include "ultra_version.hpp"
 
@@ -43,7 +44,7 @@ namespace
 
 	[[ nodiscard ]] std::string buildText ()
 	{
-		return reshade::ultra::versionText () + ( ULTRARESHADE_DEVELOPMENT ? " development" : " release" ) + ( sizeof ( void* ) == 8 ? " 64-bit" : " 32-bit" );
+		return reshade::ultra::versionText () + ( reshade::ultra::isDevelopmentOn () ? " development on" : " development off" ) + ( sizeof ( void* ) == 8 ? " 64-bit" : " 32-bit" );
 	}
 
 	// A call that is refused says so once per cause: a caller in a loop would fill the log

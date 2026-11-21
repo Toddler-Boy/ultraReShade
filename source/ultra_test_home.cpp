@@ -255,6 +255,7 @@ std::filesystem::path reshade::ultra::seedTestHome ( const std::filesystem::path
 
 	const auto	settings =
 		"{\n\t\"screenshots\": {\n\t\t\"folder\": " + quotedPath ( options.work / L"screenshots" ) + ",\n\t\t\"perGameFolderEnabled\": true\n\t},\n"
+		"\t\"development\": {\n\t\t\"enabled\": true\n\t},\n"
 		"\t\"hotkeys\": {\n" + hotkeyEntry ( "KeyOverlay", VK_HOME ) + ",\n" + hotkeyEntry ( "KeyScreenshot", VK_SNAPSHOT ) + ",\n"
 		+ hotkeyEntry ( "KeyEffects", 0 ) + ",\n" + hotkeyEntry ( "KeyReload", 0 ) + "\n\t}\n}\n";
 

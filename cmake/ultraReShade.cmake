@@ -3,9 +3,6 @@
 
 set(ULTRA_DIR ${CMAKE_BINARY_DIR}/ultra)
 
-# The development build, as ultraGame's ULTRAGAME_DEVELOPMENT: add-ons and effects reload when their files change
-option(ULTRARESHADE_DEVELOPMENT "Development build: add-ons and effects reload while the game runs" OFF)
-
 # An API that is off has its folder left out of the build, ULTRARESHADE_D3D9 / ULTRARESHADE_D3D10 (always defined, 1 or 0) guard the code that reaches into it
 # and its hook, exports and test scene go with it. D3D10 keeps source/dxgi/dxgi_d3d10.cpp: those are dxgi.dll's exports.
 option(ULTRARESHADE_D3D9 "Hook Direct3D 9 (source/d3d9)" ON)
@@ -156,9 +153,6 @@ function(ultra_finish_targets)
 
   get_target_property(sources ReShade SOURCES)
   list(REMOVE_ITEM sources res/exports.def res/resource.rc res/version.h res/version.rc2)
-  if(NOT ULTRARESHADE_DEVELOPMENT)
-    list(REMOVE_ITEM sources source/ultra_addon_reload.cpp source/ultra_effect_reload.cpp)
-  endif()
   set_property(TARGET ReShade PROPERTY SOURCES ${sources})
   target_sources(ReShade PRIVATE ${ULTRA_DIR}/exports.def ${ULTRA_DIR}/res/resource.rc ${ULTRA_DIR}/res/version.h)
   target_include_directories(ReShade BEFORE PRIVATE ${ULTRA_DIR}/res ${ULTRA_DIR}/$<CONFIG>)
@@ -187,7 +181,6 @@ function(ultra_finish_targets)
   set_property(SOURCE source/opengl/opengl.cpp source/opengl/opengl_hooks_ffp.cpp APPEND PROPERTY COMPILE_OPTIONS $<$<CONFIG:Release>:/Zc:threadSafeInit->)
 
   # Upstream gates it on cl, clang-cl reports itself as Clang
-  target_compile_definitions(ReShade PRIVATE ULTRARESHADE_DEVELOPMENT=$<BOOL:${ULTRARESHADE_DEVELOPMENT}>)
   target_compile_options(ReShade PRIVATE /W3)
   target_link_options(ReShade PRIVATE /SUBSYSTEM:WINDOWS /DELAYLOAD:D3DCompiler_47.dll /DELAYLOAD:XInput9_1_0.dll $<$<CONFIG:Release>:/MANIFEST:NO>)
   target_link_libraries(ReShade PRIVATE delayimp.lib)

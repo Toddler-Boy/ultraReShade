@@ -16,8 +16,6 @@
 #include "ultra_log.hpp"
 #include "ultra_process_exit.hpp"
 
-std::atomic_bool reshade::ultra::processExitBegun = false;
-
 //-----------------------------------------------------------------------------
 
 namespace
@@ -80,7 +78,7 @@ namespace
 	// Called directly, past the gate every other event now meets
 	void announce ( api::process_exit why, NTSTATUS status )
 	{
-		if ( reshade::ultra::processExitBegun.exchange ( true ) )
+		if ( ! reshade::ultra::beginProcessExit () )
 			return;
 
 		reason = why;
@@ -108,7 +106,7 @@ namespace
 		if ( ! isCrash ( status ) )
 			return announce ( why, status );
 
-		if ( reshade::ultra::processExitBegun.exchange ( true ) )
+		if ( ! reshade::ultra::beginProcessExit () )
 			return;
 
 		reshade::log::message ( reshade::log::level::info, "The process ends (%s) with status 0x%08lX, a crash: the add-ons get no exit event.", nameOf ( why ), static_cast<unsigned long> ( status ) );

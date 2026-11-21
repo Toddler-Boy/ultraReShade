@@ -15,13 +15,12 @@ extern std::filesystem::path get_module_path ( HMODULE module );
 
 //-----------------------------------------------------------------------------
 
-// Reloading add-ons while the game runs, development builds only (ULTRARESHADE_DEVELOPMENT): add-ons load from a copy
-// in the add-on folder, so a build can overwrite their file. When the file changes, the old add-on sees every live object
-// destroyed, unloads, the new copy loads and sees them all created again. The add-ons loaded after it reload with it (they
-// may use it): out before it, in after it
+// Reloading add-ons while the game runs, with Developer mode on (ultra::isDevelopmentOn): add-ons load from a copy in the add-on
+// folder, so a build can overwrite their file. When the file changes, the old add-on sees every live object destroyed, unloads,
+// the new copy loads and sees them all created again. The add-ons loaded after it reload with it (they may use it): out before
+// it, in after it. With it off every call below does nothing or returns the plain answer, and no event holds a guard
 namespace reshade::ultra
 {
-#if ULTRARESHADE_DEVELOPMENT
 	// Starts tracking live objects; removes copies a previous run left in the add-on folder
 	void startAddonReload ( const std::filesystem::path& addonFolder );
 	void stopAddonReload ();
@@ -57,17 +56,4 @@ namespace reshade::ultra
 	// module or ReShade's own; its calls are dropped when it unregisters or refuses a reload
 	[[ nodiscard ]] bool runExclusive ( HMODULE owner, void ( *callback ) ( void* context ), void* context );
 	void forgetExclusiveCalls ( HMODULE owner );
-#else
-	inline void startAddonReload ( const std::filesystem::path& ) {}
-	inline void stopAddonReload () {}
-	[[ nodiscard ]] inline std::filesystem::path addonSource ( const std::filesystem::path& found ) { return found; }
-	[[ nodiscard ]] inline std::filesystem::path addonSourceOf ( HMODULE module ) { return get_module_path ( module ); }
-	[[ nodiscard ]] inline std::filesystem::path addonLoadPath ( const std::filesystem::path& file, const std::filesystem::path& ) { return file; }
-	inline void watchAddon ( HMODULE, const std::filesystem::path& ) {}
-	inline void pollAddonReload () {}
-	inline void requestAddonReload () {}
-	[[ nodiscard ]] inline bool requestAddonReload ( HMODULE ) { return false; }
-	[[ nodiscard ]] inline bool runExclusive ( HMODULE, void ( * ) ( void* ), void* ) { return false; }
-	inline void forgetExclusiveCalls ( HMODULE ) {}
-#endif
 }

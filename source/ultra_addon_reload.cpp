@@ -29,6 +29,7 @@
 extern HMODULE g_module_handle;
 extern std::filesystem::path g_reshade_base_path;
 
+std::atomic<uint32_t> reshade::ultra::eventGate = 0;
 bool reshade::ultra::isAddonReloadEnabled = false;
 
 //-----------------------------------------------------------------------------
@@ -636,6 +637,7 @@ bool reshade::ultra::isInAddonEvent ()
 void reshade::ultra::startAddonReload ( const std::filesystem::path& addonFolder )
 {
 	isAddonReloadEnabled = true;
+	eventGate.fetch_or ( gateReloadEnabled );
 	log::message ( log::level::info, "Add-ons reload when their file changes, effects when theirs do." );
 
 	// Copies of processes that ended go; another running process of the same folder keeps its own
@@ -837,12 +839,14 @@ bool reshade::ultra::requestAddonReload ( HMODULE owner )
 
 bool reshade::ultra::runExclusive ( HMODULE owner, void ( *callback ) ( void* context ), void* context )
 {
+	if ( ! isAddonReloadEnabled )
+		return false;
+
 	const auto	info = owner != g_module_handle ? registeredAddon ( owner ) : nullptr;
 
-	if ( ! isAddonReloadEnabled || callback == nullptr || ( info == nullptr && owner != g_module_handle ) )
+	if ( callback == nullptr || ( info == nullptr && owner != g_module_handle ) )
 	{
-		log::message ( log::level::error, ! isAddonReloadEnabled ? "An exclusive call was refused: add-ons were not loaded for reloading."
-										  : callback == nullptr ? "An exclusive call without a callback was refused."
+		log::message ( log::level::error, callback == nullptr ? "An exclusive call without a callback was refused."
 																: "An exclusive call was refused: its module is not a registered add-on." );
 		return false;
 	}

@@ -10,11 +10,10 @@
 
 //-----------------------------------------------------------------------------
 
-// Recompiling effects while the game runs, alongside the add-on reload (development builds only): the folders of each
-// runtime's effect search paths are watched for .fx, .fxh and .addonfx files
+// Recompiling effects while the game runs, alongside the add-on reload (Developer mode on): the folders of each runtime's
+// effect search paths are watched for .fx, .fxh and .addonfx files
 namespace reshade::ultra
 {
-#if ULTRARESHADE_DEVELOPMENT
 	// Each present, on the runtime's presenting thread: watches the folders searchPaths name, again when they change
 	void followEffectSearchPaths ( const void* runtime, const std::vector<std::filesystem::path>& searchPaths );
 
@@ -26,7 +25,4 @@ namespace reshade::ultra
 	void forgetEffectWatch ( const void* runtime );
 
 	void stopEffectReload ();
-#else
-	inline void forgetEffectWatch ( const void* ) {}
-#endif
 }

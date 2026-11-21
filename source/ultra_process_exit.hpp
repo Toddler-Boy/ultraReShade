@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include <atomic>
+#include "ultra_addon_event.hpp"
 
 //-----------------------------------------------------------------------------
 
@@ -13,14 +13,18 @@
 // NtTerminateProcess on its own process are hooked; the add-ons hear it once, on the exiting thread, with a time bound
 namespace reshade::ultra
 {
-	extern std::atomic_bool	processExitBegun;
-
 	// From the first add-on load on; once per process
 	void followProcessExit ();
 
 	// Once true, no add-on code is called any more: no event, overlay, file change or reload
 	[[ nodiscard ]] inline bool hasProcessExitBegun ()
 	{
-		return processExitBegun.load ( std::memory_order_relaxed );
+		return ( eventGate.load ( std::memory_order_relaxed ) & gateExitBegun ) != 0;
+	}
+
+	// The end begins: false when it had begun before
+	[[ nodiscard ]] inline bool beginProcessExit ()
+	{
+		return ( eventGate.fetch_or ( gateExitBegun ) & gateExitBegun ) == 0;
 	}
 }

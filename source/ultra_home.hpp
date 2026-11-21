@@ -31,6 +31,10 @@ namespace reshade::ultra
 	// screenshots the screenshot folder
 	[[ nodiscard ]] std::filesystem::path appSettingsPath ();
 
+	// Developer mode: development/enabled in ultraGame's settings.json, read once at the first call (after the home is found) and
+	// never again, so one value holds for the whole run. A file that is missing or does not read is off
+	[[ nodiscard ]] bool isDevelopmentOn ();
+
 	// The game's shown title from its index entry (UTF-8), empty when the entry has none
 	[[ nodiscard ]] const std::string& gameTitle ();
 

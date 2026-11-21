@@ -671,9 +671,11 @@ void reshade::runtime::on_present()
 	if (!ultra::hasProcessExitBegun())
 	{
 		ultra::deliverFileChanges();
-		ultra::pollAddonReload();
+		if (ultra::isAddonReloadEnabled)
+			ultra::pollAddonReload();
 	}
-	ultra_reload_changed_effects();
+	if (ultra::isAddonReloadEnabled)
+		ultra_reload_changed_effects();
 
 	_is_in_present_call = true;
 

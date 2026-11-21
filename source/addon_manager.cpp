@@ -9,6 +9,7 @@
 #include "dll_log.hpp"
 #include "ini_file.hpp"
 #include "ultra_addon_reload.hpp"
+#include "ultra_home.hpp"
 #include "ultra_file_watch.hpp"
 #include <algorithm> // std::find, std::find_if, std::remove, std::remove_if
 #include <filesystem>
@@ -216,7 +217,12 @@ void reshade::load_addons()
 	if (is_loading)
 	{
 		if (has_addon_path)
-			ultra::startAddonReload(addon_search_path);
+		{
+			if (ultra::isDevelopmentOn())
+				ultra::startAddonReload(addon_search_path);
+			else
+				log::message(log::level::info, "Developer mode is off: add-ons load in place and do not reload.");
+		}
 		else
 			log::message(log::level::error, "[ADDON] AddonPath is not an absolute path ('%s'), so no add-on file loads!", addon_search_path.u8string().c_str());
 	}

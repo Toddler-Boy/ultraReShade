@@ -18,7 +18,7 @@
 //
 // A log is appended to, never put aside. Each run starts with a header line and a clean exit ends with an end line, both
 // at the start of a line:
-//   -- run start 2026-11-20 14:03:22.123 pid 1234 exe "game.exe" build "6.8.0.0 development 64-bit"
+//   -- run start 2026-11-20 14:03:22.123 pid 1234 exe "game.exe" build "6.8.0.0 development off 64-bit"
 //   -- run end 2026-11-20 14:09:00.456
 // A run (from its header to the next header) without an end line did not end cleanly: the process crashed or was killed.
 // The lines between are "HH:MM:SS.mmm [thread] | LEVEL | text" (ERROR, WARN, INFO, DEBUG), CRLF in the file.

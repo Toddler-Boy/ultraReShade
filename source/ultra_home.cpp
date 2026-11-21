@@ -128,6 +128,22 @@ std::filesystem::path reshade::ultra::appSettingsPath ()
 }
 //-----------------------------------------------------------------------------
 
+bool reshade::ultra::isDevelopmentOn ()
+{
+	static const auto	isOn = []
+	{
+		json::error	error;
+		const auto	root = readJsonFile ( appSettingsPath (), error );
+
+		auto		on = false;
+
+		return root != nullptr && ReShadeJsonGetBool ( ReShadeJsonFind ( ReShadeJsonFind ( root.get (), "development" ), "enabled" ), &on ) && on;
+	} ();
+
+	return isOn;
+}
+//-----------------------------------------------------------------------------
+
 const std::string& reshade::ultra::gameTitle ()
 {
 	return title;

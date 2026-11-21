@@ -52,14 +52,11 @@ namespace reshade
 	}
 
 	/// <summary>
-	/// Invokes all registered callbacks for the specified <typeparamref name="ev"/>ent.
+	/// Calls all registered callbacks for the specified <typeparamref name="ev"/>ent.
 	/// </summary>
 	template <addon_event ev, typename... Args>
-	std::enable_if_t<std::is_same_v<typename addon_event_traits<ev>::type, void>, void> invoke_addon_event(Args &&... args)
+	__forceinline std::enable_if_t<std::is_same_v<typename addon_event_traits<ev>::type, void>, void> invoke_addon_event_callbacks(Args &&... args)
 	{
-		if (ultra::hasProcessExitBegun())
-			return;
-		const ultra::AddonEventGuard reload_guard;
 		const std::vector<void *> &event_list = addon_event_list[static_cast<uint32_t>(ev)];
 		for (size_t cb = 0, count = event_list.size(); cb < count; ++cb) // Generates better code than ranged-based for loop
 		{
@@ -92,14 +89,11 @@ namespace reshade
 		}
 	}
 	/// <summary>
-	/// Invokes registered callbacks for the specified <typeparamref name="ev"/>ent until a callback reports back as having handled this event by returning <see langword="true"/>.
+	/// Calls registered callbacks for the specified <typeparamref name="ev"/>ent until a callback reports back as having handled this event by returning <see langword="true"/>.
 	/// </summary>
 	template <addon_event ev, typename... Args>
-	std::enable_if_t<std::is_same_v<typename addon_event_traits<ev>::type, bool>, bool> invoke_addon_event(Args &&... args)
+	__forceinline std::enable_if_t<std::is_same_v<typename addon_event_traits<ev>::type, bool>, bool> invoke_addon_event_callbacks(Args &&... args)
 	{
-		if (ultra::hasProcessExitBegun())
-			return false;
-		const ultra::AddonEventGuard reload_guard;
 		bool skip = false;
 		const std::vector<void *> &event_list = addon_event_list[static_cast<uint32_t>(ev)];
 		for (size_t cb = 0, count = event_list.size(); cb < count; ++cb)
@@ -133,5 +127,35 @@ namespace reshade
 				addon_current = nullptr;
 		}
 		return skip;
+	}
+
+	/// <summary>
+	/// Invokes all registered callbacks for the specified <typeparamref name="ev"/>ent. The gate is zero while the process runs and add-ons are
+	/// not reloaded: then it is only the callbacks. Else the process's end and the guard of a reload are met first
+	/// </summary>
+	template <addon_event ev, typename... Args>
+	std::enable_if_t<std::is_same_v<typename addon_event_traits<ev>::type, void>, void> invoke_addon_event(Args &&... args)
+	{
+		const uint32_t gate = ultra::eventGate.load(std::memory_order_relaxed);
+		if (gate == 0) [[likely]]
+			return invoke_addon_event_callbacks<ev>(std::forward<Args>(args)...);
+		if (gate & ultra::gateExitBegun)
+			return;
+		const ultra::AddonEventGuard reload_guard;
+		invoke_addon_event_callbacks<ev>(std::forward<Args>(args)...);
+	}
+	/// <summary>
+	/// Invokes registered callbacks for the specified <typeparamref name="ev"/>ent until a callback reports back as having handled this event by returning <see langword="true"/>.
+	/// </summary>
+	template <addon_event ev, typename... Args>
+	std::enable_if_t<std::is_same_v<typename addon_event_traits<ev>::type, bool>, bool> invoke_addon_event(Args &&... args)
+	{
+		const uint32_t gate = ultra::eventGate.load(std::memory_order_relaxed);
+		if (gate == 0) [[likely]]
+			return invoke_addon_event_callbacks<ev>(std::forward<Args>(args)...);
+		if (gate & ultra::gateExitBegun)
+			return false;
+		const ultra::AddonEventGuard reload_guard;
+		return invoke_addon_event_callbacks<ev>(std::forward<Args>(args)...);
 	}
 }
