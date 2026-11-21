@@ -3,7 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause OR MIT
  */
 
-#include "hook_manager.hpp"
 #include <Windows.h>
 
 // The following hooks can only be called when installed as d3d9.dll, since they have no names in the export table, just ordinals

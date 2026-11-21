@@ -8,7 +8,6 @@
 #include <d3d12.h>
 #include "reshade_api_pipeline.hpp"
 #include <vector>
-#include <limits>
 
 namespace reshade::d3d12
 {

@@ -6,8 +6,9 @@
 #pragma once
 
 #include "hook.hpp"
-#include <filesystem>
 #include <type_traits>
+
+namespace std::filesystem { class path; }
 
 namespace reshade::hooks
 {

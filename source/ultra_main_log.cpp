@@ -4,7 +4,6 @@
  */
 
 #include <atomic>
-#include <cstring>
 #include <filesystem>
 #include <intrin.h>
 #include <string>

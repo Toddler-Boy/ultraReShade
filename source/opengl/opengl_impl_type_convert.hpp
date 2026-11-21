@@ -8,7 +8,6 @@
 #include <glad/wgl.h>
 #include "reshade_api_pipeline.hpp"
 #include <vector>
-#include <limits>
 
 namespace reshade::opengl
 {

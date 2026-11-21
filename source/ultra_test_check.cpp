@@ -30,7 +30,7 @@
 #include "runtime.hpp"
 #include "ultra_addon_reload.hpp"
 #include "ultra_home.hpp"
-#include "ultra_main_log.hpp"
+#include "ultra_log.hpp"
 #include "ultra_test_check.hpp"
 #include "ultra_test_json.hpp"
 #include "ultra_test_run.hpp"

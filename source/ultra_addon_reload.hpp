@@ -9,6 +9,8 @@
 
 #include <Windows.h>
 
+#include "ultra_addon_event.hpp"
+
 //-----------------------------------------------------------------------------
 
 // Reloading add-ons while the game runs, development builds only (ULTRARESHADE_DEVELOPMENT): add-ons load from a copy
@@ -18,26 +20,6 @@
 namespace reshade::ultra
 {
 #if ULTRARESHADE_DEVELOPMENT
-	// Set once the add-ons load; never changes after that
-	extern bool isAddonReloadEnabled;
-
-	// Held by every add-on event while reloading is enabled, so no event runs while an add-on is swapped
-	class AddonEventGuard
-	{
-	public:
-		AddonEventGuard ();
-		~AddonEventGuard ();
-
-		AddonEventGuard ( const AddonEventGuard& ) = delete;
-		AddonEventGuard& operator= ( const AddonEventGuard& ) = delete;
-
-	private:
-		bool	isCounted;
-	};
-
-	// The calling thread runs an add-on event (counted only while reloading is enabled)
-	[[ nodiscard ]] bool isInAddonEvent ();
-
 	// Starts tracking live objects; removes copies a previous run left in the add-on folder
 	void startAddonReload ( const std::filesystem::path& addonFolder );
 	void stopAddonReload ();
@@ -70,14 +52,6 @@ namespace reshade::ultra
 	[[ nodiscard ]] bool runExclusive ( HMODULE owner, void ( *callback ) ( void* context ), void* context );
 	void forgetExclusiveCalls ( HMODULE owner );
 #else
-	constexpr bool	isAddonReloadEnabled = false;
-
-	class AddonEventGuard
-	{
-	public:
-		AddonEventGuard () {}
-	};
-
 	inline void startAddonReload ( const std::filesystem::path& ) {}
 	inline void stopAddonReload () {}
 	[[ nodiscard ]] inline std::filesystem::path addonSource ( const std::filesystem::path& found ) { return found; }

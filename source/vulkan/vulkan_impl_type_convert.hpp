@@ -8,8 +8,6 @@
 #include <glad/vulkan.h>
 #include "reshade_api_pipeline.hpp"
 #include <vector>
-#include <unordered_map>
-#include <limits>
 
 #ifndef AMD_VULKAN_MEMORY_ALLOCATOR_H
 using VmaAllocation = void *;

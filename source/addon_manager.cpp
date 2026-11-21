@@ -8,7 +8,10 @@
 #include "addon_manager.hpp"
 #include "dll_log.hpp"
 #include "ini_file.hpp"
+#include "ultra_addon_reload.hpp"
+#include "ultra_file_watch.hpp"
 #include <algorithm> // std::find, std::find_if, std::remove, std::remove_if
+#include <filesystem>
 #include <intrin.h>
 #include <Windows.h>
 

@@ -10,7 +10,6 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>

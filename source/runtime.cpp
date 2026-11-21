@@ -14,16 +14,16 @@
 #include "ini_file.hpp"
 #include "addon_manager.hpp"
 #include "input.hpp"
-#include "platform_utils.hpp"
 #include "reshade_api_object_impl.hpp"
 #include "runtime_manager.hpp"
+#include "ultra_addon_reload.hpp"
 #include "ultra_effect_reload.hpp"
+#include "ultra_file_watch.hpp"
 #include "ultra_home.hpp"
 #include <reshade_ultra_json.hpp>
 #include <set>
 #include <cmath> // std::abs, std::fmod
 #include <cctype> // std::toupper
-#include <cwctype> // std::towlower
 #include <cstdio> // std::snprintf
 #include <cstdlib> // std::malloc, std::rand, std::strtod, std::strtol
 #include <cstring> // std::memcpy, std::memset, std::strlen

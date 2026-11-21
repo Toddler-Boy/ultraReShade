@@ -12,6 +12,7 @@
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
 #include "runtime_manager.hpp"
+#include <filesystem>
 #include <shared_mutex>
 #include <unordered_map>
 #include <unordered_set>

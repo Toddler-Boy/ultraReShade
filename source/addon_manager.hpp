@@ -7,8 +7,7 @@
 
 #include "addon.hpp"
 #include "reshade_events.hpp"
-#include "ultra_addon_reload.hpp"
-#include "ultra_file_watch.hpp"
+#include "ultra_addon_event.hpp"
 #include "ultra_process_exit.hpp"
 
 namespace reshade

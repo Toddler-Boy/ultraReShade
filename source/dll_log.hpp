@@ -6,9 +6,8 @@
 #pragma once
 
 #include <cassert>
-#include <cinttypes>
+#include <cstdio>
 #include <string>
-#include <filesystem>
 
 namespace reshade::log
 {

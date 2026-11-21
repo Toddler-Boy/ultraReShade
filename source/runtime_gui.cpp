@@ -7,7 +7,6 @@
 
 #include "runtime.hpp"
 #include "runtime_internal.hpp"
-#include "version.h"
 #include "dll_log.hpp"
 #include "dll_resources.hpp"
 #include "ini_file.hpp"
@@ -22,6 +21,7 @@
 #include <cstdlib> // std::strtol
 #include <cstring> // std::memcmp, std::memcpy
 #include <algorithm> // std::find_if, std::max, std::min, std::rotate, std::search, std::swap
+#include <imgui_internal.h>
 
 static bool string_contains(const std::string_view text, const std::string_view filter)
 {

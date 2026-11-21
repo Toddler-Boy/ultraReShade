@@ -6,7 +6,6 @@
 #include "vulkan_impl_device.hpp"
 #include "vulkan_impl_command_list.hpp"
 #include "vulkan_impl_type_convert.hpp"
-#include "dll_log.hpp"
 #include <cstring> // std::memcmp, std::memcpy
 #include <algorithm> // std::copy_n, std::max, std::min, std::swap
 

@@ -7,7 +7,6 @@
 
 #include <string>
 #include <imgui.h>
-#include <imgui_internal.h>
 
 namespace reshade
 {

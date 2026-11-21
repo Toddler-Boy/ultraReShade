@@ -8,7 +8,6 @@
 #include "version.h"
 #include "dll_log.hpp"
 #include "hook_manager.hpp"
-#include "addon_manager.hpp"
 #include "com_ptr.hpp"
 #include "ini_file.hpp"
 #include "ultra_home.hpp"
@@ -19,7 +18,6 @@
 #include "ultra_test_dlss.hpp"
 #include "ultra_test_run.hpp"
 #include "ultra_test_scene.hpp"
-#include <shellapi.h>
 #if ULTRARESHADE_D3D9
 #include <d3d9.h>
 #endif

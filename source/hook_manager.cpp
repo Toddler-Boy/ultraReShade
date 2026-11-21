@@ -5,6 +5,7 @@
 
 #include "dll_log.hpp"
 #include "hook_manager.hpp"
+#include <filesystem>
 #include <vector>
 #include <shared_mutex>
 #include <cstring> // std::strcmp

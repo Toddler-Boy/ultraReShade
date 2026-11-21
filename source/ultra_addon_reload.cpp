@@ -24,6 +24,7 @@
 #include "ini_file.hpp"
 #include "ultra_addon_reload.hpp"
 #include "ultra_effect_reload.hpp"
+#include "ultra_file_watch.hpp"
 
 extern HMODULE g_module_handle;
 extern std::filesystem::path g_reshade_base_path;

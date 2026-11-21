@@ -9,6 +9,7 @@
 #include <cassert>
 #include <vector>
 #include <algorithm> // std::max, std::min, std::replace
+#include <imgui_internal.h>
 
 bool reshade::imgui::key_input_box(const char *name, unsigned int key[4], const reshade::input &input)
 {

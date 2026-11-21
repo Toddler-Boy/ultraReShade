@@ -9,7 +9,6 @@
 #include "com_ptr.hpp"
 #include "reshade_api_pipeline.hpp"
 #include <vector>
-#include <limits>
 
 // Undocumented managed pool in D3D9Ex
 constexpr D3DPOOL D3DPOOL_MANAGED_EX = D3DPOOL(6);
