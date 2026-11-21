@@ -72,6 +72,7 @@ namespace ultra::ui::font
 			std::once_flag							loaded;
 			stbtt_fontinfo							info[ faceCount ] {};
 			const unsigned char*					data[ faceCount ] {};
+			size_t									sizes[ faceCount ] {};
 			float									scale = 0.0f;
 			std::vector<Baked>						baked;
 			int										width = 0;
@@ -92,7 +93,10 @@ namespace ultra::ui::font
 				const auto*	bytes = handle != nullptr ? static_cast<const unsigned char*> ( LockResource ( handle ) ) : nullptr;
 
 				if ( bytes != nullptr && stbtt_InitFont ( &atlas.info[ i ], bytes, stbtt_GetFontOffsetForIndex ( bytes, 0 ) ) )
+				{
 					atlas.data[ i ] = bytes;
+					atlas.sizes[ i ] = SizeofResource ( module, res );
+				}
 			}
 		}
 
@@ -251,6 +255,15 @@ namespace ultra::ui::font
 			destroyTextureNow ( it->second );
 			atlas.textures.erase ( it );
 		}
+	}
+
+	std::span<const unsigned char> faceData ( Face face )
+	{
+		std::call_once ( atlas.loaded, loadFaces );
+		const auto	i = faceIndex ( face );
+		if ( i < 0 )
+			return {};
+		return { atlas.data[ i ], size_t ( atlas.sizes[ i ] ) };
 	}
 
 	void prepare ( api::device* device )

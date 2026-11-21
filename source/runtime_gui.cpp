@@ -16,6 +16,7 @@
 #include "platform_utils.hpp"
 #include "ultra_home.hpp"
 #include "ultra_overlay.hpp"
+#include "ultra_ui_font.hpp"
 #include "fonts/forkawesome.inl"
 #include <cmath> // std::abs
 #include <cstdlib> // std::strtol
@@ -116,10 +117,14 @@ void reshade::runtime::build_font_atlas()
 	ImFontAtlas *const atlas = _imgui_context->IO.Fonts;
 	atlas->Clear();
 
-	ImFontConfig cfg;
-	atlas->AddFontDefaultVector(&cfg);
+	// Our own face is ImGui's font: the text fields edit in it, invisibly, under the text we draw
+	const auto face = ::ultra::ui::font::faceData(::ultra::ui::font::Face::regular);
+	ImFontConfig face_cfg;
+	face_cfg.FontDataOwnedByAtlas = false;
+	atlas->AddFontFromMemoryTTF(const_cast<unsigned char *>(face.data()), static_cast<int>(face.size()), 0.0f, &face_cfg);
 
 	// Merge icons into the font
+	ImFontConfig cfg;
 	cfg.MergeMode = true;
 	cfg.PixelSnapH = true;
 

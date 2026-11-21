@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -24,6 +25,9 @@ namespace ultra::ui::font
 
 	// A device goes: its atlas texture is destroyed now
 	void forgetDevice ( api::device* device );
+
+	// The face's TTF as the DLL holds it, for ImGui's own font (its text fields edit invisibly in our face); empty without it
+	[[ nodiscard ]] std::span<const unsigned char> faceData ( Face face );
 
 	// pos: the top left of the text box; returns the width drawn. tabular: digits all as wide as the widest
 	float draw ( ImDrawList* drawList, ImVec2 pos, Face face, float size, ImU32 color, std::string_view text, bool tabular = false );
