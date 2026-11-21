@@ -139,16 +139,6 @@ namespace
 					reshade::log::message ( reshade::log::level::error, "'%s': effect %s@%s has no enabled (true or false), it is off.", file, technique->c_str (), effectFile->c_str () );
 
 				entry.enabled = enabled;
-
-				if ( const auto key = ReShadeJsonFind ( item, "key" ); key != nullptr )
-				{
-					const auto	numbers = numbersOf ( key );
-
-					if ( numbers.has_value () && numbers->size () == 4 )
-						std::ranges::transform ( *numbers, entry.key, [] ( double number ) { return static_cast<unsigned int> ( number ); } );
-					else
-						reshade::log::message ( reshade::log::level::error, "'%s': effect %s@%s has a key that is no four numbers, it has none.", file, technique->c_str (), effectFile->c_str () );
-				}
 			}
 
 			layer.effects.push_back ( std::move ( entry ) );
@@ -232,15 +222,6 @@ reshade::ultra::JsonTree reshade::ultra::effectsJson ( const std::vector<EffectE
 		ReShadeJsonSetString ( ReShadeJsonMember ( item, "technique" ), entry.technique.data (), entry.technique.size () );
 		ReShadeJsonSetString ( ReShadeJsonMember ( item, "file" ), entry.file.data (), entry.file.size () );
 		ReShadeJsonSetBool ( ReShadeJsonMember ( item, "enabled" ), entry.enabled );
-
-		if ( entry.key[ 0 ] != 0 )
-		{
-			const auto	key = ReShadeJsonMember ( item, "key" );
-			ReShadeJsonSetType ( key, Type::array );
-
-			for ( size_t i = 0; i < 4; ++i )
-				ReShadeJsonSetInt ( ReShadeJsonInsert ( key, i ), entry.key[ i ] );
-		}
 	}
 
 	return array;

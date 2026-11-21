@@ -783,63 +783,6 @@ void reshade::runtime::on_present()
 		// Do not allow the following shortcuts while effects are being loaded or initialized (since they affect that state)
 		if (!is_loading())
 		{
-			if (_effects_enabled)
-			{
-				for (effect &effect : _effects)
-				{
-					if (!effect.rendering)
-						continue;
-
-					for (uniform &variable : effect.uniforms)
-					{
-						if (_input->is_key_pressed(variable.toggle_key_data, _force_shortcut_modifiers))
-						{
-							assert(variable.supports_toggle_key());
-
-							// Change to next value if the associated shortcut key was pressed
-							switch (variable.type.base)
-							{
-							case reshadefx::type::t_bool:
-								{
-									bool data = false;
-									get_uniform_value(variable, &data);
-									set_uniform_value(variable, !data);
-								}
-								break;
-							case reshadefx::type::t_int:
-							case reshadefx::type::t_uint:
-								{
-									int data[4] = {};
-									get_uniform_value(variable, data, 4);
-									const std::string_view ui_items = variable.annotation_as_string("ui_items");
-									int num_items = 0;
-									for (size_t offset = 0, next; (next = ui_items.find('\0', offset)) != std::string_view::npos; offset = next + 1)
-										num_items++;
-									data[0] = (data[0] + 1 >= num_items) ? 0 : data[0] + 1;
-									set_uniform_value(variable, data, 4);
-								}
-								break;
-							}
-
-							save_effect_settings();
-						}
-					}
-				}
-
-				for (technique &tech : _techniques)
-				{
-					if (_input->is_key_pressed(tech.toggle_key_data, _force_shortcut_modifiers))
-					{
-						if (!tech.enabled)
-							enable_technique(tech);
-						else
-							disable_technique(tech);
-
-						save_effect_settings();
-					}
-				}
-			}
-
 			if (_input->is_key_pressed(_reload_key_data, _force_shortcut_modifiers))
 				reload_effects();
 		}
@@ -1062,18 +1005,10 @@ void reshade::runtime::load_effect_settings()
 				variable.annotation_as_uint("nosave"))
 				continue;
 
-			std::memset(variable.toggle_key_data, 0, sizeof(variable.toggle_key_data));
 			reset_uniform_value(variable);
 
 			if (settings == nullptr)
 				continue;
-
-			if (const auto it = settings->values.find("Key" + variable.name);
-				variable.supports_toggle_key() && it != settings->values.end())
-			{
-				for (size_t i = 0; i < 4 && i < it->second.size(); ++i)
-					variable.toggle_key_data[i] = static_cast<unsigned int>(it->second[i]);
-			}
 
 			const auto it = settings->values.find(variable.name);
 			if (it == settings->values.end())
@@ -1126,8 +1061,6 @@ void reshade::runtime::load_effect_settings()
 		const std::string effect_name = _effects[tech.effect_index].source_file.filename().u8string();
 		bool enabled = tech.annotation_as_int("enabled") != 0;
 
-		std::memset(tech.toggle_key_data, 0, sizeof(tech.toggle_key_data));
-
 		if (tech.is_route)
 		{
 			const std::vector<ultra::EffectEntry> &route = _effect_settings.route.effects;
@@ -1144,7 +1077,6 @@ void reshade::runtime::load_effect_settings()
 			it != _effect_settings.user.effects.cend())
 		{
 			enabled |= it->enabled;
-			std::copy_n(it->key, 4, tech.toggle_key_data);
 		}
 
 		if (enabled)
@@ -1209,9 +1141,8 @@ void reshade::runtime::save_effect_settings()
 		entry.technique = tech.name;
 		entry.file = _effects[tech.effect_index].source_file.filename().u8string();
 		entry.enabled = tech.enabled;
-		std::copy_n(tech.toggle_key_data, 4, entry.key);
 
-		if (tech.enabled || tech.toggle_key_data[0] != 0)
+		if (tech.enabled)
 			effect_list.insert(tech.effect_index);
 	}
 
@@ -1244,9 +1175,6 @@ void reshade::runtime::save_effect_settings()
 			if (variable.special != special_uniform::none ||
 				variable.annotation_as_uint("nosave"))
 				continue;
-
-			if (variable.supports_toggle_key() && variable.toggle_key_data[0] != 0)
-				settings.values["Key" + variable.name].assign(std::begin(variable.toggle_key_data), std::end(variable.toggle_key_data));
 
 			const unsigned int components = variable.type.components();
 			std::vector<double> &numbers = settings.values[variable.name];
@@ -3757,7 +3685,6 @@ void reshade::runtime::destroy_effects()
 	_worker_threads.clear();
 
 #if RESHADE_GUI
-	_effect_filter[0] = '\0';
 	_has_user_shaders = false;
 #endif
 

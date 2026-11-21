@@ -38,7 +38,7 @@ namespace ultra::ui
 
 		[[ nodiscard ]] bool labelled ( uint32_t kind )
 		{
-			return kind == RESHADE_UI_ITEM_SLIDER || kind == RESHADE_UI_ITEM_OPTIONS || kind == RESHADE_UI_ITEM_FIELD || kind == RESHADE_UI_ITEM_COLOR;
+			return kind == RESHADE_UI_ITEM_SLIDER || kind == RESHADE_UI_ITEM_OPTIONS || kind == RESHADE_UI_ITEM_FIELD || kind == RESHADE_UI_ITEM_COLOR || kind == RESHADE_UI_ITEM_NUMBER;
 		}
 
 		[[ nodiscard ]] bool has ( const ReShadeUiItem& item, uint32_t flag )	{ return ( item.flags & flag ) != 0; }
@@ -235,7 +235,30 @@ namespace ultra::ui
 				item.value.set ( item.context, frame, v );
 			finish ( typed, item.value, item.context, frame );
 
-			if ( v == range.def )
+			if ( v == range.def || has ( item, RESHADE_UI_ITEM_FLAG_NO_RESET ) )
+				return;
+
+			ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.reset, row.y ) );
+			if ( resetButton ( "reset" ) )
+			{
+				item.value.set ( item.context, frame, item.range.def );
+				finish ( { true, true }, item.value, item.context, frame );
+			}
+		}
+
+		// A value typed in, with the reset arrow after it while off its default
+		void numberRow ( const ReShadeUiItem& item, ImVec2 row, const Columns& c, void* frame )
+		{
+			auto		v = item.value.get ( item.context, frame );
+			const auto	range = rangeOf ( &item.range );
+
+			ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.control, row.y ) );
+			const auto	typed = valueEdit ( "value", v, range, formatOf ( item.format ), c.controlWidth );
+			if ( typed.changed )
+				item.value.set ( item.context, frame, v );
+			finish ( typed, item.value, item.context, frame );
+
+			if ( v == range.def || has ( item, RESHADE_UI_ITEM_FLAG_NO_RESET ) )
 				return;
 
 			ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.reset, row.y ) );
@@ -264,8 +287,22 @@ namespace ultra::ui
 			const auto*	now = item.fieldGet != nullptr ? item.fieldGet ( item.context ) : nullptr;
 			std::string	text = now != nullptr ? now : "";
 			ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.control, row.y ) );
-			if ( textField ( "##field", text, c.controlWidth ).changed && item.fieldSet != nullptr )
+			const auto	edit = textField ( "##field", text, c.controlWidth );
+			if ( edit.changed && item.fieldSet != nullptr )
 				item.fieldSet ( item.context, text.c_str () );
+			if ( edit.committed && item.fieldCommit != nullptr )
+				item.fieldCommit ( item.context );
+
+			if ( item.fieldIsSet != nullptr && item.fieldIsSet ( item.context ) != 0 )
+			{
+				ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.reset, row.y ) );
+				if ( resetButton ( "reset" ) && item.fieldSet != nullptr )
+				{
+					item.fieldSet ( item.context, "" );
+					if ( item.fieldCommit != nullptr )
+						item.fieldCommit ( item.context );
+				}
+			}
 		}
 
 		// The reset arrow after it while off its default
@@ -308,12 +345,62 @@ namespace ultra::ui
 			finish ( edit, item.onOff, item.context, frame );
 		}
 
-		void textRow ( const ReShadeUiItem& item, const char* line, ImVec2 row, void* frame )
+		// The text in lines no wider than width, broken at spaces
+		[[ nodiscard ]] std::vector<std::string> wrapped ( const char* text, float width, float size )
+		{
+			std::vector<std::string>	lines;
+			std::string					line;
+			const std::string			all ( text );
+			for ( size_t at = 0; at <= all.size (); )
+			{
+				auto	end = all.find_first_of ( " \n", at );
+				if ( end == std::string::npos )
+					end = all.size ();
+				const auto	word = all.substr ( at, end - at );
+				const auto	next = line.empty () ? word : line + " " + word;
+				if ( ! line.empty () && font::width ( font::Face::regular, size, next ) > width )
+				{
+					lines.push_back ( line );
+					line = word;
+				}
+				else
+					line = next;
+				if ( end < all.size () && all[ end ] == '\n' )
+				{
+					lines.push_back ( line );
+					line.clear ();
+				}
+				at = end + 1;
+			}
+			if ( ! line.empty () || lines.empty () )
+				lines.push_back ( line );
+			return lines;
+		}
+
+		// The row's height: one line, or the lines of a wrapped text
+		float textRow ( const ReShadeUiItem& item, const char* line, ImVec2 row, float width, void* frame )
 		{
 			const auto	size = theme::px ( theme::sizes::body );
+			const auto	rowH = theme::px ( theme::rowHeight );
 			const auto	tone = has ( item, RESHADE_UI_ITEM_FLAG_HAS_TONE ) && item.tone != nullptr ? item.tone ( item.context, frame ) : theme::colors::muted;
-			font::draw ( ImGui::GetWindowDrawList (), ImVec2 ( row.x, font::centredTop ( font::Face::regular, size, row.y, theme::px ( theme::rowHeight ) ) ),
-						 font::Face::regular, size, draw::color ( tone ), line );
+			auto*		dl = ImGui::GetWindowDrawList ();
+			if ( ! has ( item, RESHADE_UI_ITEM_FLAG_WRAP ) )
+			{
+				font::draw ( dl, ImVec2 ( row.x, font::centredTop ( font::Face::regular, size, row.y, rowH ) ), font::Face::regular, size, draw::color ( tone ), line );
+				return rowH;
+			}
+
+			auto	y = row.y;
+			for ( const auto& part : wrapped ( line, width - theme::px ( theme::indent ), size ) )
+			{
+				font::draw ( dl, ImVec2 ( row.x, font::centredTop ( font::Face::regular, size, y, rowH ) ), font::Face::regular, size, draw::color ( tone ), part );
+				y += rowH;
+			}
+
+			// The tooltip of a wrapped line sits on all of it
+			if ( item.tooltip != nullptr && ImGui::IsMouseHoveringRect ( ImVec2 ( row.x, row.y ), ImVec2 ( row.x + width, y ) ) )
+				tooltip ( ImGui::GetID ( "wrapped" ), true, item.tooltip );
+			return y - row.y;
 		}
 
 		// Below 0 unless a reporting job runs
@@ -404,7 +491,14 @@ namespace ultra::ui
 			return off || page.isCollapsed ( page.context, section.parent ) != 0;
 		}
 
-		void drawSection ( const ReShadeUiPage& page, const ReShadeUiSection& section, float width, const Columns& c, void* frame )
+		// The heading being dragged to another place in the page, and whether it moved: a drag is no click on its arrow
+		struct Drag
+		{
+			int		index = -1;
+			bool	isMoved = false;
+		} drag;
+
+		void drawSection ( const ReShadeUiPage& page, const ReShadeUiSection& section, uint32_t index, float width, const Columns& c, void* frame )
 		{
 			const auto*	sectionReason = reasonOf ( section, frame );
 			const auto*	lockReason = section.lockReason != nullptr ? section.lockReason ( section.context, frame ) : nullptr;
@@ -441,9 +535,33 @@ namespace ultra::ui
 				ImGui::EndDisabled ();
 			}
 
+			// The file in the muted colour after the name, which the heading's dragging and collapsing take in too
+			if ( section.subtitle != nullptr && *section.subtitle != 0 && section.toggle.isBound != 0 )
+			{
+				const auto	size = theme::px ( theme::sizes::body );
+				const auto	at = arrowFrom + theme::px ( theme::headingGap );
+				font::draw ( ImGui::GetWindowDrawList (), ImVec2 ( at, font::centredTop ( font::Face::regular, size, head.y, theme::px ( theme::rowHeight ) ) ), font::Face::regular, size,
+							 draw::color ( theme::colors::muted ), section.subtitle );
+				arrowFrom = at;
+			}
+
+			// Over another draggable heading while one is dragged: they change places, the dragged one follows
+			if ( section.isDraggable != 0 && page.moveSection != nullptr && drag.index >= 0 && drag.index != int ( index )
+				 && ImGui::IsMouseHoveringRect ( head, ImVec2 ( head.x + width, head.y + theme::px ( theme::rowHeight ) ) ) )
+			{
+				page.moveSection ( page.context, uint32_t ( drag.index ), index );
+				drag.index = int ( index );
+			}
+
 			const auto	open = page.isCollapsed ( page.context, section.label ) == 0;
 			ImGui::SetCursorScreenPos ( ImVec2 ( arrowFrom, head.y ) );
-			if ( collapseArrow ( "collapse", open, std::max ( head.x + width - arrowFrom, theme::px ( theme::rowHeight ) ) ) )
+			const auto	isClicked = collapseArrow ( "collapse", open, std::max ( head.x + width - arrowFrom, theme::px ( theme::rowHeight ) ) );
+			if ( section.isDraggable != 0 && page.moveSection != nullptr && ImGui::IsItemActive () && ImGui::IsMouseDragging ( ImGuiMouseButton_Left, theme::px ( 3.0f ) ) )
+			{
+				drag.index = int ( index );
+				drag.isMoved = true;
+			}
+			if ( isClicked && ! drag.isMoved )
 				page.setCollapsed ( page.context, section.label, open ? 1 : 0 );
 			ImGui::SetCursorScreenPos ( ImVec2 ( head.x, head.y + theme::px ( theme::rowHeight ) ) );
 
@@ -500,7 +618,8 @@ namespace ultra::ui
 						break;
 					case RESHADE_UI_ITEM_OPTIONS:	label ( row, labelFor ( item, frame ), tip, applies );	indexRow ( item, row, c, frame );	break;
 					case RESHADE_UI_ITEM_TOGGLE:	toggleRow ( item, tip, row, frame );	break;
-					case RESHADE_UI_ITEM_TEXT:		textRow ( item, line, row, frame );	break;
+					case RESHADE_UI_ITEM_TEXT:		height = textRow ( item, line, row, width, frame );	break;
+					case RESHADE_UI_ITEM_NUMBER:	label ( row, labelFor ( item, frame ), tip, applies );	numberRow ( item, row, c, frame );	break;
 					case RESHADE_UI_ITEM_SUBHEADING:	subheading ( row, labelFor ( item, frame ) );	break;
 					case RESHADE_UI_ITEM_FIELD:		label ( row, labelFor ( item, frame ), tip, applies );	fieldRow ( item, row, c );	break;
 					case RESHADE_UI_ITEM_COLOR:		label ( row, labelFor ( item, frame ), tip, applies );	colorRow ( item, row, c );	break;
@@ -536,11 +655,14 @@ namespace ultra::ui
 					continue;
 
 				ImGui::PushID ( int ( i ) );
-				drawSection ( page, section, width, c, frame );
+				drawSection ( page, section, i, width, c, frame );
 				ImGui::PopID ();
 			}
 
 			ImGui::PopStyleVar ( 2 );
+
+			if ( ! ImGui::IsMouseDown ( ImGuiMouseButton_Left ) )
+				drag = {};
 		}
 
 		// Reopened, ImGui clamps the child's scroll to content it has not measured yet: the top. Ours goes back once the content is that

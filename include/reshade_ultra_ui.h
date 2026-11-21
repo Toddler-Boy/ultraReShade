@@ -180,17 +180,20 @@ typedef struct ReShadeUiPlacedLine
 enum
 {
 	RESHADE_UI_ITEM_SLIDER, RESHADE_UI_ITEM_TOGGLE, RESHADE_UI_ITEM_OPTIONS, RESHADE_UI_ITEM_BUTTON, RESHADE_UI_ITEM_TEXT,
-	RESHADE_UI_ITEM_SUBHEADING, RESHADE_UI_ITEM_FIELD, RESHADE_UI_ITEM_REPEAT, RESHADE_UI_ITEM_COLOR
+	RESHADE_UI_ITEM_SUBHEADING, RESHADE_UI_ITEM_FIELD, RESHADE_UI_ITEM_REPEAT, RESHADE_UI_ITEM_COLOR, RESHADE_UI_ITEM_NUMBER
 };
 
 // ROW: options as a choice row whatever their names. SET_APART: a row gap more above it, unless a heading is right above it. PRIMARY: a
 // button's look. HAS_JOB: a button's action runs on a thread of the add-on's, who tells isBusy, progress and takeFinished. HAS_TONE: a text
-// row's colour is tone (), else muted
+// row's colour is tone (), else muted. NO_RESET: no reset arrow. WRAP: a text row breaks into lines to the page's width. A number is a value
+// typed in, without a range, in the control column
 #define RESHADE_UI_ITEM_FLAG_ROW		1u
 #define RESHADE_UI_ITEM_FLAG_SET_APART	2u
 #define RESHADE_UI_ITEM_FLAG_PRIMARY	4u
 #define RESHADE_UI_ITEM_FLAG_HAS_JOB	8u
 #define RESHADE_UI_ITEM_FLAG_HAS_TONE	16u
+#define RESHADE_UI_ITEM_FLAG_NO_RESET	32u
+#define RESHADE_UI_ITEM_FLAG_WRAP		64u
 
 // Where a value lives: get and set on every change, save once the edit is finished (null: the value applies itself); isBound 0: none
 typedef struct ReShadeUiBinding
@@ -237,6 +240,8 @@ typedef struct ReShadeUiItem
 	void				( *colorSet ) ( void* context, uint32_t color, uint32_t isDone );
 	uint32_t			( *repeatCount ) ( void* context );
 	const struct ReShadeUiItem*	( *repeatRows ) ( void* context, uint32_t entry, uint32_t* count );	// entry's rows, kept by the add-on
+	void				( *fieldCommit ) ( void* context );						// a field's edit is finished (Enter, or another control taken)
+	uint32_t			( *fieldIsSet ) ( void* context );						// a field has a value of its own: a reset arrow after it
 } ReShadeUiItem;
 
 // A section: its switch (if bound) turns all its items on and off, the rest of the heading row collapses it; either hides the sections
@@ -255,6 +260,8 @@ typedef struct ReShadeUiSection
 	const char*				( *title ) ( void* context, void* frame );
 	const ReShadeUiItem*	items;
 	uint32_t				itemCount;
+	const char*				subtitle;			// in the muted colour after the title
+	uint32_t				isDraggable;		// the heading moves it among the page's sections (moveSection)
 } ReShadeUiSection;
 
 // header: fills the page's header at each draw (null: no header). isCollapsed and setCollapsed keep which sections are closed;
@@ -269,6 +276,7 @@ typedef struct ReShadeUiPage
 	uint32_t				( *isCollapsed ) ( void* context, const char* label );
 	void					( *setCollapsed ) ( void* context, const char* label, uint32_t isCollapsed );
 	void					( *note ) ( void* context, const char* section, const char* parent, uint32_t isHidden );
+	void					( *moveSection ) ( void* context, uint32_t from, uint32_t to );
 } ReShadeUiPage;
 
 typedef struct ReShadeWidgetTable

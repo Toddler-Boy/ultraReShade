@@ -25,14 +25,13 @@ namespace reshade::ultra
 		std::string		technique;
 		std::string		file;
 		bool			enabled = true;	// the route's: its state at start
-		unsigned int	key[ 4 ] = {};
 	};
 
 	using Definitions = std::vector<std::pair<std::string, std::string>>;
 
 	struct EffectFileSettings
 	{
-		std::unordered_map<std::string, std::vector<double>>	values;		// a uniform's components; Key<uniform> its shortcut
+		std::unordered_map<std::string, std::vector<double>>	values;		// a uniform's components
 		Definitions												definitions;
 	};
 

@@ -227,8 +227,6 @@ set_target_properties(ReShade PROPERTIES SUFFIX ${RESHADE_SUFFIX}${CMAKE_SHARED_
 
 set(RESHADE_SOURCE
   examples/09-depth/generic_depth_addon.cpp
-  res/fonts/forkawesome.h
-  res/fonts/forkawesome.inl
   res/exports.def
   res/resource.h
   res/resource.rc
@@ -254,13 +252,10 @@ set(RESHADE_SOURCE
   source/imgui_function_table.cpp
   source/imgui_function_table_19300.cpp
   source/imgui_function_table_19300.hpp
-  source/imgui_widgets.cpp
-  source/imgui_widgets.hpp
   source/ini_file.cpp
   source/ini_file.hpp
   source/input.cpp
   source/input.hpp
-  source/platform_utils.hpp
   source/runtime.cpp
   source/runtime.hpp
   source/runtime_api.cpp
@@ -324,6 +319,8 @@ set(RESHADE_SOURCE
   source/ultra_ui_layout.cpp
   source/ultra_ui_layout.hpp
   source/ultra_ui_reset.cpp
+  source/ultra_ui_shaders.cpp
+  source/ultra_ui_shaders.hpp
   source/ultra_ui_slider.cpp
   source/ultra_ui_subheading.cpp
   source/ultra_ui_table.cpp
@@ -522,7 +519,6 @@ if(WIN32)
     PRIVATE
       source/input_windows.cpp
       source/input_windows_xinput.cpp
-      source/platform_utils_windows.cpp
   )
 endif()
 

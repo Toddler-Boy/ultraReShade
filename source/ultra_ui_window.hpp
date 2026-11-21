@@ -56,6 +56,9 @@ namespace ultra::ui::window
 	// Where the pointer is, in the player's own Windows cursor (its scheme, size and colour, at the display's scale), drawn over everything
 	void drawCursor ( api::effect_runtime* runtime );
 
+	// A notice in the message strip for that many seconds, in that colour (0: the message text colour)
+	void notice ( std::string text, uint32_t color, double seconds );
+
 	// Messages in a strip at the top left, over everything
 	struct Message
 	{

@@ -110,18 +110,7 @@ namespace reshade
 				std::string_view(it->value.string_data) : default_value;
 		}
 
-		bool supports_toggle_key() const
-		{
-			if (type.base == reshadefx::type::t_bool)
-				return true;
-			if (type.base != reshadefx::type::t_int && type.base != reshadefx::type::t_uint)
-				return false;
-			const std::string_view ui_type = annotation_as_string("ui_type");
-			return ui_type == "list" || ui_type == "combo" || ui_type == "radio";
-		}
-
 		size_t effect_index = std::numeric_limits<size_t>::max();
-		unsigned int toggle_key_data[4] = {};
 
 		special_uniform special = special_uniform::none;
 	};
@@ -170,7 +159,6 @@ namespace reshade
 				std::string_view(it->value.string_data) : default_value;
 		}
 
-		unsigned int toggle_key_data[4] = {};
 
 		bool hidden = false;
 		bool enabled = false;

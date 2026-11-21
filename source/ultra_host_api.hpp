@@ -22,5 +22,6 @@ namespace reshade
 
 		// Gives access to a runtime's overlay, screenshot and effect state to the answers in ultra_host_api.cpp
 		struct HostAccess;
+		struct ShadersAccess;
 	}
 }

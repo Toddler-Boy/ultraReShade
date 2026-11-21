@@ -389,15 +389,13 @@ namespace
 
 		if ( lookup ( "no.such.name" ) != nullptr || start ( "no.such.name", nullptr, 0 ) != 0 || slot ( "no.such.name", "x", ugU32 ) != 0 )
 			failHostApi ( "no.such.name", "an unknown name has an answer" );
-		if ( slot ( names::overlay_state, "no such cell", ugU32 ) != 0 || slot ( names::overlay_state, "open", ugF32 ) != 0 || slot ( names::overlay_state, "open", ugU32 ) == 0 )
-			failHostApi ( names::overlay_state, "a cell is not found by its name and type" );
+		if ( slot ( names::screenshot_pending, "no such cell", ugU32 ) != 0 || slot ( names::screenshot_pending, "count", ugF32 ) != 0 || slot ( names::screenshot_pending, "count", ugU32 ) == 0 )
+			failHostApi ( names::screenshot_pending, "a cell is not found by its name and type" );
 
-		// Called with a runtime, these answer without changing anything
-		constexpr const char*	harmless[] { names::overlay_state, names::settings_state, names::screenshot_state, names::effects_state, names::effects_failed };
+		// Called with a runtime, these answer without changing anything but what they are for
+		constexpr const char*	harmless[] { names::screenshot_pending };
 
-		for ( const auto name : { names::overlay_state, names::overlay_place, names::overlay_tab, names::overlay_wanted, names::screenshot_state, names::settings_state,
-								  names::effects_state, names::effects_technique, names::effects_uniform, names::effects_failed, names::effects_save, names::effects_definition,
-								  names::effects_definition_set } )
+		for ( const auto name : { names::screenshot_pending } )
 		{
 			const auto	call = reinterpret_cast<UgCall> ( lookup ( name ) );
 			const auto	count = start ( name, nullptr, 0 );

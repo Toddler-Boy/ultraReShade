@@ -460,8 +460,28 @@ namespace ultra::ui::window
 	//-------------------------------------------------------------------------
 	// The messages
 
-	void drawMessages ( std::span<const Message> messages )
+	namespace
 	{
+		struct Notice
+		{
+			Message		message;
+			double		until = 0.0;
+		};
+
+		std::vector<Notice>	notices;
+	}
+
+	void notice ( std::string text, uint32_t color, double seconds )
+	{
+		notices.push_back ( { { std::move ( text ), color }, ImGui::GetTime () + seconds } );
+	}
+
+	void drawMessages ( std::span<const Message> given )
+	{
+		std::erase_if ( notices, [] ( const Notice& n ) { return n.until < ImGui::GetTime (); } );
+		std::vector<Message>	messages ( given.begin (), given.end () );
+		for ( const auto& n : notices )
+			messages.push_back ( n.message );
 		if ( messages.empty () )
 			return;
 

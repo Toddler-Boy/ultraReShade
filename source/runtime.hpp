@@ -182,6 +182,7 @@ namespace reshade
 
 	private:
 		friend struct ultra::HostAccess;
+		friend struct ultra::ShadersAccess;
 
 		// Before effects load: the home's files into '_effect_settings' and the saved preprocessor definitions
 		void read_effect_settings();
@@ -453,20 +454,12 @@ namespace reshade
 		// The back buffer size the window was placed for from the fractions; a new size places it again
 
 		// The window as the add-on that draws it has it, in back buffer pixels, and the back buffer size it was placed for
-		float _overlay_rect[4] = {};
-		float _overlay_rect_for[2] = {};
 		// An add-on asked for frames while the overlay is closed
-		bool _overlay_wanted = false;
 		#pragma endregion
 
 		#pragma region Overlay Shaders
 		// Whether the game has effect files of its own installed (the route's do not count), known once they are all loaded
 		bool _has_user_shaders = false;
-		char _effect_filter[32] = {};
-		size_t _focused_effect = std::numeric_limits<size_t>::max();
-		size_t _selected_technique = std::numeric_limits<size_t>::max();
-		unsigned int _effects_expanded_state = 2;
-		float _variable_editor_height = 200.0f;
 		#pragma endregion
 #endif
 	};

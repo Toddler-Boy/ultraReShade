@@ -1890,15 +1890,6 @@ namespace reshade
 		/// A crash (an exit status with error severity) gets no call.
 		/// </remarks>
 		ultra_process_exit = 107,
-
-		/// <summary>
-		/// ultraReShade: called once per Dear ImGui frame, after <c>ImGui::NewFrame</c> and the start logo and before <c>ImGui::Render</c>,
-		/// outside any window: what an add-on draws here is the overlay. Frames run while the overlay is open, while an add-on asked for
-		/// them (the host's "overlay.wanted", see reshade_ultra_host_names.h) and while the start logo plays; no frame, no call otherwise.
-		/// <para>Callback function signature: <c>void (api::effect_runtime *runtime)</c></para>
-		/// </summary>
-		ultra_overlay = 108,
-
 		max = 109 // Last value used internally by ReShade to determine number of events in this enum
 	};
 
@@ -2077,5 +2068,4 @@ namespace reshade
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_unmap_buffer_region_command, void, api::command_list *cmd_list, api::resource resource);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_finish_present, void, api::effect_runtime *runtime, api::command_list *cmd_list, api::resource_view rtv, api::resource_view rtv_srgb);
 	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_process_exit, void, api::process_exit reason);
-	RESHADE_DEFINE_ADDON_EVENT_TRAITS(addon_event::ultra_overlay, void, api::effect_runtime *runtime);
 }
