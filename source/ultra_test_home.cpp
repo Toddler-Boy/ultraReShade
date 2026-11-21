@@ -228,10 +228,7 @@ std::filesystem::path reshade::ultra::seedTestHome ( const std::filesystem::path
 
 	auto	addons = options.addons;
 	if ( ! options.hasAddons )
-	{
 		addons = addonFiles ( addonFolder );
-		addons.insert ( addons.begin (), "Effect Runtime Sync" );
-	}
 
 	std::string	input;
 	if ( ! options.curatedKey.empty () )
@@ -260,7 +257,7 @@ std::filesystem::path reshade::ultra::seedTestHome ( const std::filesystem::path
 	const auto	settings =
 		"{\n\t\"screenshots\": {\n\t\t\"folder\": " + quotedPath ( options.work / L"screenshots" ) + ",\n\t\t\"perGameFolderEnabled\": true\n\t},\n"
 		"\t\"hotkeys\": {\n" + hotkeyEntry ( "KeyOverlay", VK_HOME ) + ",\n" + hotkeyEntry ( "KeyScreenshot", VK_SNAPSHOT ) + ",\n"
-		+ hotkeyEntry ( "KeyEffects", 0 ) + ",\n" + hotkeyEntry ( "KeyReload", 0 ) + ",\n" + hotkeyEntry ( "KeyFPS", 0 ) + ",\n" + hotkeyEntry ( "KeyFrametime", 0 ) + "\n\t}\n}\n";
+		+ hotkeyEntry ( "KeyEffects", 0 ) + ",\n" + hotkeyEntry ( "KeyReload", 0 ) + "\n\t}\n}\n";
 
 	// A bench's own settings.json, with every section, stays as it is
 	const auto	settingsFile = options.work / L"settings.json";

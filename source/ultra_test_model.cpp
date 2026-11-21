@@ -11,8 +11,8 @@
 
 #define CGLTF_IMPLEMENTATION
 #include <cgltf.h>
-#include <stb_image.h>
 
+#include "ultra_test_image.hpp"
 #include "ultra_test_model.hpp"
 
 //-----------------------------------------------------------------------------
@@ -28,19 +28,14 @@ namespace
 
 	[[ nodiscard ]] bool loadImage ( const std::filesystem::path& path, reshade::ultra::TestModelImage& image )
 	{
-		const auto	bytes = readFile ( path );
-		int			width = 0;
-		int			height = 0;
-		int			channels = 0;
-		const auto	pixels = stbi_load_from_memory ( bytes.data (), static_cast<int> ( bytes.size () ), &width, &height, &channels, 4 );
+		auto	picture = reshade::ultra::decodeTestPicture ( readFile ( path ) );
 
-		if ( pixels == nullptr )
+		if ( picture.rgba.empty () )
 			return false;
 
-		image.width = static_cast<uint32_t> ( width );
-		image.height = static_cast<uint32_t> ( height );
-		image.rgba.assign ( pixels, pixels + size_t ( width ) * size_t ( height ) * 4 );
-		stbi_image_free ( pixels );
+		image.width = picture.width;
+		image.height = picture.height;
+		image.rgba = std::move ( picture.rgba );
 		return true;
 	}
 

@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON >= 2
-
 #include "d3d12_device.hpp"
 #include "d3d12_extensions.hpp"
 #include "com_utils.hpp"
@@ -68,4 +66,3 @@ HRESULT ID3D12DeviceExt2_GetCudaIndependentDescriptorObject(IUnknown *device_ext
 	return reshade::hooks::call(ID3D12DeviceExt2_GetCudaIndependentDescriptorObject, reshade::hooks::vtable_from_instance(device_ext) + 15)(device_ext, params);
 }
 
-#endif

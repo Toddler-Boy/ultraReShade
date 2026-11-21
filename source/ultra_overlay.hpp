@@ -17,6 +17,6 @@ namespace reshade::ultra
 	};
 
 	// The overlay's font scale, measured like ultraGame's panel: from the display the game window is on, never from a
-	// config. Without a window (VR) the back buffer height alone decides, as upstream ReShade did
+	// config. Without a window the back buffer height alone decides
 	[[ nodiscard ]] DisplayScale measureDisplayScale ( void* window, float backBufferHeight );
 }

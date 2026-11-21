@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON
-
 #include <chrono>
 
 #include <Windows.h>
@@ -169,4 +167,3 @@ void reshade::ultra::followProcessExit ()
 }
 //-----------------------------------------------------------------------------
 
-#endif

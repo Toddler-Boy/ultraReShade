@@ -217,7 +217,7 @@ namespace
 				role.device = device;
 				role.backBuffer = i + 1;
 
-				// A back buffer the game also created itself (D3D12 on Windows 7) keeps the ID it has
+				// A back buffer the game also created itself keeps the ID it has
 				if ( buffer == 0 || tracked.contains ( { device, buffer.handle } ) )
 					continue;
 

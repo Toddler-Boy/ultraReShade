@@ -88,7 +88,6 @@ extern "C" HRESULT WINAPI D3D10CreateDeviceAndSwapChain1(IDXGIAdapter *pAdapter,
 	Flags &= ~D3D10_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY;
 #endif
 
-#if RESHADE_ADDON >= 2
 	if (ppDevice != nullptr)
 	{
 		reshade::load_addons();
@@ -99,7 +98,6 @@ extern "C" HRESULT WINAPI D3D10CreateDeviceAndSwapChain1(IDXGIAdapter *pAdapter,
 			HardwareLevel = static_cast<D3D10_FEATURE_LEVEL1>(api_version);
 		}
 	}
-#endif
 
 	// This may call 'D3D11CreateDeviceAndSwapChain' internally, so to avoid duplicated hooks, set the flag that forces it to return early
 	g_in_dxgi_runtime = true;
@@ -115,9 +113,7 @@ extern "C" HRESULT WINAPI D3D10CreateDeviceAndSwapChain1(IDXGIAdapter *pAdapter,
 
 	if (FAILED(hr))
 	{
-#if RESHADE_ADDON >= 2
 		reshade::unload_addons();
-#endif
 
 		reshade::log::message(reshade::log::level::warning, "D3D10CreateDeviceAndSwapChain1 failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
 		return hr;
@@ -176,10 +172,8 @@ extern "C" HRESULT WINAPI D3D10CreateDeviceAndSwapChain1(IDXGIAdapter *pAdapter,
 		hr = factory->CreateSwapChain(device, pSwapChainDesc, ppSwapChain);
 	}
 
-#if RESHADE_ADDON >= 2
 	// Device proxy was created at this point, which increased the add-on manager reference count, so can release the reference added above again
 	reshade::unload_addons();
-#endif
 
 	if (SUCCEEDED(hr))
 	{

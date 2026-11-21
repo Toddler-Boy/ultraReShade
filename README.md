@@ -5,17 +5,15 @@ This is a generic post-processing injector for games and video software. It expo
 
 ReShade can optionally load **add-ons**, DLLs that make use of the ReShade API to extend functionality of both ReShade and/or the application ReShade is being applied to. To get started on how to write your own add-on, check out the [API reference](REFERENCE.md).
 
-The ReShade FX shader compiler contained in this repository is standalone, so can be integrated into other projects as well. Simply add all `source/effect_*.*` files to your project and use it similar to the [fxc example](tools/fxc.cpp).
-
 ## Building
 
-You'll need Visual Studio 2017 or higher to build ReShade. And Python in the PATH environment variable for the `glad` dependency to build.
+CMake with the Visual Studio generator and the ClangCL toolset, one build folder per bitness. Git and Python (with `pip install Jinja2`, for the `glad` dependency) must be in the PATH environment variable. The configure fetches every third-party dependency into the build folder (shallow, once; later configures need no network).
 
-1. Clone this repository including all Git submodules\
-```git clone --recurse-submodules https://github.com/crosire/reshade```
-2. Open the Visual Studio solution
-3. Select either the `32-bit` or `64-bit` target platform and build the solution.\
-   This will build ReShade and all dependencies. To build the setup tool, first build the `Release` configuration for both `32-bit` and `64-bit` targets and only afterwards build the `Release Setup` configuration (does not matter which target is selected then).
+1. Clone this repository\
+```git clone <url>```
+2. Configure and build, once for `-A x64` and once for `-A Win32`\
+```cmake -S . -B build/x64 -G "Visual Studio 18 2026" -A x64 -T ClangCL```
+```cmake --build build/x64 --config Release --parallel```
 
 A quick overview of what some of the source code files contain:
 

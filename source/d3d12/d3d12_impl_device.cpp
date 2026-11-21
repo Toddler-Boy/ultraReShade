@@ -16,8 +16,6 @@
 #include <utf8/unchecked.h>
 #include <dxgi1_4.h>
 
-extern bool is_windows7();
-
 #ifndef _WIN64
 // Make a bit more space for the heap index in descriptor handles, at the cost of less space for the descriptor index, due to overall limit of only 32-bit being available
 constexpr size_t heap_index_start = 24;
@@ -27,14 +25,10 @@ constexpr size_t heap_index_start = 28;
 
 static auto adapter_from_device(ID3D12Device *device, DXGI_ADAPTER_DESC *adapter_desc) -> const com_ptr<IDXGIAdapter>
 {
-	auto CreateDXGIFactory1_orig = reinterpret_cast<decltype(&CreateDXGIFactory1)>(GetProcAddress(GetModuleHandleW(L"dxgi.dll"), "CreateDXGIFactory1"));
-	if (reshade::hooks::is_hooked(CreateDXGIFactory1_orig))
-		CreateDXGIFactory1_orig = reshade::hooks::call<decltype(&CreateDXGIFactory1)>(nullptr, CreateDXGIFactory1_orig);
-	assert(CreateDXGIFactory1_orig != nullptr);
 	auto CreateDXGIFactory2_orig = reinterpret_cast<decltype(&CreateDXGIFactory2)>(GetProcAddress(GetModuleHandleW(L"dxgi.dll"), "CreateDXGIFactory2"));
 	if (reshade::hooks::is_hooked(CreateDXGIFactory2_orig))
 		CreateDXGIFactory2_orig = reshade::hooks::call<decltype(&CreateDXGIFactory2)>(nullptr, CreateDXGIFactory2_orig);
-	assert(CreateDXGIFactory2_orig != nullptr || is_windows7());
+	assert(CreateDXGIFactory2_orig != nullptr);
 
 	const LUID luid = device->GetAdapterLuid();
 
@@ -46,17 +40,6 @@ static auto adapter_from_device(ID3D12Device *device, DXGI_ADAPTER_DESC *adapter
 		if (SUCCEEDED(factory4->EnumAdapterByLuid(luid, IID_PPV_ARGS(&dxgi_adapter))))
 		{
 			dxgi_adapter->GetDesc(adapter_desc);
-		}
-	}
-	else
-	if (com_ptr<IDXGIFactory1> factory1;
-		SUCCEEDED(CreateDXGIFactory1_orig(IID_PPV_ARGS(&factory1))))
-	{
-		for (UINT i = 0; factory1->EnumAdapters(i, &dxgi_adapter) != DXGI_ERROR_NOT_FOUND; ++i, dxgi_adapter.reset())
-		{
-			if (SUCCEEDED(dxgi_adapter->GetDesc(adapter_desc)) &&
-				std::memcmp(&adapter_desc->AdapterLuid, &luid, sizeof(luid)) == 0)
-				break;
 		}
 	}
 
@@ -76,14 +59,12 @@ reshade::d3d12::device_impl::device_impl(ID3D12Device *device) :
 	for (UINT type = 0; type < D3D12_DESCRIPTOR_HEAP_TYPE_NUM_TYPES; ++type)
 		_descriptor_handle_size[type] = device->GetDescriptorHandleIncrementSize(static_cast<D3D12_DESCRIPTOR_HEAP_TYPE>(type));
 
-#if RESHADE_ADDON >= 2
 	// Make some space in the descriptor heap array, so that it is unlikely to need reallocation
 	_descriptor_heaps.reserve(4096);
 
 	new D3D12DescriptorHeap(static_cast<D3D12Device *>(this), _gpu_view_heap.get());
 	new D3D12DescriptorHeap(static_cast<D3D12Device *>(this), _gpu_sampler_heap.get());
 	assert(_descriptor_heaps.size() == 2);
-#endif
 
 	// Create mipmap generation states used in 'command_list::generate_mipmaps' implementation
 	{
@@ -110,11 +91,9 @@ reshade::d3d12::device_impl::~device_impl()
 {
 	assert(_queues.empty()); // All queues should have been unregistered and destroyed by the application at this point
 
-#if RESHADE_ADDON >= 2
 	delete _descriptor_heaps[0];
 	delete _descriptor_heaps[1];
 	assert(_descriptor_heaps.empty());
-#endif
 }
 
 bool reshade::d3d12::device_impl::get_property(api::device_properties property, void *data) const
@@ -220,7 +199,7 @@ bool reshade::d3d12::device_impl::check_capability(api::device_caps capability) 
 		return false;
 	case api::device_caps::shared_resource:
 	case api::device_caps::shared_resource_nt_handle:
-		return !is_windows7();
+		return true;
 	case api::device_caps::resolve_depth_stencil:
 		if (D3D12_FEATURE_DATA_D3D12_OPTIONS2 options;
 			SUCCEEDED(_orig->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS2, &options, sizeof(options))))
@@ -228,7 +207,7 @@ bool reshade::d3d12::device_impl::check_capability(api::device_caps capability) 
 		return false;
 	case api::device_caps::shared_fence:
 	case api::device_caps::shared_fence_nt_handle:
-		return !is_windows7();
+		return true;
 	case api::device_caps::amplification_and_mesh_shader:
 		if (D3D12_FEATURE_DATA_D3D12_OPTIONS7 options;
 			SUCCEEDED(_orig->CheckFeatureSupport(D3D12_FEATURE_D3D12_OPTIONS7, &options, sizeof(options))))
@@ -1625,7 +1604,6 @@ void reshade::d3d12::device_impl::get_descriptor_heap_offset(api::descriptor_tab
 {
 	assert(table != 0 && array_offset == 0 && heap != nullptr);
 
-#if RESHADE_ADDON >= 2
 	// Check if this is a D3D12_CPU_DESCRIPTOR_HANDLE or D3D12_GPU_DESCRIPTOR_HANDLE
 	if ((table.handle & 0xF000000000000000ull) == 0xF000000000000000ull)
 	{
@@ -1642,11 +1620,9 @@ void reshade::d3d12::device_impl::get_descriptor_heap_offset(api::descriptor_tab
 		}
 		return;
 	}
-#endif
 
 	const D3D12_GPU_DESCRIPTOR_HANDLE handle_gpu = { table.handle };
 
-#if RESHADE_ADDON >= 2
 	const std::shared_lock<std::shared_mutex> lock(_heap_gpu_ranges_mutex);
 
 	if (auto it = _heap_gpu_ranges.upper_bound(handle_gpu.ptr);
@@ -1671,30 +1647,6 @@ void reshade::d3d12::device_impl::get_descriptor_heap_offset(api::descriptor_tab
 			return;
 		}
 	}
-#else
-	if (_gpu_view_heap.contains(handle_gpu))
-	{
-		*heap = to_handle(_gpu_view_heap.get());
-
-		if (offset != nullptr)
-		{
-			const D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-			*offset = static_cast<uint32_t>((handle_gpu.ptr - _gpu_view_heap.get()->GetGPUDescriptorHandleForHeapStart().ptr) / _descriptor_handle_size[type]) + binding;
-		}
-		return;
-	}
-	else if (_gpu_sampler_heap.contains(handle_gpu))
-	{
-		*heap = to_handle(_gpu_sampler_heap.get());
-
-		if (offset != nullptr)
-		{
-			const D3D12_DESCRIPTOR_HEAP_TYPE type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-			*offset = static_cast<uint32_t>((handle_gpu.ptr - _gpu_sampler_heap.get()->GetGPUDescriptorHandleForHeapStart().ptr) / _descriptor_handle_size[type]) + binding;
-		}
-		return;
-	}
-#endif
 
 	assert(false);
 
@@ -2100,7 +2052,6 @@ void reshade::d3d12::device_impl::register_resource(ID3D12Resource *resource, [[
 {
 	assert(resource != nullptr);
 
-#if RESHADE_ADDON >= 2
 	if (const D3D12_RESOURCE_DESC desc = resource->GetDesc();
 		desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
 	{
@@ -2115,13 +2066,11 @@ void reshade::d3d12::device_impl::register_resource(ID3D12Resource *resource, [[
 			start_address,
 			std::tuple<UINT64, ID3D12Resource *, bool >({ desc.Width, resource, acceleration_structure }));
 	}
-#endif
 }
 void reshade::d3d12::device_impl::unregister_resource(ID3D12Resource *resource)
 {
 	assert(resource != nullptr);
 
-#if RESHADE_ADDON >= 2
 	if (const D3D12_RESOURCE_DESC desc = resource->GetDesc();
 		desc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER)
 	{
@@ -2133,7 +2082,6 @@ void reshade::d3d12::device_impl::unregister_resource(ID3D12Resource *resource)
 			it != _buffer_gpu_addresses.end() && std::get<ID3D12Resource *>(it->second) == resource)
 			_buffer_gpu_addresses.erase(it);
 	}
-#endif
 
 #if 0
 	const std::unique_lock<std::shared_mutex> lock(_resource_mutex);
@@ -2184,7 +2132,6 @@ reshade::d3d12::command_list_immediate_impl *reshade::d3d12::device_impl::get_im
 	return nullptr;
 }
 
-#if RESHADE_ADDON >= 2
 bool reshade::d3d12::device_impl::resolve_gpu_address(D3D12_GPU_VIRTUAL_ADDRESS address, api::resource *out_resource, uint64_t *out_offset, bool *out_acceleration_structure) const
 {
 	assert(out_offset != nullptr && out_resource != nullptr);
@@ -2305,9 +2252,7 @@ void reshade::d3d12::device_impl::unregister_descriptor_heap(D3D12DescriptorHeap
 
 	_heap_gpu_ranges.erase(heap->_orig_base_gpu_handle.ptr);
 }
-#endif
 
-#if RESHADE_ADDON >= 2
 D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu_descriptor_handle(D3D12_CPU_DESCRIPTOR_HANDLE handle) const
 {
 	const size_t heap_index = (handle.ptr >> heap_index_start) & 0xFFFFFFF;
@@ -2315,11 +2260,9 @@ D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu
 
 	return { static_cast<SIZE_T>(_descriptor_heaps[heap_index]->_orig_base_cpu_handle.ptr + (handle.ptr & (((1ull << heap_index_start) - 1) ^ 0x7))) };
 }
-#endif
 
 D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu_descriptor_handle(api::descriptor_table table, D3D12_DESCRIPTOR_HEAP_TYPE *type) const
 {
-#if RESHADE_ADDON >= 2
 	// Check if this is a D3D12_CPU_DESCRIPTOR_HANDLE (rather than a D3D12_GPU_DESCRIPTOR_HANDLE)
 	if ((table.handle & 0xF000000000000000ull) == 0xF000000000000000ull)
 	{
@@ -2328,12 +2271,10 @@ D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu
 
 		return convert_to_original_cpu_descriptor_handle(D3D12_CPU_DESCRIPTOR_HANDLE { static_cast<SIZE_T>(table.handle ^ 0xF000000000000000ull) });
 	}
-#endif
 
 	D3D12_CPU_DESCRIPTOR_HANDLE handle = { 0 };
 	const D3D12_GPU_DESCRIPTOR_HANDLE handle_gpu = { table.handle };
 
-#if RESHADE_ADDON >= 2
 	const std::shared_lock<std::shared_mutex> lock(_heap_gpu_ranges_mutex);
 
 	if (auto it = _heap_gpu_ranges.upper_bound(handle_gpu.ptr);
@@ -2354,20 +2295,6 @@ D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu
 			handle.ptr = heap_impl->_orig_base_cpu_handle.ptr + static_cast<SIZE_T>(handle_gpu.ptr - heap_impl->_orig_base_gpu_handle.ptr);
 		}
 	}
-#else
-	if (_gpu_view_heap.contains(handle_gpu))
-	{
-		if (type != nullptr)
-			*type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
-		_gpu_view_heap.convert_handle(handle_gpu, handle);
-	}
-	else if (_gpu_sampler_heap.contains(handle_gpu))
-	{
-		if (type != nullptr)
-			*type = D3D12_DESCRIPTOR_HEAP_TYPE_SAMPLER;
-		_gpu_sampler_heap.convert_handle(handle_gpu, handle);
-	}
-#endif
 
 	assert(handle.ptr != 0);
 	return handle;
@@ -2375,7 +2302,6 @@ D3D12_CPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_cpu
 
 D3D12_GPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_gpu_descriptor_handle(api::descriptor_table table) const
 {
-#if RESHADE_ADDON >= 2
 	// Check if this is a D3D12_CPU_DESCRIPTOR_HANDLE (rather than a D3D12_GPU_DESCRIPTOR_HANDLE)
 	if ((table.handle & 0xF000000000000000ull) == 0xF000000000000000ull)
 	{
@@ -2384,7 +2310,6 @@ D3D12_GPU_DESCRIPTOR_HANDLE reshade::d3d12::device_impl::convert_to_original_gpu
 
 		return { _descriptor_heaps[heap_index]->_orig_base_gpu_handle.ptr + (table.handle & (((1ull << heap_index_start) - 1) ^ 0x7)) };
 	}
-#endif
 
 	return { table.handle };
 }

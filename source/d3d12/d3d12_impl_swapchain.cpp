@@ -85,36 +85,3 @@ reshade::api::color_space reshade::d3d12::swapchain_impl::get_color_space() cons
 
 	return convert_color_space(color_space);
 }
-
-reshade::d3d12::swapchain_d3d12on7_impl::swapchain_d3d12on7_impl(device_impl *device, ID3D12CommandQueueDownlevel *command_queue_downlevel) :
-	api_object_impl(command_queue_downlevel),
-	_device(device)
-{
-	// Default to three back buffers for d3d12on7
-	_back_buffers.resize(3);
-}
-
-reshade::api::device *reshade::d3d12::swapchain_d3d12on7_impl::get_device()
-{
-	return _device;
-}
-
-void *reshade::d3d12::swapchain_d3d12on7_impl::get_hwnd() const
-{
-	return _hwnd;
-}
-
-reshade::api::resource reshade::d3d12::swapchain_d3d12on7_impl::get_back_buffer(uint32_t index)
-{
-	return to_handle(_back_buffers[index].get());
-}
-
-uint32_t reshade::d3d12::swapchain_d3d12on7_impl::get_back_buffer_count() const
-{
-	return static_cast<uint32_t>(_back_buffers.size());
-}
-
-uint32_t reshade::d3d12::swapchain_d3d12on7_impl::get_current_back_buffer_index() const
-{
-	return _swap_index;
-}

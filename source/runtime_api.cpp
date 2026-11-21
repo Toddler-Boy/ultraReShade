@@ -1165,7 +1165,6 @@ void reshade::runtime::render_technique(api::effect_technique handle, api::comma
 	const api::resource back_buffer_resource = _device->get_resource_from_view(rtv);
 
 	size_t permutation_index = 0;
-#if RESHADE_ADDON
 	if (!_is_in_present_call &&
 		// Special case for when add-on passed in the back buffer, which behaves as if this was called from within present, using the default permutation
 		back_buffer_resource != get_current_back_buffer())
@@ -1206,16 +1205,13 @@ void reshade::runtime::render_technique(api::effect_technique handle, api::comma
 		capture_state(cmd_list, _app_state);
 
 	invoke_addon_event<addon_event::reshade_begin_effects>(this, cmd_list, rtv, rtv_srgb);
-#endif
 
 	render_technique(*tech, cmd_list, back_buffer_resource, rtv, rtv_srgb, permutation_index);
 
-#if RESHADE_ADDON
 	invoke_addon_event<addon_event::reshade_finish_effects>(this, cmd_list, rtv, rtv_srgb);
 
 	if (!_is_in_present_call)
 		apply_state(cmd_list, _app_state);
-#endif
 }
 
 bool reshade::runtime::get_effects_state() const

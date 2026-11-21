@@ -376,7 +376,7 @@ private:
 		// There is no high-level text representation
 		return std::string();
 	}
-	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &spirv, std::string &, std::string &) const override
+	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &spirv, std::string &) const override
 	{
 		const function *const entry_point = find_function(entry_point_name);
 		if (entry_point == nullptr)

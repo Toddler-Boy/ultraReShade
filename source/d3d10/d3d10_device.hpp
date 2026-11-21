@@ -128,13 +128,9 @@ public:
 	LONG _ref = 1;
 
 private:
-#if RESHADE_ADDON >= 2
 	void invoke_bind_samplers_event(reshade::api::shader_stage stage, UINT first, UINT count, ID3D10SamplerState *const *objects);
 	void invoke_bind_shader_resource_views_event(reshade::api::shader_stage stage, UINT first, UINT count, ID3D10ShaderResourceView *const *objects);
 	void invoke_bind_constant_buffers_event(reshade::api::shader_stage stage, UINT first, UINT count, ID3D10Buffer *const *objects);
-#endif
 
-#if RESHADE_ADDON
 	reshade::api::pipeline_layout _global_pipeline_layout = {};
-#endif
 };

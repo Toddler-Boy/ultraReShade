@@ -1,3 +1,5 @@
+param([string]$ImGuiHeader = "..\build\x64\_deps\imgui-src\imgui.h")
+
 $version = 0
 
 $function_list = @{}
@@ -10,7 +12,7 @@ $function_definitions_struct = ""
 $is_inside_struct = ""
 $is_inside_namespace = 0
 
-Get-Content ..\deps\imgui\imgui.h | ForEach-Object {
+Get-Content $ImGuiHeader | ForEach-Object {
 	if ($_.StartsWith("#define IMGUI_VERSION_NUM")) {
 		$version = [int]$_.Substring(26)
 		return
@@ -126,7 +128,7 @@ Get-Content ..\deps\imgui\imgui.h | ForEach-Object {
 			$is_const += " "
 		}
 
-		if ($name.StartsWith("_")) {
+		if ($name.StartsWith("_") -and $name -ne "_AddPolyline") { # imgui.h's inline AddPolyline and PathStroke call it
 			return
 		}
 
@@ -185,11 +187,11 @@ Get-Content ..\deps\imgui\imgui.h | ForEach-Object {
 		}
 
 		if (-not $type) {
-			$function_table += "`tvoid(*" + $internal_name + ")(" + $is_inside_struct + " *_this);`r`n"
-			$function_table_init += "`t[](" + $is_inside_struct + " *_this) -> void { " + $(if ($name.StartsWith("~")) { "_this->" } else { "new(_this) " }) + $name + "(); },`r`n"
+			$function_table += "`tvoid(*" + $internal_name + ")(" + $is_inside_struct + " *_this" + $(if ($args_decl) { ", " }) + $args_decl + ");`r`n"
+			$function_table_init += "`t[](" + $is_inside_struct + " *_this" + $(if ($args_decl) { ", " }) + $args_decl + ") -> void { " + $(if ($name.StartsWith("~")) { "_this->" } else { "new(_this) " }) + $name + "(" + $args_call + "); },`r`n"
 
 			$function_definitions_struct += "inline " + $is_inside_struct + "::" + $name + "(" + $args_decl + ") { "
-			$function_definitions_struct += "imgui_function_table_instance()->" + $internal_name + "(this); "
+			$function_definitions_struct += "imgui_function_table_instance()->" + $internal_name + "(this" + $(if ($args_call) { ", " }) + $args_call + "); "
 			$function_definitions_struct += "}`r`n"
 		}
 		else {
@@ -224,7 +226,7 @@ $function_table_init = @"
  * SPDX-License-Identifier: BSD-3-Clause OR MIT
  */
 
-#if defined(RESHADE_API_LIBRARY_EXPORT) && RESHADE_GUI && RESHADE_ADDON
+#if defined(RESHADE_API_LIBRARY_EXPORT) && RESHADE_GUI
 
 #include <new>
 #include "imgui_function_table_$version.hpp"

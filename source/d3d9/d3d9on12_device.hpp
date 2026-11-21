@@ -5,6 +5,8 @@
 
 #pragma once
 
+// DirectX-Headers' d3d12.h first: the SDK's header includes the SDK's own, older one
+#include <d3d12.h>
 #include <d3d9on12.h>
 
 class Direct3DDevice9;

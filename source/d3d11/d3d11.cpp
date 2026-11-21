@@ -50,7 +50,6 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 	Flags &= ~D3D11_CREATE_DEVICE_PREVENT_ALTERING_LAYER_SETTINGS_FROM_REGISTRY;
 #endif
 
-#if RESHADE_ADDON >= 2
 	const D3D_FEATURE_LEVEL orig_feature_level = (pFeatureLevels != nullptr && FeatureLevels > 0) ? pFeatureLevels[0] : D3D_FEATURE_LEVEL_11_0;
 	uint32_t api_version = static_cast<uint32_t>(orig_feature_level);
 	if (ppDevice != nullptr)
@@ -63,7 +62,6 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 			pFeatureLevels = reinterpret_cast<const D3D_FEATURE_LEVEL *>(&api_version);
 		}
 	}
-#endif
 
 #ifdef RESHADE_TEST_APPLICATION
 	// Perform dummy call to 'CreateDXGIFactory1' to ensure virtual function table hooks are set up correctly
@@ -87,11 +85,9 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 
 	if (pFeatureLevel != nullptr) // Copy feature level value to application variable if the argument exists
 	{
-#if RESHADE_ADDON >= 2
 		if (feature_level > orig_feature_level)
 			*pFeatureLevel = orig_feature_level;
 		else
-#endif
 			*pFeatureLevel = feature_level;
 	}
 
@@ -104,9 +100,7 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 
 	if (FAILED(hr))
 	{
-#if RESHADE_ADDON >= 2
 		reshade::unload_addons();
-#endif
 
 		reshade::log::message(reshade::log::level::warning, "D3D11CreateDeviceAndSwapChain failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
 		return hr;
@@ -165,10 +159,8 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 		// Change device to proxy for swap chain creation below
 		device = device_proxy = new D3D11Device(adapter.get(), dxgi_device.get(), device);
 		device_proxy->_immediate_context = new D3D11DeviceContext(device_proxy, device_context);
-#if RESHADE_ADDON >= 2
 		if (feature_level > orig_feature_level)
 			device_proxy->_orig_feature_level = orig_feature_level;
-#endif
 	}
 
 	// Swap chain creation is piped through the 'IDXGIFactory::CreateSwapChain' function hook
@@ -181,10 +173,8 @@ extern "C" HRESULT WINAPI D3D11CreateDeviceAndSwapChain(IDXGIAdapter *pAdapter, 
 		hr = factory->CreateSwapChain(device, const_cast<DXGI_SWAP_CHAIN_DESC *>(pSwapChainDesc), ppSwapChain);
 	}
 
-#if RESHADE_ADDON >= 2
 	// Device proxy was created at this point, which increased the add-on manager reference count, so can release the reference added above again
 	reshade::unload_addons();
-#endif
 
 	if (SUCCEEDED(hr))
 	{

@@ -6,7 +6,6 @@
 #pragma once
 
 #include "effect_module.hpp"
-#include "moving_average.hpp"
 #include <algorithm>
 
 namespace reshade
@@ -179,12 +178,7 @@ namespace reshade
 		// One of the route's effects (reshade.json): never in the overlay, never saved
 		bool is_route = false;
 
-		uint32_t query_base_index = 0;
-
 		 int64_t time_left = 0;
-
-		moving_average<uint64_t, 60> average_cpu_duration;
-		moving_average<uint64_t, 60> average_gpu_duration;
 
 		struct pass : reshadefx::pass
 		{
@@ -196,8 +190,6 @@ namespace reshade
 			api::descriptor_table storage_table = {};
 			std::vector<api::resource> modified_resources;
 			std::vector<api::resource_view> generate_mipmap_views;
-
-			moving_average<uint64_t, 60> average_gpu_duration;
 		};
 
 		struct permutation
@@ -218,13 +210,11 @@ namespace reshade
 		unsigned int rendering = 0;
 		// A file of the route's effects: its values and definitions come from reshade.json
 		bool is_route = false;
-		bool skipped = false;
 		bool created = false;
 		bool compiled = false;
 		bool preprocessed = false;
 		std::string errors;
 
-		std::vector<std::filesystem::path> included_files;
 		std::vector<std::pair<std::string, std::string>> definitions;
 
 		std::vector<uniform> uniforms;
@@ -243,9 +233,7 @@ namespace reshade
 		struct permutation
 		{
 			reshadefx::effect_module module;
-			std::string generated_code;
 			std::unordered_map<std::string, std::string> cso;
-			std::unordered_map<std::string, std::string> assembly;
 
 			api::pipeline_layout layout = {};
 			api::descriptor_table cb_table = {};
@@ -255,7 +243,5 @@ namespace reshade
 		};
 
 		std::vector<permutation> permutations;
-
-		api::query_heap query_heap = {};
 	};
 }

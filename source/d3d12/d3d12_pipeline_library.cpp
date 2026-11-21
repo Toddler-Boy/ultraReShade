@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON >= 2
-
 #include "d3d12_device.hpp"
 #include "d3d12_pipeline_library.hpp"
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
@@ -211,4 +209,3 @@ HRESULT STDMETHODCALLTYPE D3D12PipelineLibrary::LoadPipeline(LPCWSTR pName, cons
 	return hr;
 }
 
-#endif

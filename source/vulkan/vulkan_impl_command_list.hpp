@@ -88,7 +88,6 @@ namespace reshade::vulkan
 		object_data(device_impl *device, VkCommandBuffer cmd_buffer) :
 			command_list_impl(device, cmd_buffer) {}
 
-#if RESHADE_ADDON
 		using command_list_impl::_is_in_render_pass;
 
 		uint32_t current_subpass = std::numeric_limits<uint32_t>::max();
@@ -96,6 +95,5 @@ namespace reshade::vulkan
 		VkFramebuffer current_framebuffer = VK_NULL_HANDLE;
 		VkImageView current_color_attachments[8] = {};
 		VkImageView current_depth_stencil_attachment = VK_NULL_HANDLE;
-#endif
 	};
 }

@@ -31,17 +31,12 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(DestroyDevice);
 
 #if VK_VERSION_1_0
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(QueueSubmit);
 	RESHADE_VULKAN_HOOK_PROC(BindBufferMemory);
 	RESHADE_VULKAN_HOOK_PROC(BindImageMemory);
 	RESHADE_VULKAN_HOOK_PROC(CreateQueryPool);
 	RESHADE_VULKAN_HOOK_PROC(DestroyQueryPool);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(GetQueryPoolResults);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CreateBuffer);
 	RESHADE_VULKAN_HOOK_PROC(DestroyBuffer);
 	RESHADE_VULKAN_HOOK_PROC(CreateBufferView);
@@ -50,8 +45,6 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(DestroyImage);
 	RESHADE_VULKAN_HOOK_PROC(CreateImageView);
 	RESHADE_VULKAN_HOOK_PROC(DestroyImageView);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(CreateShaderModule);
 	RESHADE_VULKAN_HOOK_PROC(DestroyShaderModule);
 	RESHADE_VULKAN_HOOK_PROC(CreateGraphicsPipelines);
@@ -59,12 +52,8 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(DestroyPipeline);
 	RESHADE_VULKAN_HOOK_PROC(CreatePipelineLayout);
 	RESHADE_VULKAN_HOOK_PROC(DestroyPipelineLayout);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CreateSampler);
 	RESHADE_VULKAN_HOOK_PROC(DestroySampler);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(CreateDescriptorSetLayout);
 	RESHADE_VULKAN_HOOK_PROC(DestroyDescriptorSetLayout);
 	RESHADE_VULKAN_HOOK_PROC(CreateDescriptorPool);
@@ -73,8 +62,6 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(AllocateDescriptorSets);
 	RESHADE_VULKAN_HOOK_PROC(FreeDescriptorSets);
 	RESHADE_VULKAN_HOOK_PROC(UpdateDescriptorSets);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CreateFramebuffer);
 	RESHADE_VULKAN_HOOK_PROC(DestroyFramebuffer);
 	RESHADE_VULKAN_HOOK_PROC(CreateRenderPass);
@@ -84,15 +71,9 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(FreeCommandBuffers);
 	RESHADE_VULKAN_HOOK_PROC(BeginCommandBuffer);
 	RESHADE_VULKAN_HOOK_PROC(EndCommandBuffer);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(CmdBindPipeline);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CmdSetViewport);
 	RESHADE_VULKAN_HOOK_PROC(CmdSetScissor);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(CmdSetDepthBias);
 	RESHADE_VULKAN_HOOK_PROC(CmdSetBlendConstants);
 	RESHADE_VULKAN_HOOK_PROC(CmdSetStencilCompareMask);
@@ -101,29 +82,21 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(CmdBindDescriptorSets);
 	RESHADE_VULKAN_HOOK_PROC(CmdBindIndexBuffer);
 	RESHADE_VULKAN_HOOK_PROC(CmdBindVertexBuffers);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CmdDraw);
 	RESHADE_VULKAN_HOOK_PROC(CmdDrawIndexed);
 	RESHADE_VULKAN_HOOK_PROC(CmdDrawIndirect);
 	RESHADE_VULKAN_HOOK_PROC(CmdDrawIndexedIndirect);
 	RESHADE_VULKAN_HOOK_PROC(CmdDispatch);
 	RESHADE_VULKAN_HOOK_PROC(CmdDispatchIndirect);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(CmdCopyBuffer);
 	RESHADE_VULKAN_HOOK_PROC(CmdCopyImage);
 	RESHADE_VULKAN_HOOK_PROC(CmdBlitImage);
 	RESHADE_VULKAN_HOOK_PROC(CmdCopyBufferToImage);
 	RESHADE_VULKAN_HOOK_PROC(CmdCopyImageToBuffer);
 	RESHADE_VULKAN_HOOK_PROC(CmdUpdateBuffer);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CmdClearColorImage);
 	RESHADE_VULKAN_HOOK_PROC(CmdClearDepthStencilImage);
 	RESHADE_VULKAN_HOOK_PROC(CmdClearAttachments);
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC(CmdResolveImage);
 	RESHADE_VULKAN_HOOK_PROC(CmdPipelineBarrier);
 	RESHADE_VULKAN_HOOK_PROC(CmdBeginQuery);
@@ -131,27 +104,21 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(CmdWriteTimestamp);
 	RESHADE_VULKAN_HOOK_PROC(CmdCopyQueryPoolResults);
 	RESHADE_VULKAN_HOOK_PROC(CmdPushConstants);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CmdBeginRenderPass);
 	RESHADE_VULKAN_HOOK_PROC(CmdNextSubpass);
 	RESHADE_VULKAN_HOOK_PROC(CmdEndRenderPass);
 	RESHADE_VULKAN_HOOK_PROC(CmdExecuteCommands);
 #endif
-#endif
 
 #if VK_VERSION_1_1
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(BindBufferMemory2);
 	RESHADE_VULKAN_HOOK_PROC(BindImageMemory2);
 	RESHADE_VULKAN_HOOK_PROC(CreateDescriptorUpdateTemplate);
 	RESHADE_VULKAN_HOOK_PROC(DestroyDescriptorUpdateTemplate);
 	RESHADE_VULKAN_HOOK_PROC(UpdateDescriptorSetWithTemplate);
 #endif
-#endif
 
 #if VK_VERSION_1_2
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC(CmdDrawIndirectCount);
 	RESHADE_VULKAN_HOOK_PROC(CmdDrawIndexedIndirectCount);
 	RESHADE_VULKAN_HOOK_PROC(CreateRenderPass2);
@@ -159,38 +126,25 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(CmdNextSubpass2);
 	RESHADE_VULKAN_HOOK_PROC(CmdEndRenderPass2);
 #endif
-#endif
 
 #if VK_VERSION_1_3
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdPipelineBarrier2, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdWriteTimestamp2, );
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(QueueSubmit2, );
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdCopyBuffer2, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdCopyImage2, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdCopyBufferToImage2, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdCopyImageToBuffer2, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBlitImage2, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdResolveImage2, );
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBeginRendering, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdEndRendering, );
-#endif
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBindVertexBuffers2, );
-#endif
 #endif
 
 #if VK_VERSION_1_4
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdPushDescriptorSet, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdPushDescriptorSetWithTemplate, );
-#endif
 #endif
 
 #if VK_KHR_swapchain
@@ -199,14 +153,11 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC(QueuePresentKHR);
 #endif
 
-#if RESHADE_ADDON
 #if VK_KHR_dynamic_rendering
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBeginRendering, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdEndRendering, KHR);
 #endif
-#endif
 
-#if RESHADE_ADDON >= 2
 #if VK_KHR_push_descriptor
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdPushDescriptorSet, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdPushDescriptorSetWithTemplate, KHR);
@@ -217,9 +168,7 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(DestroyDescriptorUpdateTemplate, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(UpdateDescriptorSetWithTemplate, KHR);
 #endif
-#endif
 
-#if RESHADE_ADDON
 #if VK_KHR_create_renderpass2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CreateRenderPass2, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBeginRenderPass2, KHR);
@@ -236,19 +185,13 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdDrawIndirectCount, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdDrawIndexedIndirectCount, KHR);
 #endif
-#endif
 
 #if VK_KHR_synchronization2
-#if RESHADE_ADDON >= 2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdPipelineBarrier2, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdWriteTimestamp2, KHR);
-#endif
-#if RESHADE_ADDON
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(QueueSubmit2, KHR);
 #endif
-#endif
 
-#if RESHADE_ADDON >= 2
 #if VK_KHR_copy_commands2
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdCopyBuffer2, KHR);
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdCopyImage2, KHR);
@@ -267,9 +210,7 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 #if VK_EXT_extended_dynamic_state
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBindVertexBuffers2, EXT);
 #endif
-#endif
 
-#if RESHADE_ADDON
 #if VK_EXT_full_screen_exclusive
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(AcquireFullScreenExclusiveModeEXT, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(ReleaseFullScreenExclusiveModeEXT, );
@@ -284,8 +225,6 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CreateAccelerationStructureKHR, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(DestroyAccelerationStructureKHR, );
 #endif
-#endif
-#if RESHADE_ADDON >= 2
 #if VK_KHR_acceleration_structure
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBuildAccelerationStructuresKHR, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdBuildAccelerationStructuresIndirectKHR, );
@@ -307,7 +246,6 @@ PFN_vkVoidFunction VKAPI_CALL vkGetDeviceProcAddr(VkDevice device, const char *p
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdDrawMeshTasksEXT, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdDrawMeshTasksIndirectEXT, );
 	RESHADE_VULKAN_HOOK_PROC_OPTIONAL(CmdDrawMeshTasksIndirectCountEXT, );
-#endif
 #endif
 
 	// Need to self-intercept as well, since some layers rely on this (e.g. Steam overlay)

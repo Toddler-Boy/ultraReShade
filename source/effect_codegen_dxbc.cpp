@@ -20,7 +20,7 @@ public:
 	{
 	}
 
-	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &cso, std::string &assembly, std::string &errors) const override
+	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &cso, std::string &errors) const override
 	{
 		const auto entry_point_it = std::find_if(_module.entry_points.begin(), _module.entry_points.end(),
 			[&entry_point_name](const std::pair<std::string, shader_type> &entry_point) {
@@ -30,7 +30,7 @@ public:
 			return false;
 
 		std::string hlsl;
-		if (!codegen_hlsl::assemble_code_for_entry_point(entry_point_name, hlsl, hlsl, errors))
+		if (!codegen_hlsl::assemble_code_for_entry_point(entry_point_name, hlsl, errors))
 			return false;
 
 		CHAR profile[] = "cs_0_0";
@@ -58,7 +58,6 @@ public:
 
 		com_ptr<ID3DBlob> d3d_errors;
 		com_ptr<ID3DBlob> d3d_compiled;
-		com_ptr<ID3DBlob> d3d_disassembled;
 
 		const HRESULT hr = D3DCompile(hlsl.data(), hlsl.size(), nullptr, nullptr, nullptr, entry_point_name.c_str(), profile, compile_flags, 0, &d3d_compiled, &d3d_errors);
 
@@ -97,16 +96,7 @@ public:
 		}
 
 		if (d3d_compiled != nullptr)
-		{
 			cso.assign(static_cast<const char *>(d3d_compiled->GetBufferPointer()), d3d_compiled->GetBufferSize());
-			d3d_compiled.reset();
-
-			if (SUCCEEDED(D3DDisassemble(cso.data(), cso.size(), 0, nullptr, &d3d_disassembled)))
-			{
-				assembly.assign(static_cast<const char *>(d3d_disassembled->GetBufferPointer()), d3d_disassembled->GetBufferSize() - 1);
-				d3d_disassembled.reset();
-			}
-		}
 
 		return SUCCEEDED(hr);
 	}

@@ -14,15 +14,11 @@ D3D11CommandList::D3D11CommandList(D3D11Device *device, ID3D11CommandList *origi
 {
 	assert(_orig != nullptr && _device != nullptr);
 
-#if RESHADE_ADDON
 	reshade::invoke_addon_event<reshade::addon_event::init_command_list>(this);
-#endif
 }
 D3D11CommandList::~D3D11CommandList()
 {
-#if RESHADE_ADDON
 	reshade::invoke_addon_event<reshade::addon_event::destroy_command_list>(this);
-#endif
 }
 
 bool D3D11CommandList::check_and_upgrade_interface(REFIID riid)

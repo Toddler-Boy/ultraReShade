@@ -105,7 +105,6 @@ namespace reshade::d3d12
 
 		command_list_immediate_impl *get_immediate_command_list();
 
-#if RESHADE_ADDON >= 2
 		bool resolve_gpu_address(D3D12_GPU_VIRTUAL_ADDRESS address, api::resource *out_resource, uint64_t *out_offset, bool *out_acceleration_structure = nullptr) const;
 
 		static PFORCEINLINE api::descriptor_table convert_to_descriptor_table(D3D12_CPU_DESCRIPTOR_HANDLE handle)
@@ -113,16 +112,13 @@ namespace reshade::d3d12
 			assert((handle.ptr & 0xF000000000000000ull) == 0);
 			return { 0xF000000000000000ull | handle.ptr }; // Add bit to be able to distinguish this handle CPU and GPU descriptor handles
 		}
-#endif
 		static PFORCEINLINE api::descriptor_table convert_to_descriptor_table(D3D12_GPU_DESCRIPTOR_HANDLE handle)
 		{
 			assert((handle.ptr & 0xF000000000000000ull) != 0xF000000000000000ull);
 			return { handle.ptr };
 		}
 
-#if RESHADE_ADDON >= 2
 		D3D12_CPU_DESCRIPTOR_HANDLE convert_to_original_cpu_descriptor_handle(D3D12_CPU_DESCRIPTOR_HANDLE handle) const;
-#endif
 		D3D12_CPU_DESCRIPTOR_HANDLE convert_to_original_cpu_descriptor_handle(api::descriptor_table set, D3D12_DESCRIPTOR_HEAP_TYPE *type = nullptr) const;
 		D3D12_GPU_DESCRIPTOR_HANDLE convert_to_original_gpu_descriptor_handle(api::descriptor_table set) const;
 
@@ -144,10 +140,8 @@ namespace reshade::d3d12
 		void register_resource_view(D3D12_CPU_DESCRIPTOR_HANDLE handle, ID3D12Resource *resource, api::resource_view_desc desc);
 		void register_resource_view(D3D12_CPU_DESCRIPTOR_HANDLE handle, D3D12_CPU_DESCRIPTOR_HANDLE source_handle);
 
-#if RESHADE_ADDON >= 2
 		void register_descriptor_heap(D3D12DescriptorHeap *heap);
 		void unregister_descriptor_heap(D3D12DescriptorHeap *heap);
-#endif
 
 	private:
 		std::vector<command_queue_impl *> _queues;
@@ -159,12 +153,10 @@ namespace reshade::d3d12
 		descriptor_heap_gpu<D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV, 50000, 2048> _gpu_view_heap;
 
 		mutable std::shared_mutex _resource_mutex;
-#if RESHADE_ADDON >= 2
 		concurrency::concurrent_vector<D3D12DescriptorHeap *> _descriptor_heaps;
 		mutable std::shared_mutex _heap_gpu_ranges_mutex;
 		std::map<UINT64, std::pair<UINT64, D3D12DescriptorHeap *>> _heap_gpu_ranges; // start -> { end, heap }
 		std::map<D3D12_GPU_VIRTUAL_ADDRESS, std::tuple<UINT64, ID3D12Resource *, bool>> _buffer_gpu_addresses; // address -> { size, resource, acceleration_structure }
-#endif
 		std::unordered_map<SIZE_T, std::pair<ID3D12Resource *, api::resource_view_desc>> _views;
 
 		com_ptr<ID3D12PipelineState> _mipmap_pipeline;

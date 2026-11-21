@@ -185,34 +185,7 @@ namespace
 		ReShadeLogMessage ( GetModuleHandleW ( L"dxgi.dll" ), static_cast<int> ( reshade::log::level::info ), "Test application: a line through the add-on API from a module that is no add-on." );
 	}
 
-	// As the Log tab copies: the new lines only, every kept line once some went past unseen
-	void checkLogLines ()
-	{
-		const auto	isCheckLine = [] ( const std::string& line ) { return line.find ( "Test application: log line check " ) != std::string::npos; };
-		auto		seen = ultralog::lineCount ( reshade::ultra::mainLog () );
-		std::vector<std::string>	lines;
-
-		for ( auto i = 0; i < 3; ++i )
-			reshade::log::message ( reshade::log::level::info, "Test application: log line check %d.", i );
-
-		const auto	isNewOnly = ultralog::copyLines ( reshade::ultra::mainLog (), seen, lines ) && std::ranges::count_if ( lines, isCheckLine ) == 3 && lines.size () < 10;
-		constexpr size_t	unseen = 12000;
-		lines.clear ();
-
-		for ( size_t i = 0; i < unseen; ++i )
-			reshade::log::message ( reshade::log::level::info, "Test application: log line check past the kept lines, %zu.", i );
-
-		const auto	isRebuilt = ! ultralog::copyLines ( reshade::ultra::mainLog (), seen, lines ) && lines.size () < unseen && std::ranges::any_of ( lines, [] ( const std::string& line )
-		{
-			return line.find ( "kept lines, 11999." ) != std::string::npos;
-		} );
-
-		reshade::log::message ( isNewOnly && isRebuilt ? reshade::log::level::info : reshade::log::level::error,
-								"Test application: the Log tab's copy %s: new lines only %s, %zu kept lines after %zu unseen ones %s.", isNewOnly && isRebuilt ? "works" : "failed",
-								isNewOnly ? "yes" : "no", lines.size (), unseen, isRebuilt ? "rebuilt the view" : "did not rebuild it" );
-	}
-
-	// The logs an add-on or module opens: one of its own, opened twice, written, read back as a viewer does, and its file's lines
+	// The logs an add-on or module opens: one of its own, opened twice, written, and this run's lines in its file
 	void checkNamedLogs ()
 	{
 		constexpr uint64_t	size = uint64_t ( 64 ) << 10;
@@ -221,30 +194,18 @@ namespace
 		const auto			isWritten = reshade::logs::write ( log, reshade::logs::level::info, "named log line one\n" ) && reshade::logs::write ( log, reshade::logs::level::warning, "named log line two" )
 										&& reshade::logs::write ( log, reshade::logs::level::error, std::string ( 40000, 'x' ).c_str () ) && reshade::logs::flush ( log );
 
-		auto			seen = uint64_t ( 0 );
-		auto			isComplete = false;
-		std::string		lines;
-		const auto		isRead = reshade::logs::recent ( log, seen, lines, &isComplete );
-		const auto		count = std::ranges::count ( lines, '\n' );
-		const auto		isHeader = lines.starts_with ( "-- run start " ) && lines.find ( " build \"test build\"\n" ) != std::string::npos;
-		const auto		isCut = lines.find ( "(line cut)\n" ) != std::string::npos && lines.size () < 40000 + 400;
-
-		std::string		more;
-		const auto		isNothingNew = reshade::logs::recent ( log, seen, more ) && more.empty () && seen == 4;
-
-		std::string		first;
-		auto			again = uint64_t ( 0 );
-		const auto		isSmall = reshade::logs::recent ( log, again, first, nullptr, 20 ) && first.size () == 19 && first.back () == '\n' && again == 1;
-
-		std::ifstream	file ( g_reshade_base_path / L"testlog.log", std::ios::binary );
+		std::ifstream		file ( g_reshade_base_path / L"testlog.log", std::ios::binary );
 		const std::string	text ( ( std::istreambuf_iterator<char> ( file ) ), std::istreambuf_iterator<char> () );
-		const auto		isFile = text.find ( "| INFO  | named log line one\r\n" ) != std::string::npos && text.find ( "| WARN  | named log line two\r\n" ) != std::string::npos;
+		const auto			run = ultralog::lastRun ( text );
+		const auto			count = std::ranges::count ( run, '\n' );
+		const auto			isHeader = run.starts_with ( "-- run start " ) && run.find ( " build \"test build\"\r\n" ) != std::string_view::npos;
+		const auto			isCut = run.find ( "(line cut)\r\n" ) != std::string_view::npos && run.size () < 40000 + 400;
+		const auto			isLines = run.find ( "| INFO  | named log line one\r\n" ) != std::string_view::npos && run.find ( "| WARN  | named log line two\r\n" ) != std::string_view::npos;
 
-		const auto	isGood = isSame && isWritten && isRead && isComplete && count == 4 && isHeader && isCut && isNothingNew && isSmall && isFile;
+		const auto	isGood = isSame && isWritten && count == 4 && isHeader && isCut && isLines;
 		reshade::log::message ( isGood ? reshade::log::level::info : reshade::log::level::error,
-								"Test application: the named logs %s: same handle %s, written %s, read %s (%zu lines, complete %s, header %s, long line cut %s), nothing new %s, small buffer %s, file %s.",
-								isGood ? "work" : "failed", isSame ? "yes" : "no", isWritten ? "yes" : "no", isRead ? "yes" : "no", size_t ( count ), isComplete ? "yes" : "no",
-								isHeader ? "yes" : "no", isCut ? "yes" : "no", isNothingNew ? "yes" : "no", isSmall ? "yes" : "no", isFile ? "yes" : "no" );
+								"Test application: the named logs %s: same handle %s, written %s, %zu lines in the file (header %s, long line cut %s, lines %s).",
+								isGood ? "work" : "failed", isSame ? "yes" : "no", isWritten ? "yes" : "no", size_t ( count ), isHeader ? "yes" : "no", isCut ? "yes" : "no", isLines ? "yes" : "no" );
 	}
 
 	// Read through a volatile pointer, so the compiler can't see the null
@@ -384,9 +345,9 @@ reshade::ultra::TestOptions reshade::ultra::parseTestOptions ()
 			continue;
 		}
 
-		if ( isOption ( arg, L"-check-log-lines" ) )
+		if ( isOption ( arg, L"-check-named-logs" ) )
 		{
-			options.isCheckingLogLines = true;
+			options.isCheckingNamedLogs = true;
 			continue;
 		}
 
@@ -775,7 +736,7 @@ reshade::ultra::TestFrames::TestFrames ( const TestOptions& options, HWND window
 	: frames ( options.frames ), resizeAt ( options.resizeAt ), reloadEvery ( options.reloadEvery ), crashAt ( options.crashAt ), exitHandlerMs ( options.exitHandlerMs ),
 	  terminateAt ( options.terminateAt ), stressLines ( options.stressLines ),
 	  stressThreads ( options.stressThreads ), isLoggingFrames ( options.isLoggingFrames ), isLoggingThroughAddons ( options.isLoggingThroughAddons ),
-	  isCheckingLogLines ( options.isCheckingLogLines ), handledFaults ( options.handledFaults ), configAccesses ( options.configAccesses ), keys ( options.keys ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
+	  isCheckingNamedLogs ( options.isCheckingNamedLogs ), handledFaults ( options.handledFaults ), configAccesses ( options.configAccesses ), keys ( options.keys ), switches ( options.switches ), isBackground ( options.isBackground ), window ( window ),
 	  holdsClock ( options.frames != 0 || options.resizeAt.has_value () || options.reloadEvery != 0 || options.crashAt.has_value () || ! options.switches.empty () )
 {
 }
@@ -843,11 +804,8 @@ bool reshade::ultra::TestFrames::next ()
 	if ( current == 1 && isLoggingThroughAddons )
 		logThroughAddons ();
 
-	if ( current == 2 && isCheckingLogLines )
-	{
-		checkLogLines ();
+	if ( current == 2 && isCheckingNamedLogs )
 		checkNamedLogs ();
-	}
 
 	for ( const auto& access : configAccesses )
 		if ( access.frame == current )
@@ -1012,7 +970,7 @@ bool reshade::ultra::printTestUsage ()
 		"          -run-exclusive-at <frame>\n"
 		"Files     -watch <file>  -watch-folder <folder> <pattern>  -unwatch-at <frame>\n"
 		"Config    -set-config <frame> <section> <key> <value|->  -get-config <frame> <section> <key>\n"
-		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-log-lines  (the Log tab's copy, the named logs)  -crash-at <frame>  -handled-faults <n>\n"
+		"Log       -log-frames  -log-addons  -log-stress <lines> <threads>  -check-named-logs  -crash-at <frame>  -handled-faults <n>\n"
 		"Exit      -exit-handler <ms>  (an exit event handler that shows another thread alive, then sleeps ms)  -terminate-at <frame>\n"
 		"DLSS      -dlss <frames per mode>  -dlss-warmup <ms>  (D3D12, 64-bit: a game with DLSS Super Resolution and mode switches, checking itself)\n"
 		"          -dlss-streamline <folder>  -dlss-tags now|evaluate|present  -dlss-sl-track  -dlss-resize  -dlss-no-reset  -dlss-keep-compute\n"

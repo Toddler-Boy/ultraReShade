@@ -9,8 +9,6 @@
 #include <string>
 #include <vector>
 
-#if RESHADE_ADDON
-
 namespace reshade
 {
 	struct addon_info
@@ -23,31 +21,14 @@ namespace reshade
 
 		void *handle = nullptr;
 		std::string name;
-		std::string description;
 		std::string file;
-		std::string author;
-		std::string website_url;
-		std::string issues_url;
-		union version
-		{
-			struct number
-			{
-				uint16_t major;
-				uint16_t minor;
-				uint16_t build;
-				uint16_t revision;
-			} number;
-			uint64_t value;
-		} version = {};
 		uint32_t api_version = 0;
 		bool external = true;
 
 		std::vector<std::pair<uint32_t, void *>> event_callbacks;
 #if RESHADE_GUI
-		void(*settings_overlay_callback)(api::effect_runtime *) = nullptr;
 		std::vector<overlay_callback> overlay_callbacks;
 #endif
 	};
 }
 
-#endif

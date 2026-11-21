@@ -23,7 +23,7 @@ reshade::vulkan::device_impl::device_impl(
 	_dispatch_table(dispatch_table),
 	_enabled_features(enabled_features)
 {
-	{	VmaVulkanFunctions functions;
+	{	VmaVulkanFunctions functions = {};
 		functions.vkGetPhysicalDeviceProperties = dispatch_table.GetPhysicalDeviceProperties;
 		functions.vkGetPhysicalDeviceMemoryProperties = dispatch_table.GetPhysicalDeviceMemoryProperties;
 		functions.vkAllocateMemory = dispatch_table.AllocateMemory;
@@ -47,6 +47,9 @@ reshade::vulkan::device_impl::device_impl(
 		functions.vkBindBufferMemory2KHR = dispatch_table.BindBufferMemory2;
 		functions.vkBindImageMemory2KHR = dispatch_table.BindImageMemory2;
 		functions.vkGetPhysicalDeviceMemoryProperties2KHR = dispatch_table.GetPhysicalDeviceMemoryProperties2;
+#endif
+#if VMA_GET_PHYSICAL_DEVICE_PROPERTIES2
+		functions.vkGetPhysicalDeviceProperties2KHR = dispatch_table.GetPhysicalDeviceProperties2;
 #endif
 #if VMA_VULKAN_VERSION >= 1003000
 		functions.vkGetDeviceBufferMemoryRequirements = dispatch_table.GetDeviceBufferMemoryRequirements;
@@ -514,7 +517,8 @@ bool reshade::vulkan::device_impl::create_resource(const api::resource_desc &des
 					if (_alloc->AllocateMemory(
 							reqs, dedicated_allocation, prefers_dedicated_allocation,
 							object, VK_NULL_HANDLE,
-							VmaBufferImageUsage(create_info, _alloc->m_UseKhrMaintenance5),
+							VmaBufferImageUsage(create_info, _alloc->m_UseKhrMaintenance5 || _alloc->m_UseKhrExtendedFlags),
+							nullptr,
 							alloc_info,
 							VMA_SUBALLOCATION_TYPE_BUFFER,
 							1, &allocation) != VK_SUCCESS ||
@@ -627,7 +631,8 @@ bool reshade::vulkan::device_impl::create_resource(const api::resource_desc &des
 					if (_alloc->AllocateMemory(
 							reqs, dedicated_allocation, prefers_dedicated_allocation,
 							VK_NULL_HANDLE, object,
-							VmaBufferImageUsage(create_info),
+							VmaBufferImageUsage(create_info, _alloc->m_UseKhrExtendedFlags),
+							nullptr,
 							alloc_info,
 							create_info.tiling == VK_IMAGE_TILING_OPTIMAL ? VMA_SUBALLOCATION_TYPE_IMAGE_OPTIMAL : VMA_SUBALLOCATION_TYPE_IMAGE_LINEAR,
 							1, &allocation) != VK_SUCCESS ||

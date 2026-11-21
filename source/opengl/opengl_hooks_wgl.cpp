@@ -44,7 +44,6 @@ public:
 	{
 #define gl _dispatch_table
 
-#if RESHADE_ADDON
 		reshade::load_addons();
 
 		reshade::invoke_addon_event<reshade::addon_event::init_device>(this);
@@ -74,11 +73,9 @@ public:
 
 		reshade::invoke_addon_event<reshade::addon_event::init_command_list>(this);
 		reshade::invoke_addon_event<reshade::addon_event::init_command_queue>(this);
-#endif
 	}
 	~wgl_device()
 	{
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::destroy_command_queue>(this);
 		reshade::invoke_addon_event<reshade::addon_event::destroy_command_list>(this);
 
@@ -88,7 +85,6 @@ public:
 		reshade::invoke_addon_event<reshade::addon_event::destroy_device>(this);
 
 		reshade::unload_addons();
-#endif
 	}
 
 	auto get_pixel_format() const { return _pixel_format; }
@@ -118,17 +114,13 @@ public:
 	wgl_device_context(wgl_device *device, HGLRC hglrc) :
 		device_context_impl(device, hglrc)
 	{
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::init_command_list>(this);
 		reshade::invoke_addon_event<reshade::addon_event::init_command_queue>(this);
-#endif
 	}
 	~wgl_device_context()
 	{
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::destroy_command_queue>(this);
 		reshade::invoke_addon_event<reshade::addon_event::destroy_command_list>(this);
-#endif
 	}
 };
 
@@ -171,7 +163,6 @@ public:
 		_last_height = height;
 		_init_effect_runtime = true;
 
-#if RESHADE_ADDON
 		const auto device = static_cast<wgl_device *>(_device);
 
 		reshade::invoke_addon_event<reshade::addon_event::init_swapchain>(this, resize);
@@ -207,7 +198,6 @@ public:
 			g_opengl_context,
 			1, &default_rtv,
 			device->_default_depth_format != reshade::api::format::unknown ? default_dsv : reshade::api::resource_view {});
-#endif
 	}
 	void on_reset([[maybe_unused]] bool resize)
 	{
@@ -219,7 +209,6 @@ public:
 		_last_width = 0;
 		_last_height = 0;
 
-#if RESHADE_ADDON
 		const auto device = static_cast<wgl_device *>(_device);
 
 		if (device->_default_depth_format != reshade::api::format::unknown)
@@ -231,7 +220,6 @@ public:
 		reshade::invoke_addon_event<reshade::addon_event::destroy_resource_view>(device, default_rtv);
 
 		reshade::invoke_addon_event<reshade::addon_event::destroy_swapchain>(this, resize);
-#endif
 	}
 	void on_present()
 	{
@@ -267,12 +255,10 @@ public:
 			_init_effect_runtime = false;
 		}
 
-#if RESHADE_ADDON
 		// Behave as if immediate command list is flushed
 		reshade::invoke_addon_event<reshade::addon_event::execute_command_list>(g_opengl_context, g_opengl_context);
 
 		reshade::invoke_addon_event<reshade::addon_event::present>(g_opengl_context, this, nullptr, nullptr, 0, nullptr);
-#endif
 
 		// Assume that the correct OpenGL context is still current here
 		reshade::present_effect_runtime(this);
@@ -282,9 +268,7 @@ public:
 		if (_last_width == 0 && _last_height == 0)
 			return;
 
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::finish_present>(g_opengl_context, this);
-#endif
 	}
 
 private:
@@ -498,7 +482,6 @@ extern "C" BOOL  WINAPI wglSetPixelFormat(HDC hdc, int iPixelFormat, const PIXEL
 {
 	reshade::log::message(reshade::log::level::info, "Redirecting wglSetPixelFormat(hdc = %p, iPixelFormat = %d, ppfd = %p) ...", hdc, iPixelFormat, ppfd);
 
-#if RESHADE_ADDON
 	reshade::load_addons();
 
 	const HWND hwnd = WindowFromDC(hdc);
@@ -628,7 +611,6 @@ extern "C" BOOL  WINAPI wglSetPixelFormat(HDC hdc, int iPixelFormat, const PIXEL
 
 	// This is not great, since it will mean add-ons are loaded/unloaded multiple times, but otherwise they will never be unloaded
 	reshade::unload_addons();
-#endif
 
 	if (!reshade::hooks::call(wglSetPixelFormat)(hdc, iPixelFormat, ppfd))
 	{
@@ -749,7 +731,6 @@ HGLRC            WINAPI wglCreateContextAttribsARB(HDC hdc, HGLRC hShareContext,
 		}
 	}
 
-#if RESHADE_ADDON >= 2
 	reshade::load_addons();
 
 	uint32_t api_version = (major << 12) | (minor << 8);
@@ -760,7 +741,6 @@ HGLRC            WINAPI wglCreateContextAttribsARB(HDC hdc, HGLRC hShareContext,
 	}
 
 	reshade::unload_addons();
-#endif
 
 	if (major < 3 || (major == 3 && minor < 2))
 		compatibility = true;
@@ -1388,7 +1368,6 @@ extern "C" PROC  WINAPI wglGetProcAddress(LPCSTR lpszProc)
 	if (lpszProc == nullptr)
 		return nullptr;
 
-#if RESHADE_ADDON
 	// Redirect some old extension functions to their modern variants in core OpenGL
 	#pragma region GL_ARB_draw_instanced
 	else if (0 == std::strcmp(lpszProc, "glDrawArraysInstancedARB"))
@@ -1460,7 +1439,6 @@ extern "C" PROC  WINAPI wglGetProcAddress(LPCSTR lpszProc)
 	else if (0 == std::strcmp(lpszProc, "glGenerateMipmapEXT"))
 		lpszProc = "glGenerateMipmap";
 	#pragma endregion
-#endif
 
 	static const auto trampoline = reshade::hooks::call(wglGetProcAddress);
 
@@ -1603,7 +1581,6 @@ extern "C" PROC  WINAPI wglGetProcAddress(LPCSTR lpszProc)
 			return reinterpret_cast<PROC>(name)
 #endif
 
-#if RESHADE_ADDON
 #ifdef GL_VERSION_1_2
 		RESHADE_OPENGL_HOOK_PROC(glTexImage3D);
 		RESHADE_OPENGL_HOOK_PROC(glTexSubImage3D);
@@ -1804,7 +1781,6 @@ extern "C" PROC  WINAPI wglGetProcAddress(LPCSTR lpszProc)
 
 		// GL_EXT_direct_state_access
 		RESHADE_OPENGL_HOOK_PROC(glBindMultiTextureEXT);
-#endif
 
 		// WGL_ARB_create_context
 		RESHADE_OPENGL_HOOK_PROC(wglCreateContextAttribsARB);

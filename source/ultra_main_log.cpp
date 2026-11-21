@@ -3,13 +3,11 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#include <algorithm>
 #include <atomic>
 #include <cstring>
 #include <filesystem>
 #include <intrin.h>
 #include <string>
-#include <vector>
 
 #include <Windows.h>
 
@@ -67,7 +65,7 @@ bool reshade::ultra::openMainLog ()
 	mainLogId = opened.id;
 
 	if ( opened.status == ultralog::OpenStatus::fileFailed )
-		log::message ( log::level::error, "Opening '%s' failed with Windows error %d: its lines are kept in memory only.", ( g_reshade_base_path / L"reshade.log" ).u8string ().c_str (),
+		log::message ( log::level::error, "Opening '%s' failed with Windows error %d: its lines are not written.", ( g_reshade_base_path / L"reshade.log" ).u8string ().c_str (),
 					   opened.error.value () );
 
 	return opened.status == ultralog::OpenStatus::opened;
@@ -123,7 +121,7 @@ uint64_t ReShadeLogOpen ( const char* name, uint64_t max_bytes, const char* buil
 			break;
 
 		case ultralog::OpenStatus::fileFailed:
-			reshade::log::message ( reshade::log::level::error, "Log '%.64s': opening its file failed with Windows error %d, its lines are kept in memory only.", std::string ( text ).c_str (),
+			reshade::log::message ( reshade::log::level::error, "Log '%.64s': opening its file failed with Windows error %d, its lines are not written.", std::string ( text ).c_str (),
 									opened.error.value () );
 			break;
 
@@ -188,62 +186,6 @@ bool ReShadeLogFlush ( uint64_t log )
 	}
 
 	ultralog::flush ( id );
-	return true;
-}
-//-----------------------------------------------------------------------------
-
-bool ReShadeLogRecent ( uint64_t log, uint64_t* seen, char* text, size_t* size, bool* is_complete )
-{
-	static std::atomic<bool>	isHandleReported;
-	static std::atomic<bool>	isArgumentReported;
-
-	const auto	id = fromHandle ( log );
-
-	if ( id == ultralog::none )
-	{
-		refuseOnce ( isHandleReported, _ReturnAddress (), "The recent lines were asked of a log that is not open (a handle ReShadeLogOpen did not give)." );
-		return false;
-	}
-
-	if ( seen == nullptr || size == nullptr || ( text != nullptr && *size < 2 ) )
-	{
-		refuseOnce ( isArgumentReported, _ReturnAddress (), "The recent lines of a log were asked without a place for them (seen or size missing, or a buffer under 2 bytes)." );
-		return false;
-	}
-
-	std::vector<std::string>	lines;
-	auto						next = *seen;
-	const auto					isComplete = ultralog::copyLines ( id, next, lines, text != nullptr ? *size - 1 : SIZE_MAX );
-
-	if ( is_complete != nullptr )
-		*is_complete = isComplete;
-
-	if ( text == nullptr )
-	{
-		*size = 1;
-
-		for ( const auto& line : lines )
-			*size += line.size ();
-
-		return true;
-	}
-
-	// Only the first line can be longer than the buffer: it is cut and still ends in a newline
-	auto	used = size_t ( 0 );
-
-	for ( const auto& line : lines )
-	{
-		const auto	part = std::min ( line.size (), *size - 1 - used );
-		std::memcpy ( text + used, line.data (), part );
-		used += part;
-
-		if ( part < line.size () )
-			text[ used - 1 ] = '\n';
-	}
-
-	text[ used ] = '\0';
-	*size = used + 1;
-	*seen = next;
 	return true;
 }
 //-----------------------------------------------------------------------------

@@ -43,10 +43,6 @@ RESHADE_API_LIBRARY_DECL void ReShadeRegisterOverlayForAddon(void *module, const
 RESHADE_API_LIBRARY_DECL void ReShadeUnregisterOverlay(const char *title, void(*callback)(reshade::api::effect_runtime *runtime));
 RESHADE_API_LIBRARY_DECL void ReShadeUnregisterOverlayForAddon(void *module, const char *title, void(*callback)(reshade::api::effect_runtime *runtime));
 
-RESHADE_API_LIBRARY_DECL bool ReShadeCreateEffectRuntime(reshade::api::device_api api, void *opaque_device, void *opaque_command_queue, void *opaque_swapchain, const char *config_path, reshade::api::effect_runtime **out_runtime);
-RESHADE_API_LIBRARY_DECL void ReShadeDestroyEffectRuntime(reshade::api::effect_runtime *runtime);
-RESHADE_API_LIBRARY_DECL void ReShadeUpdateAndPresentEffectRuntime(reshade::api::effect_runtime *runtime);
-
 #else
 
 #include <Windows.h>
@@ -339,7 +335,7 @@ namespace reshade
 	/// Registers an overlay with ReShade.
 	/// <para>The callback function is then called when the overlay is visible and allows adding Dear ImGui widgets for user interaction.</para>
 	/// </summary>
-	/// <param name="title">Null-terminated title string, or <see langword="nullptr"/> to register a settings overlay for this add-on.</param>
+	/// <param name="title">Null-terminated title string, which is the title of the overlay's tab.</param>
 	/// <param name="callback">Pointer to the callback function.</param>
 	inline void register_overlay(const char *title, void(*callback)(api::effect_runtime *runtime))
 	{
@@ -366,62 +362,6 @@ namespace reshade
 			GetProcAddress(internal::get_reshade_module_handle(), "ReShadeUnregisterOverlay"));
 		if (func != nullptr)
 			func(title, callback);
-#endif
-	}
-
-	/// <summary>
-	/// Creates a new effect runtime for an existing swap chain, for when it was not already hooked by ReShade (e.g. because the RESHADE_DISABLE_GRAPHICS_HOOK environment variable is set).
-	/// </summary>
-	/// <param name="api">Underlying graphics API used.</param>
-	/// <param name="device">'IDirect3DDevice9', 'ID3D10Device', 'ID3D11Device', 'ID3D12Device', 'HGLRC' or 'VkDevice', depending on the graphics API.</param>
-	/// <param name="command_queue">'ID3D11DeviceContext', 'ID3D12CommandQueue', or 'VkQueue', depending on the graphics API.</param>
-	/// <param name="swapchain">'IDirect3DSwapChain9', 'IDXGISwapChain', 'HDC' or 'VkSwapchainKHR', depending on the graphics API.</param>
-	/// <param name="config_path">Path to the configuration file the effect runtime should use.</param>
-	/// <param name="out_runtime">Pointer to a variable that is set to the pointer of the created effect runtime.</param>
-	/// <returns><see langword="true"/> if the effect_runtime was successfully created, <see langword="false"/> otherwise (in this case <paramref name="out_runtime"/> is set to <see langword="nullptr"/>).</returns>
-	inline bool create_effect_runtime(reshade::api::device_api api, void *device, void *command_queue, void *swapchain, const char *config_path, reshade::api::effect_runtime **out_runtime)
-	{
-#if defined(RESHADE_API_LIBRARY)
-		return ReShadeCreateEffectRuntime(api, device, command_queue, swapchain, config_path, out_runtime);
-#else
-		static const auto func = reinterpret_cast<bool(*)(reshade::api::device_api, void *, void *, void *, const char *, reshade::api::effect_runtime **)>(
-			GetProcAddress(internal::get_reshade_module_handle(), "ReShadeCreateEffectRuntime"));
-		if (func == nullptr)
-		{
-			*out_runtime = nullptr;
-			return false;
-		}
-		return func(api, device, command_queue, swapchain, config_path, out_runtime);
-#endif
-	}
-	/// <summary>
-	/// Instantly destroys an effect runtime that was previously created via <see cref="create_effect_runtime"/>.
-	/// Do not call this with effect runtimes that were automatically created by ReShade!
-	/// </summary>
-	inline void destroy_effect_runtime(api::effect_runtime *runtime)
-	{
-#if defined(RESHADE_API_LIBRARY)
-		ReShadeDestroyEffectRuntime(runtime);
-#else
-		static const auto func = reinterpret_cast<void(*)(reshade::api::effect_runtime *)>(
-			GetProcAddress(internal::get_reshade_module_handle(), "ReShadeDestroyEffectRuntime"));
-		if (func != nullptr)
-			func(runtime);
-#endif
-	}
-	/// <summary>
-	/// Updates and renders an effect runtime onto the current back buffer of the swap chain it was created with.
-	/// Do not call this with effect runtimes that were automatically created by ReShade!
-	/// </summary>
-	inline void update_and_present_effect_runtime(api::effect_runtime *runtime)
-	{
-#if defined(RESHADE_API_LIBRARY)
-		ReShadeUpdateAndPresentEffectRuntime(runtime);
-#else
-		static const auto func = reinterpret_cast<void(*)(reshade::api::effect_runtime *)>(
-			GetProcAddress(internal::get_reshade_module_handle(), "ReShadeUpdateAndPresentEffectRuntime"));
-		if (func != nullptr)
-			func(runtime);
 #endif
 	}
 }

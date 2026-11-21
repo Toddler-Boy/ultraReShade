@@ -5,8 +5,6 @@
 
 #pragma once
 
-#if RESHADE_ADDON
-
 class Direct3DDevice9;
 
 class DECLSPEC_UUID("0F433AEB-B389-4589-81A7-9DB59F34CB55") Direct3DDepthStencilSurface9 final : public IDirect3DSurface9
@@ -46,10 +44,6 @@ private:
 
 	const D3DSURFACE_DESC _orig_desc;
 };
-
-#endif
-
-#if RESHADE_ADDON >= 2
 
 #undef IDirect3DSurface9_LockRect
 #undef IDirect3DSurface9_UnlockRect
@@ -93,4 +87,3 @@ HRESULT STDMETHODCALLTYPE IDirect3DVertexBuffer9_Unlock(IDirect3DVertexBuffer9 *
 HRESULT STDMETHODCALLTYPE IDirect3DIndexBuffer9_Lock(IDirect3DIndexBuffer9 *pIndexBuffer, UINT OffsetToLock, UINT SizeToLock, void **ppbData, DWORD Flags);
 HRESULT STDMETHODCALLTYPE IDirect3DIndexBuffer9_Unlock(IDirect3DIndexBuffer9 *pIndexBuffer);
 
-#endif

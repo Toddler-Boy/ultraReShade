@@ -6,7 +6,6 @@
 #include "d3d12_device.hpp"
 #include "d3d12_command_list.hpp"
 #include "d3d12_command_queue.hpp"
-#include "d3d12_command_queue_downlevel.hpp"
 #include "dll_log.hpp"
 #include "com_utils.hpp"
 #include "addon_manager.hpp"
@@ -18,15 +17,11 @@ D3D12CommandQueue::D3D12CommandQueue(D3D12Device *device, ID3D12CommandQueue *or
 	// Explicitly add a reference to the device, to ensure it stays valid for the lifetime of this queue object
 	static_cast<D3D12Device *>(_device)->AddRef();
 
-#if RESHADE_ADDON
 	reshade::invoke_addon_event<reshade::addon_event::init_command_queue>(this);
-#endif
 }
 D3D12CommandQueue::~D3D12CommandQueue()
 {
-#if RESHADE_ADDON
 	reshade::invoke_addon_event<reshade::addon_event::destroy_command_queue>(this);
-#endif
 
 	// Release the device reference below at the end of 'D3D12CommandQueue::Release' rather than here, since the '~command_queue_impl' destructor still has to run with the device alive
 }
@@ -89,22 +84,6 @@ HRESULT STDMETHODCALLTYPE D3D12CommandQueue::QueryInterface(REFIID riid, void **
 		return S_OK;
 	}
 
-	// Special case for d3d12on7
-	if (riid == __uuidof(ID3D12CommandQueueDownlevel)) // {38A8C5EF-7CCB-4E81-914F-A6E9D072C494}
-	{
-		if (_downlevel == nullptr)
-		{
-			// Not a 'com_ptr' since D3D12CommandQueueDownlevel will take ownership
-			ID3D12CommandQueueDownlevel *downlevel = nullptr;
-			if (SUCCEEDED(_orig->QueryInterface(&downlevel)))
-				_downlevel = new D3D12CommandQueueDownlevel(this, downlevel);
-		}
-
-		if (_downlevel != nullptr)
-			return _downlevel->QueryInterface(riid, ppvObj);
-		return E_NOINTERFACE;
-	}
-
 	return _orig->QueryInterface(riid, ppvObj);
 }
 ULONG   STDMETHODCALLTYPE D3D12CommandQueue::AddRef()
@@ -119,13 +98,6 @@ ULONG   STDMETHODCALLTYPE D3D12CommandQueue::Release()
 	{
 		_orig->Release();
 		return ref;
-	}
-
-	if (_downlevel != nullptr)
-	{
-		// Release the reference that was added when the downlevel interface was first queried in 'QueryInterface' above
-		_downlevel->_orig->Release();
-		delete _downlevel;
 	}
 
 	const auto orig = _orig;
@@ -188,9 +160,7 @@ void    STDMETHODCALLTYPE D3D12CommandQueue::ExecuteCommandLists(UINT NumCommand
 		if (com_ptr<D3D12GraphicsCommandList> command_list_proxy;
 			SUCCEEDED(ppCommandLists[i]->QueryInterface(&command_list_proxy)))
 		{
-#if RESHADE_ADDON
 			reshade::invoke_addon_event<reshade::addon_event::execute_command_list>(this, command_list_proxy.get());
-#endif
 
 			// Get original command list pointer from proxy object
 			command_lists[i] = command_list_proxy->_orig;

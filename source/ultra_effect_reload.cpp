@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON
-
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -265,7 +263,7 @@ void reshade::runtime::ultra_reload_changed_effects ()
 
 		if ( file.extension () == L".fxh" || it == _effects.end () || ! std::filesystem::exists ( file, error ) )
 			isAll = true;
-		else if ( ! it->skipped )
+		else
 			due.push_back ( static_cast<size_t> ( it - _effects.begin () ) );
 	}
 
@@ -295,4 +293,3 @@ void reshade::runtime::ultra_reload_changed_effects ()
 }
 //-----------------------------------------------------------------------------
 
-#endif

@@ -554,7 +554,7 @@ namespace
 		return line.find ( "| ERROR |" ) != std::string::npos;
 	}
 
-	// This run's lines in the file (it holds the runs before too), and the recent lines in memory for any the file dropped
+	// This run's lines in the file (it holds the runs before too)
 	[[ nodiscard ]] bool logHasErrors ()
 	{
 		ultralog::flushAll ();
@@ -567,11 +567,7 @@ namespace
 			if ( isError ( line ) )
 				return true;
 
-		uint64_t					seen = 0;
-		std::vector<std::string>	recent;
-		(void) ultralog::copyLines ( reshade::ultra::mainLog (), seen, recent );
-
-		return std::ranges::any_of ( recent, isError );
+		return false;
 	}
 }
 //-----------------------------------------------------------------------------

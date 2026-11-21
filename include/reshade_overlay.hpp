@@ -6,14 +6,14 @@
 
 #if defined(IMGUI_VERSION_NUM)
 
-#if IMGUI_VERSION_NUM != 19250
-#error Unexpected ImGui version, please update the "imgui.h" header to version 19250!
+#if IMGUI_VERSION_NUM != 19300
+#error Unexpected ImGui version, please update the "imgui.h" header to version 19300!
 #endif
 
 // Check that the 'ImTextureID' type has the same size as 'reshade::api::resource_view'
 static_assert(sizeof(ImTextureID) == 8, "missing \"#define ImTextureID ImU64\" before \"#include <imgui.h>\"");
 
-struct imgui_function_table_19250
+struct imgui_function_table_19300
 {
 	ImGuiIO&(*GetIO)();
 	ImGuiStyle&(*GetStyle)();
@@ -192,7 +192,6 @@ struct imgui_function_table_19250
 	bool(*ColorPicker3)(const char* label, float col[3], ImGuiColorEditFlags flags);
 	bool(*ColorPicker4)(const char* label, float col[4], ImGuiColorEditFlags flags, const float* ref_col);
 	bool(*ColorButton)(const char* desc_id, const ImVec4& col, ImGuiColorEditFlags flags, const ImVec2& size);
-	void(*SetColorEditOptions)(ImGuiColorEditFlags flags);
 	bool(*TreeNode)(const char* label);
 	bool(*TreeNodeV)(const char* str_id, const char* fmt, va_list args);
 	bool(*TreeNodeV2)(const void* ptr_id, const char* fmt, va_list args);
@@ -207,6 +206,7 @@ struct imgui_function_table_19250
 	bool(*CollapsingHeader2)(const char* label, bool* p_visible, ImGuiTreeNodeFlags flags);
 	void(*SetNextItemOpen)(bool is_open, ImGuiCond cond);
 	void(*SetNextItemStorageID)(ImGuiID storage_id);
+	bool(*TreeNodeGetOpen)(ImGuiID storage_id);
 	bool(*Selectable)(const char* label, bool selected, ImGuiSelectableFlags flags, const ImVec2& size);
 	bool(*Selectable2)(const char* label, bool* p_selected, ImGuiSelectableFlags flags, const ImVec2& size);
 	ImGuiMultiSelectIO*(*BeginMultiSelect)(ImGuiMultiSelectFlags flags, int selection_size, int items_count);
@@ -241,9 +241,9 @@ struct imgui_function_table_19250
 	bool(*BeginPopup)(const char* str_id, ImGuiWindowFlags flags);
 	bool(*BeginPopupModal)(const char* name, bool* p_open, ImGuiWindowFlags flags);
 	void(*EndPopup)();
-	void(*OpenPopup)(const char* str_id, ImGuiPopupFlags popup_flags);
-	void(*OpenPopup2)(ImGuiID id, ImGuiPopupFlags popup_flags);
-	void(*OpenPopupOnItemClick)(const char* str_id, ImGuiPopupFlags popup_flags);
+	bool(*OpenPopup)(const char* str_id, ImGuiPopupFlags popup_flags);
+	bool(*OpenPopup2)(ImGuiID id, ImGuiPopupFlags popup_flags);
+	bool(*OpenPopupOnItemClick)(const char* str_id, ImGuiPopupFlags popup_flags);
 	void(*CloseCurrentPopup)();
 	bool(*BeginPopupContextItem)(const char* str_id, ImGuiPopupFlags popup_flags);
 	bool(*BeginPopupContextWindow)(const char* str_id, ImGuiPopupFlags popup_flags);
@@ -254,7 +254,7 @@ struct imgui_function_table_19250
 	void(*TableNextRow)(ImGuiTableRowFlags row_flags, float min_row_height);
 	bool(*TableNextColumn)();
 	bool(*TableSetColumnIndex)(int column_n);
-	void(*TableSetupColumn)(const char* label, ImGuiTableColumnFlags flags, float init_width_or_weight, ImGuiID user_id);
+	void(*TableSetupColumn)(const char* label, ImGuiTableColumnFlags flags, float init_width_or_weight, ImGuiID user_data);
 	void(*TableSetupScrollFreeze)(int cols, int rows);
 	void(*TableHeader)(const char* label);
 	void(*TableHeadersRow)();
@@ -319,6 +319,8 @@ struct imgui_function_table_19250
 	ImVec2(*GetItemRectMin)();
 	ImVec2(*GetItemRectMax)();
 	ImVec2(*GetItemRectSize)();
+	ImGuiItemFlags(*GetItemFlags)();
+	int(*GetItemClickedCountWithSingleClickDelay)(ImGuiMouseButton mouse_button, float delay);
 	ImDrawList*(*GetBackgroundDrawList)(ImGuiViewport* viewport);
 	ImDrawList*(*GetForegroundDrawList)(ImGuiViewport* viewport);
 	bool(*IsRectVisible)(const ImVec2& size);
@@ -343,7 +345,7 @@ struct imgui_function_table_19250
 	void(*SetNextFrameWantCaptureKeyboard)(bool want_capture_keyboard);
 	bool(*Shortcut)(ImGuiKeyChord key_chord, ImGuiInputFlags flags);
 	void(*SetNextItemShortcut)(ImGuiKeyChord key_chord, ImGuiInputFlags flags);
-	void(*SetItemKeyOwner)(ImGuiKey key);
+	bool(*SetItemKeyOwner)(ImGuiKey key);
 	bool(*IsMouseDown)(ImGuiMouseButton button);
 	bool(*IsMouseClicked)(ImGuiMouseButton button, bool repeat);
 	bool(*IsMouseReleased)(ImGuiMouseButton button);
@@ -395,26 +397,29 @@ struct imgui_function_table_19250
 	void(*ImDrawList_PopClipRect)(ImDrawList *_this);
 	void(*ImDrawList_PushTexture)(ImDrawList *_this, ImTextureRef tex_ref);
 	void(*ImDrawList_PopTexture)(ImDrawList *_this);
-	void(*ImDrawList_AddLine)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness);
-	void(*ImDrawList_AddRect)(ImDrawList *_this, const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding, ImDrawFlags flags, float thickness);
+	void(*ImDrawList_PushDrawFlag)(ImDrawList *_this, ImDrawFlags flags, bool enabled);
+	void(*ImDrawList_PopDrawFlag)(ImDrawList *_this);
+	void(*ImDrawList_AddLine)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness, ImDrawFlags flags);
+	void(*ImDrawList_AddLineH)(ImDrawList *_this, float min_x, float max_x, float y, ImU32 col, float thickness, ImDrawFlags flags);
+	void(*ImDrawList_AddLineV)(ImDrawList *_this, float x, float min_y, float max_y, ImU32 col, float thickness, ImDrawFlags flags);
+	void(*ImDrawList_AddRect)(ImDrawList *_this, const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding, float thickness, ImDrawFlags flags);
 	void(*ImDrawList_AddRectFilled)(ImDrawList *_this, const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding, ImDrawFlags flags);
 	void(*ImDrawList_AddRectFilledMultiColor)(ImDrawList *_this, const ImVec2& p_min, const ImVec2& p_max, ImU32 col_upr_left, ImU32 col_upr_right, ImU32 col_bot_right, ImU32 col_bot_left);
-	void(*ImDrawList_AddQuad)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness);
+	void(*ImDrawList_AddQuad)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness, ImDrawFlags flags);
 	void(*ImDrawList_AddQuadFilled)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col);
-	void(*ImDrawList_AddTriangle)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness);
+	void(*ImDrawList_AddTriangle)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness, ImDrawFlags flags);
 	void(*ImDrawList_AddTriangleFilled)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col);
-	void(*ImDrawList_AddCircle)(ImDrawList *_this, const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness);
+	void(*ImDrawList_AddCircle)(ImDrawList *_this, const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness, ImDrawFlags flags);
 	void(*ImDrawList_AddCircleFilled)(ImDrawList *_this, const ImVec2& center, float radius, ImU32 col, int num_segments);
-	void(*ImDrawList_AddNgon)(ImDrawList *_this, const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness);
+	void(*ImDrawList_AddNgon)(ImDrawList *_this, const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness, ImDrawFlags flags);
 	void(*ImDrawList_AddNgonFilled)(ImDrawList *_this, const ImVec2& center, float radius, ImU32 col, int num_segments);
-	void(*ImDrawList_AddEllipse)(ImDrawList *_this, const ImVec2& center, const ImVec2& radius, ImU32 col, float rot, int num_segments, float thickness);
+	void(*ImDrawList_AddEllipse)(ImDrawList *_this, const ImVec2& center, const ImVec2& radius, ImU32 col, float rot, int num_segments, float thickness, ImDrawFlags flags);
 	void(*ImDrawList_AddEllipseFilled)(ImDrawList *_this, const ImVec2& center, const ImVec2& radius, ImU32 col, float rot, int num_segments);
 	void(*ImDrawList_AddText)(ImDrawList *_this, const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end);
 	void(*ImDrawList_AddText2)(ImDrawList *_this, ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end, float wrap_width, const ImVec4* cpu_fine_clip_rect);
-	void(*ImDrawList_AddBezierCubic)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness, int num_segments);
-	void(*ImDrawList_AddBezierQuadratic)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness, int num_segments);
-	void(*ImDrawList_AddPolyline)(ImDrawList *_this, const ImVec2* points, int num_points, ImU32 col, ImDrawFlags flags, float thickness);
-	void(*ImDrawList_AddConvexPolyFilled)(ImDrawList *_this, const ImVec2* points, int num_points, ImU32 col);
+	void(*ImDrawList_AddBezierCubic)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness, int num_segments, ImDrawFlags flags);
+	void(*ImDrawList_AddBezierQuadratic)(ImDrawList *_this, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness, int num_segments, ImDrawFlags flags);
+	void(*ImDrawList_AddConvexPolyFilled)(ImDrawList *_this, const ImVec2* points, int num_points, ImU32 col, ImDrawFlags flags);
 	void(*ImDrawList_AddConcavePolyFilled)(ImDrawList *_this, const ImVec2* points, int num_points, ImU32 col);
 	void(*ImDrawList_AddImage)(ImDrawList *_this, ImTextureRef tex_ref, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min, const ImVec2& uv_max, ImU32 col);
 	void(*ImDrawList_AddImageQuad)(ImDrawList *_this, ImTextureRef tex_ref, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, const ImVec2& uv1, const ImVec2& uv2, const ImVec2& uv3, const ImVec2& uv4, ImU32 col);
@@ -433,13 +438,14 @@ struct imgui_function_table_19250
 	void(*ImDrawList_PrimRect)(ImDrawList *_this, const ImVec2& a, const ImVec2& b, ImU32 col);
 	void(*ImDrawList_PrimRectUV)(ImDrawList *_this, const ImVec2& a, const ImVec2& b, const ImVec2& uv_a, const ImVec2& uv_b, ImU32 col);
 	void(*ImDrawList_PrimQuadUV)(ImDrawList *_this, const ImVec2& a, const ImVec2& b, const ImVec2& c, const ImVec2& d, const ImVec2& uv_a, const ImVec2& uv_b, const ImVec2& uv_c, const ImVec2& uv_d, ImU32 col);
+	void(*ImDrawList__AddPolyline)(ImDrawList *_this, const ImVec2* points, int num_points, ImU32 col, float thickness, ImDrawFlags flags, float max_inner_offset);
 	void(*ConstructImFont)(ImFont *_this);
 	void(*DestructImFont)(ImFont *_this);
 	bool(*ImFont_IsGlyphInFont)(ImFont *_this, ImWchar c);
 
 };
 
-using imgui_function_table = imgui_function_table_19250;
+using imgui_function_table = imgui_function_table_19300;
 
 inline const imgui_function_table *&imgui_function_table_instance()
 {
@@ -634,7 +640,6 @@ namespace ImGui
 	inline bool ColorPicker3(const char* label, float col[3], ImGuiColorEditFlags flags) { return imgui_function_table_instance()->ColorPicker3(label, col, flags); }
 	inline bool ColorPicker4(const char* label, float col[4], ImGuiColorEditFlags flags, const float* ref_col) { return imgui_function_table_instance()->ColorPicker4(label, col, flags, ref_col); }
 	inline bool ColorButton(const char* desc_id, const ImVec4& col, ImGuiColorEditFlags flags, const ImVec2& size) { return imgui_function_table_instance()->ColorButton(desc_id, col, flags, size); }
-	inline void SetColorEditOptions(ImGuiColorEditFlags flags) { imgui_function_table_instance()->SetColorEditOptions(flags); }
 	inline bool TreeNode(const char* label) { return imgui_function_table_instance()->TreeNode(label); }
 	inline bool TreeNode(const char* str_id, const char* fmt, ...) { va_list args; va_start(args, fmt); return imgui_function_table_instance()->TreeNodeV(str_id, fmt, args); va_end(args); }
 	inline bool TreeNode(const void* ptr_id, const char* fmt, ...) { va_list args; va_start(args, fmt); return imgui_function_table_instance()->TreeNodeV2(ptr_id, fmt, args); va_end(args); }
@@ -653,6 +658,7 @@ namespace ImGui
 	inline bool CollapsingHeader(const char* label, bool* p_visible, ImGuiTreeNodeFlags flags) { return imgui_function_table_instance()->CollapsingHeader2(label, p_visible, flags); }
 	inline void SetNextItemOpen(bool is_open, ImGuiCond cond) { imgui_function_table_instance()->SetNextItemOpen(is_open, cond); }
 	inline void SetNextItemStorageID(ImGuiID storage_id) { imgui_function_table_instance()->SetNextItemStorageID(storage_id); }
+	inline bool TreeNodeGetOpen(ImGuiID storage_id) { return imgui_function_table_instance()->TreeNodeGetOpen(storage_id); }
 	inline bool Selectable(const char* label, bool selected, ImGuiSelectableFlags flags, const ImVec2& size) { return imgui_function_table_instance()->Selectable(label, selected, flags, size); }
 	inline bool Selectable(const char* label, bool* p_selected, ImGuiSelectableFlags flags, const ImVec2& size) { return imgui_function_table_instance()->Selectable2(label, p_selected, flags, size); }
 	inline ImGuiMultiSelectIO* BeginMultiSelect(ImGuiMultiSelectFlags flags, int selection_size, int items_count) { return imgui_function_table_instance()->BeginMultiSelect(flags, selection_size, items_count); }
@@ -689,9 +695,9 @@ namespace ImGui
 	inline bool BeginPopup(const char* str_id, ImGuiWindowFlags flags) { return imgui_function_table_instance()->BeginPopup(str_id, flags); }
 	inline bool BeginPopupModal(const char* name, bool* p_open, ImGuiWindowFlags flags) { return imgui_function_table_instance()->BeginPopupModal(name, p_open, flags); }
 	inline void EndPopup() { imgui_function_table_instance()->EndPopup(); }
-	inline void OpenPopup(const char* str_id, ImGuiPopupFlags popup_flags) { imgui_function_table_instance()->OpenPopup(str_id, popup_flags); }
-	inline void OpenPopup(ImGuiID id, ImGuiPopupFlags popup_flags) { imgui_function_table_instance()->OpenPopup2(id, popup_flags); }
-	inline void OpenPopupOnItemClick(const char* str_id, ImGuiPopupFlags popup_flags) { imgui_function_table_instance()->OpenPopupOnItemClick(str_id, popup_flags); }
+	inline bool OpenPopup(const char* str_id, ImGuiPopupFlags popup_flags) { return imgui_function_table_instance()->OpenPopup(str_id, popup_flags); }
+	inline bool OpenPopup(ImGuiID id, ImGuiPopupFlags popup_flags) { return imgui_function_table_instance()->OpenPopup2(id, popup_flags); }
+	inline bool OpenPopupOnItemClick(const char* str_id, ImGuiPopupFlags popup_flags) { return imgui_function_table_instance()->OpenPopupOnItemClick(str_id, popup_flags); }
 	inline void CloseCurrentPopup() { imgui_function_table_instance()->CloseCurrentPopup(); }
 	inline bool BeginPopupContextItem(const char* str_id, ImGuiPopupFlags popup_flags) { return imgui_function_table_instance()->BeginPopupContextItem(str_id, popup_flags); }
 	inline bool BeginPopupContextWindow(const char* str_id, ImGuiPopupFlags popup_flags) { return imgui_function_table_instance()->BeginPopupContextWindow(str_id, popup_flags); }
@@ -702,7 +708,7 @@ namespace ImGui
 	inline void TableNextRow(ImGuiTableRowFlags row_flags, float min_row_height) { imgui_function_table_instance()->TableNextRow(row_flags, min_row_height); }
 	inline bool TableNextColumn() { return imgui_function_table_instance()->TableNextColumn(); }
 	inline bool TableSetColumnIndex(int column_n) { return imgui_function_table_instance()->TableSetColumnIndex(column_n); }
-	inline void TableSetupColumn(const char* label, ImGuiTableColumnFlags flags, float init_width_or_weight, ImGuiID user_id) { imgui_function_table_instance()->TableSetupColumn(label, flags, init_width_or_weight, user_id); }
+	inline void TableSetupColumn(const char* label, ImGuiTableColumnFlags flags, float init_width_or_weight, ImGuiID user_data) { imgui_function_table_instance()->TableSetupColumn(label, flags, init_width_or_weight, user_data); }
 	inline void TableSetupScrollFreeze(int cols, int rows) { imgui_function_table_instance()->TableSetupScrollFreeze(cols, rows); }
 	inline void TableHeader(const char* label) { imgui_function_table_instance()->TableHeader(label); }
 	inline void TableHeadersRow() { imgui_function_table_instance()->TableHeadersRow(); }
@@ -767,6 +773,8 @@ namespace ImGui
 	inline ImVec2 GetItemRectMin() { return imgui_function_table_instance()->GetItemRectMin(); }
 	inline ImVec2 GetItemRectMax() { return imgui_function_table_instance()->GetItemRectMax(); }
 	inline ImVec2 GetItemRectSize() { return imgui_function_table_instance()->GetItemRectSize(); }
+	inline ImGuiItemFlags GetItemFlags() { return imgui_function_table_instance()->GetItemFlags(); }
+	inline int GetItemClickedCountWithSingleClickDelay(ImGuiMouseButton mouse_button, float delay) { return imgui_function_table_instance()->GetItemClickedCountWithSingleClickDelay(mouse_button, delay); }
 	inline ImDrawList* GetBackgroundDrawList(ImGuiViewport* viewport) { return imgui_function_table_instance()->GetBackgroundDrawList(viewport); }
 	inline ImDrawList* GetForegroundDrawList(ImGuiViewport* viewport) { return imgui_function_table_instance()->GetForegroundDrawList(viewport); }
 	inline bool IsRectVisible(const ImVec2& size) { return imgui_function_table_instance()->IsRectVisible(size); }
@@ -791,7 +799,7 @@ namespace ImGui
 	inline void SetNextFrameWantCaptureKeyboard(bool want_capture_keyboard) { imgui_function_table_instance()->SetNextFrameWantCaptureKeyboard(want_capture_keyboard); }
 	inline bool Shortcut(ImGuiKeyChord key_chord, ImGuiInputFlags flags) { return imgui_function_table_instance()->Shortcut(key_chord, flags); }
 	inline void SetNextItemShortcut(ImGuiKeyChord key_chord, ImGuiInputFlags flags) { imgui_function_table_instance()->SetNextItemShortcut(key_chord, flags); }
-	inline void SetItemKeyOwner(ImGuiKey key) { imgui_function_table_instance()->SetItemKeyOwner(key); }
+	inline bool SetItemKeyOwner(ImGuiKey key) { return imgui_function_table_instance()->SetItemKeyOwner(key); }
 	inline bool IsMouseDown(ImGuiMouseButton button) { return imgui_function_table_instance()->IsMouseDown(button); }
 	inline bool IsMouseClicked(ImGuiMouseButton button, bool repeat) { return imgui_function_table_instance()->IsMouseClicked(button, repeat); }
 	inline bool IsMouseReleased(ImGuiMouseButton button) { return imgui_function_table_instance()->IsMouseReleased(button); }
@@ -846,26 +854,29 @@ inline void ImDrawList::PushClipRectFullScreen() { imgui_function_table_instance
 inline void ImDrawList::PopClipRect() { imgui_function_table_instance()->ImDrawList_PopClipRect(this); }
 inline void ImDrawList::PushTexture(ImTextureRef tex_ref) { imgui_function_table_instance()->ImDrawList_PushTexture(this, tex_ref); }
 inline void ImDrawList::PopTexture() { imgui_function_table_instance()->ImDrawList_PopTexture(this); }
-inline void ImDrawList::AddLine(const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness) { imgui_function_table_instance()->ImDrawList_AddLine(this, p1, p2, col, thickness); }
-inline void ImDrawList::AddRect(const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding, ImDrawFlags flags, float thickness) { imgui_function_table_instance()->ImDrawList_AddRect(this, p_min, p_max, col, rounding, flags, thickness); }
+inline void ImDrawList::PushDrawFlag(ImDrawFlags flags, bool enabled) { imgui_function_table_instance()->ImDrawList_PushDrawFlag(this, flags, enabled); }
+inline void ImDrawList::PopDrawFlag() { imgui_function_table_instance()->ImDrawList_PopDrawFlag(this); }
+inline void ImDrawList::AddLine(const ImVec2& p1, const ImVec2& p2, ImU32 col, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddLine(this, p1, p2, col, thickness, flags); }
+inline void ImDrawList::AddLineH(float min_x, float max_x, float y, ImU32 col, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddLineH(this, min_x, max_x, y, col, thickness, flags); }
+inline void ImDrawList::AddLineV(float x, float min_y, float max_y, ImU32 col, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddLineV(this, x, min_y, max_y, col, thickness, flags); }
+inline void ImDrawList::AddRect(const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddRect(this, p_min, p_max, col, rounding, thickness, flags); }
 inline void ImDrawList::AddRectFilled(const ImVec2& p_min, const ImVec2& p_max, ImU32 col, float rounding, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddRectFilled(this, p_min, p_max, col, rounding, flags); }
 inline void ImDrawList::AddRectFilledMultiColor(const ImVec2& p_min, const ImVec2& p_max, ImU32 col_upr_left, ImU32 col_upr_right, ImU32 col_bot_right, ImU32 col_bot_left) { imgui_function_table_instance()->ImDrawList_AddRectFilledMultiColor(this, p_min, p_max, col_upr_left, col_upr_right, col_bot_right, col_bot_left); }
-inline void ImDrawList::AddQuad(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness) { imgui_function_table_instance()->ImDrawList_AddQuad(this, p1, p2, p3, p4, col, thickness); }
+inline void ImDrawList::AddQuad(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddQuad(this, p1, p2, p3, p4, col, thickness, flags); }
 inline void ImDrawList::AddQuadFilled(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col) { imgui_function_table_instance()->ImDrawList_AddQuadFilled(this, p1, p2, p3, p4, col); }
-inline void ImDrawList::AddTriangle(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness) { imgui_function_table_instance()->ImDrawList_AddTriangle(this, p1, p2, p3, col, thickness); }
+inline void ImDrawList::AddTriangle(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddTriangle(this, p1, p2, p3, col, thickness, flags); }
 inline void ImDrawList::AddTriangleFilled(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col) { imgui_function_table_instance()->ImDrawList_AddTriangleFilled(this, p1, p2, p3, col); }
-inline void ImDrawList::AddCircle(const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness) { imgui_function_table_instance()->ImDrawList_AddCircle(this, center, radius, col, num_segments, thickness); }
+inline void ImDrawList::AddCircle(const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddCircle(this, center, radius, col, num_segments, thickness, flags); }
 inline void ImDrawList::AddCircleFilled(const ImVec2& center, float radius, ImU32 col, int num_segments) { imgui_function_table_instance()->ImDrawList_AddCircleFilled(this, center, radius, col, num_segments); }
-inline void ImDrawList::AddNgon(const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness) { imgui_function_table_instance()->ImDrawList_AddNgon(this, center, radius, col, num_segments, thickness); }
+inline void ImDrawList::AddNgon(const ImVec2& center, float radius, ImU32 col, int num_segments, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddNgon(this, center, radius, col, num_segments, thickness, flags); }
 inline void ImDrawList::AddNgonFilled(const ImVec2& center, float radius, ImU32 col, int num_segments) { imgui_function_table_instance()->ImDrawList_AddNgonFilled(this, center, radius, col, num_segments); }
-inline void ImDrawList::AddEllipse(const ImVec2& center, const ImVec2& radius, ImU32 col, float rot, int num_segments, float thickness) { imgui_function_table_instance()->ImDrawList_AddEllipse(this, center, radius, col, rot, num_segments, thickness); }
+inline void ImDrawList::AddEllipse(const ImVec2& center, const ImVec2& radius, ImU32 col, float rot, int num_segments, float thickness, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddEllipse(this, center, radius, col, rot, num_segments, thickness, flags); }
 inline void ImDrawList::AddEllipseFilled(const ImVec2& center, const ImVec2& radius, ImU32 col, float rot, int num_segments) { imgui_function_table_instance()->ImDrawList_AddEllipseFilled(this, center, radius, col, rot, num_segments); }
 inline void ImDrawList::AddText(const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end) { imgui_function_table_instance()->ImDrawList_AddText(this, pos, col, text_begin, text_end); }
 inline void ImDrawList::AddText(ImFont* font, float font_size, const ImVec2& pos, ImU32 col, const char* text_begin, const char* text_end, float wrap_width, const ImVec4* cpu_fine_clip_rect) { imgui_function_table_instance()->ImDrawList_AddText2(this, font, font_size, pos, col, text_begin, text_end, wrap_width, cpu_fine_clip_rect); }
-inline void ImDrawList::AddBezierCubic(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness, int num_segments) { imgui_function_table_instance()->ImDrawList_AddBezierCubic(this, p1, p2, p3, p4, col, thickness, num_segments); }
-inline void ImDrawList::AddBezierQuadratic(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness, int num_segments) { imgui_function_table_instance()->ImDrawList_AddBezierQuadratic(this, p1, p2, p3, col, thickness, num_segments); }
-inline void ImDrawList::AddPolyline(const ImVec2* points, int num_points, ImU32 col, ImDrawFlags flags, float thickness) { imgui_function_table_instance()->ImDrawList_AddPolyline(this, points, num_points, col, flags, thickness); }
-inline void ImDrawList::AddConvexPolyFilled(const ImVec2* points, int num_points, ImU32 col) { imgui_function_table_instance()->ImDrawList_AddConvexPolyFilled(this, points, num_points, col); }
+inline void ImDrawList::AddBezierCubic(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, ImU32 col, float thickness, int num_segments, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddBezierCubic(this, p1, p2, p3, p4, col, thickness, num_segments, flags); }
+inline void ImDrawList::AddBezierQuadratic(const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, ImU32 col, float thickness, int num_segments, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddBezierQuadratic(this, p1, p2, p3, col, thickness, num_segments, flags); }
+inline void ImDrawList::AddConvexPolyFilled(const ImVec2* points, int num_points, ImU32 col, ImDrawFlags flags) { imgui_function_table_instance()->ImDrawList_AddConvexPolyFilled(this, points, num_points, col, flags); }
 inline void ImDrawList::AddConcavePolyFilled(const ImVec2* points, int num_points, ImU32 col) { imgui_function_table_instance()->ImDrawList_AddConcavePolyFilled(this, points, num_points, col); }
 inline void ImDrawList::AddImage(ImTextureRef tex_ref, const ImVec2& p_min, const ImVec2& p_max, const ImVec2& uv_min, const ImVec2& uv_max, ImU32 col) { imgui_function_table_instance()->ImDrawList_AddImage(this, tex_ref, p_min, p_max, uv_min, uv_max, col); }
 inline void ImDrawList::AddImageQuad(ImTextureRef tex_ref, const ImVec2& p1, const ImVec2& p2, const ImVec2& p3, const ImVec2& p4, const ImVec2& uv1, const ImVec2& uv2, const ImVec2& uv3, const ImVec2& uv4, ImU32 col) { imgui_function_table_instance()->ImDrawList_AddImageQuad(this, tex_ref, p1, p2, p3, p4, uv1, uv2, uv3, uv4, col); }
@@ -884,6 +895,7 @@ inline void ImDrawList::PrimUnreserve(int idx_count, int vtx_count) { imgui_func
 inline void ImDrawList::PrimRect(const ImVec2& a, const ImVec2& b, ImU32 col) { imgui_function_table_instance()->ImDrawList_PrimRect(this, a, b, col); }
 inline void ImDrawList::PrimRectUV(const ImVec2& a, const ImVec2& b, const ImVec2& uv_a, const ImVec2& uv_b, ImU32 col) { imgui_function_table_instance()->ImDrawList_PrimRectUV(this, a, b, uv_a, uv_b, col); }
 inline void ImDrawList::PrimQuadUV(const ImVec2& a, const ImVec2& b, const ImVec2& c, const ImVec2& d, const ImVec2& uv_a, const ImVec2& uv_b, const ImVec2& uv_c, const ImVec2& uv_d, ImU32 col) { imgui_function_table_instance()->ImDrawList_PrimQuadUV(this, a, b, c, d, uv_a, uv_b, uv_c, uv_d, col); }
+inline void ImDrawList::_AddPolyline(const ImVec2* points, int num_points, ImU32 col, float thickness, ImDrawFlags flags, float max_inner_offset) { imgui_function_table_instance()->ImDrawList__AddPolyline(this, points, num_points, col, thickness, flags, max_inner_offset); }
 inline ImFont::ImFont() { imgui_function_table_instance()->ConstructImFont(this); }
 inline ImFont::~ImFont() { imgui_function_table_instance()->DestructImFont(this); }
 inline bool ImFont::IsGlyphInFont(ImWchar c) { return imgui_function_table_instance()->ImFont_IsGlyphInFont(this, c); }

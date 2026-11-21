@@ -20,10 +20,11 @@
 #include "ultra_test_run.hpp"
 #include "ultra_test_scene.hpp"
 #include <shellapi.h>
+#if ULTRARESHADE_D3D9
 #include <d3d9.h>
+#endif
 #include <d3d11.h>
 #include <d3d12.h>
-#include <D3D12Downlevel.h>
 #include <glad/wgl.h>
 #include <glad/vulkan.h>
 
@@ -225,6 +226,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 	switch (api)
 	{
+#if ULTRARESHADE_D3D9
 	#pragma region D3D9 Implementation
 	case reshade::api::device_api::d3d9:
 	{
@@ -265,6 +267,8 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	}
 	#pragma endregion
 		break;
+#endif
+#if ULTRARESHADE_D3D10
 	#pragma region D3D10 Implementation
 	case reshade::api::device_api::d3d10:
 	{
@@ -321,6 +325,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 	}
 	#pragma endregion
 		break;
+#endif
 	#pragma region D3D11 Implementation
 	case reshade::api::device_api::d3d11:
 	{
@@ -466,21 +471,13 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			HR_CHECK(hr);
 		}
 
-		// Check if this device was created using d3d12on7 on Windows 7
-		// See https://microsoft.github.io/DirectX-Specs/d3d/D3D12onWin7.html for more information
-		com_ptr<ID3D12DeviceDownlevel> downlevel;
-		const bool is_d3d12on7 = SUCCEEDED(device->QueryInterface(&downlevel));
-		downlevel.reset();
-
 		{   D3D12_COMMAND_QUEUE_DESC desc = { D3D12_COMMAND_LIST_TYPE_DIRECT };
 			HR_CHECK(device->CreateCommandQueue(&desc, IID_PPV_ARGS(&command_queue)));
 		}
 
-		const UINT num_buffers = is_d3d12on7 ? 1 : ARRAYSIZE(back_buffers);
+		const UINT num_buffers = ARRAYSIZE(back_buffers);
 
-		if (!is_d3d12on7)
 		{
-			// DXGI has not been updated for d3d12on7, so cannot use swap chain created from D3D12 device there
 			DXGI_SWAP_CHAIN_DESC1 desc = {};
 			desc.Format = reshade::ultra::backBufferFormat(options.scene.output);
 			desc.SampleDesc = { 1, 0 };
@@ -511,13 +508,6 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		// -dlss: the app as a game with DLSS, which runs its own frames until its sequence is done
 		if (options.dlss.framesPerMode > 0)
 		{
-			if (is_d3d12on7)
-			{
-				reshade::log::message(reshade::log::level::error, "Test application: -dlss needs a DXGI swap chain (no d3d12on7).");
-				msg.wParam = EXIT_FAILURE;
-				break;
-			}
-
 			const auto pump = [&msg]() {
 				while (PeekMessage(&msg, nullptr, 0, 0, PM_REMOVE) && msg.message != WM_QUIT)
 					DispatchMessage(&msg);
@@ -528,18 +518,12 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 		}
 #endif
 
-		std::unique_ptr<reshade::ultra::TestSceneD3d12> scene;
-		if (!is_d3d12on7)
-		{
-			DXGI_SWAP_CHAIN_DESC1 desc = {};
-			HR_CHECK(swapchain->GetDesc1(&desc));
-			scene = std::make_unique<reshade::ultra::TestSceneD3d12>(device.get(), command_queue.get(), desc.Format, *model, options.scene);
-			scene->resize(desc.Width, desc.Height);
-		}
+		DXGI_SWAP_CHAIN_DESC1 scene_desc = {};
+		HR_CHECK(swapchain->GetDesc1(&scene_desc));
+		const auto scene = std::make_unique<reshade::ultra::TestSceneD3d12>(device.get(), command_queue.get(), scene_desc.Format, *model, options.scene);
+		scene->resize(scene_desc.Width, scene_desc.Height);
 
-		std::unique_ptr<reshade::ultra::TestDisplay> display;
-		if (!is_d3d12on7)
-			display = std::make_unique<reshade::ultra::TestDisplay>(swapchain.get(), window_handle);
+		const auto display = std::make_unique<reshade::ultra::TestDisplay>(swapchain.get(), window_handle);
 
 		// The frame that resized comes back through the loop's start after the goto and must not count twice
 		bool is_frame_started = false;
@@ -549,29 +533,10 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 
 		for (UINT i = 0; i < num_buffers; ++i, rtv_handle.ptr += rtv_handle_size)
 		{
-			if (!is_d3d12on7)
-			{
-				HR_CHECK(swapchain->GetBuffer(i, IID_PPV_ARGS(&back_buffers[i])));
+			HR_CHECK(swapchain->GetBuffer(i, IID_PPV_ARGS(&back_buffers[i])));
 
-				const std::wstring debug_name = L"Back buffer " + std::to_wstring(i);
-				back_buffers[i]->SetName(debug_name.c_str());
-			}
-			else
-			{
-				GetClientRect(window_handle, &window_rect);
-
-				D3D12_RESOURCE_DESC desc = { D3D12_RESOURCE_DIMENSION_TEXTURE2D };
-				desc.Width = window_rect.right;
-				desc.Height = window_rect.bottom;
-				desc.DepthOrArraySize = desc.MipLevels = 1;
-				desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-				desc.SampleDesc = { 1, 0 };
-				desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET;
-
-				D3D12_HEAP_PROPERTIES props = { D3D12_HEAP_TYPE_DEFAULT };
-				// Create a fake back buffer resource for d3d12on7
-				HR_CHECK(device->CreateCommittedResource(&props, D3D12_HEAP_FLAG_NONE, &desc, D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&back_buffers[i])));
-			}
+			const std::wstring debug_name = L"Back buffer " + std::to_wstring(i);
+			back_buffers[i]->SetName(debug_name.c_str());
 
 			device->CreateRenderTargetView(back_buffers[i].get(), nullptr, rtv_handle);
 
@@ -607,27 +572,22 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 			}
 			is_frame_started = false;
 
-			if (display != nullptr)
+			if (const std::optional<SIZE> size = display->apply(frames.takeSwitch()))
 			{
-				if (const std::optional<SIZE> size = display->apply(frames.takeSwitch()))
-				{
-					s_resize_w = size->cx;
-					s_resize_h = size->cy;
-				}
+				s_resize_w = size->cx;
+				s_resize_h = size->cy;
 			}
 
 			if (s_resize_w != 0)
 			{
 				// Clean up current resources referencing the back buffer
-				if (scene != nullptr)
-					scene->resize(s_resize_w, s_resize_h);
+				scene->resize(s_resize_w, s_resize_h);
 				for (auto &ptr : cmd_lists)
 					ptr.reset();
 				for (auto &ptr : back_buffers)
 					ptr.reset();
 
-				if (!is_d3d12on7)
-					HR_CHECK(swapchain->ResizeBuffers(num_buffers, s_resize_w, s_resize_h, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
+				HR_CHECK(swapchain->ResizeBuffers(num_buffers, s_resize_w, s_resize_h, DXGI_FORMAT_UNKNOWN, DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING));
 
 				s_resize_w = s_resize_h = 0;
 				is_frame_started = true;
@@ -635,34 +595,19 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR lpCmdLine, int nCmdShow
 				goto resize_buffers; // Re-create command lists
 			}
 
-			const UINT swap_index = is_d3d12on7 ? 0 : swapchain->GetCurrentBackBufferIndex();
+			const UINT swap_index = swapchain->GetCurrentBackBufferIndex();
 
 			D3D12_CPU_DESCRIPTOR_HANDLE back_buffer_rtv = rtv_heap->GetCPUDescriptorHandleForHeapStart();
 			back_buffer_rtv.ptr += swap_index * rtv_handle_size;
-			if (scene == nullptr || !scene->render(back_buffers[swap_index].get(), back_buffer_rtv, frames.seconds()))
+			if (!scene->render(back_buffers[swap_index].get(), back_buffer_rtv, frames.seconds()))
 			{
 				ID3D12CommandList *const cmd_list = cmd_lists[swap_index].get();
 				command_queue->ExecuteCommandLists(1, &cmd_list);
 			}
 
-			if (is_d3d12on7)
-			{
-				// Create a dummy list to pass into present
-				com_ptr<ID3D12GraphicsCommandList> dummy_list;
-				HR_CHECK(device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, cmd_alloc.get(), nullptr, IID_PPV_ARGS(&dummy_list)));
-
-				com_ptr<ID3D12CommandQueueDownlevel> queue_downlevel;
-				HR_CHECK(command_queue->QueryInterface(&queue_downlevel));
-
-				// Windows 7 present path does not have a DXGI swap chain
-				HR_CHECK(queue_downlevel->Present(dummy_list.get(), back_buffers[swap_index].get(), window_handle, vsync ? D3D12_DOWNLEVEL_PRESENT_FLAG_WAIT_FOR_VBLANK : D3D12_DOWNLEVEL_PRESENT_FLAG_NONE));
-			}
-			else
-			{
-				// Synchronization is handled in 'swapchain_impl::on_present'
-				// Tearing is for windows only, exclusive fullscreen refuses the flag
-				HR_CHECK(swapchain->Present(vsync ? 1 : 0, vsync || display->isFullscreen() ? 0 : DXGI_PRESENT_ALLOW_TEARING));
-			}
+			// Synchronization is handled in 'swapchain_impl::on_present'
+			// Tearing is for windows only, exclusive fullscreen refuses the flag
+			HR_CHECK(swapchain->Present(vsync ? 1 : 0, vsync || display->isFullscreen() ? 0 : DXGI_PRESENT_ALLOW_TEARING));
 		}
 	}
 	#pragma endregion

@@ -23,8 +23,6 @@ void STDMETHODCALLTYPE ID3D10Resource_GetDevice(ID3D10Resource *pResource, ID3D1
 	}
 }
 
-#if RESHADE_ADDON >= 2
-
 #include "d3d10_impl_type_convert.hpp"
 #include "addon_manager.hpp"
 
@@ -172,4 +170,3 @@ HRESULT STDMETHODCALLTYPE ID3D10Texture3D_Unmap(ID3D10Texture3D *pResource, UINT
 	return reshade::hooks::call(ID3D10Texture3D_Unmap, reshade::hooks::vtable_from_instance(pResource) + 11)(pResource, Subresource);
 }
 
-#endif

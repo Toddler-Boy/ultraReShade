@@ -5,8 +5,6 @@
 
 #include "hook_manager.hpp"
 
-#if RESHADE_ADDON >= 2
-
 #undef IDirect3DSurface9_LockRect
 #define IDirect3DSurface9_LockRect reshade::hooks::call_vtable<13, HRESULT, IDirect3DSurface9, D3DLOCKED_RECT *, const RECT *, DWORD>
 #undef IDirect3DSurface9_UnlockRect
@@ -42,4 +40,3 @@
 #undef IDirect3DIndexBuffer9_Unlock
 #define IDirect3DIndexBuffer9_Unlock reshade::hooks::call_vtable<12, HRESULT, IDirect3DIndexBuffer9>
 
-#endif

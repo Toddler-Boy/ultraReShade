@@ -5,7 +5,9 @@
 
 #include "dxgi_factory.hpp"
 #include "dxgi_swapchain.hpp"
+#if ULTRARESHADE_D3D10
 #include "d3d10/d3d10_device.hpp"
+#endif
 #include "d3d11/d3d11_device.hpp"
 #include "d3d12/d3d12_command_queue.hpp"
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
@@ -13,12 +15,9 @@
 #include "hook_manager.hpp"
 #include "addon_manager.hpp"
 
-extern bool is_windows7();
-
 // Needs to be set whenever a DXGI call can end up in 'CDXGISwapChain::EnsureChildDeviceInternal', to avoid hooking internal D3D device creation
 extern thread_local bool g_in_dxgi_runtime;
 
-#if RESHADE_ADDON
 static auto floating_point_to_rational(float value) -> DXGI_RATIONAL
 {
 	float integer_component = 0.0f;
@@ -197,7 +196,6 @@ bool modify_swapchain_desc(reshade::api::device_api api, DXGI_SWAP_CHAIN_DESC1 &
 
 	return false;
 }
-#endif
 
 static std::string format_to_string(DXGI_FORMAT format)
 {
@@ -245,11 +243,7 @@ static bool dump_and_modify_swapchain_desc([[maybe_unused]] reshade::api::device
 	reshade::log::message(reshade::log::level::info, "  | Flags                                   |"                               " %-#39x |", desc.Flags);
 	reshade::log::message(reshade::log::level::info, "  +-----------------------------------------+-----------------------------------------+");
 
-#if RESHADE_ADDON
 	return modify_swapchain_desc(api, desc, sync_interval);
-#else
-	return false;
-#endif
 }
 static bool dump_and_modify_swapchain_desc([[maybe_unused]] reshade::api::device_api api, DXGI_SWAP_CHAIN_DESC1 &desc, [[maybe_unused]] UINT &sync_interval, DXGI_SWAP_CHAIN_FULLSCREEN_DESC *fullscreen_desc = nullptr, [[maybe_unused]] HWND window = nullptr)
 {
@@ -283,15 +277,12 @@ static bool dump_and_modify_swapchain_desc([[maybe_unused]] reshade::api::device
 	reshade::log::message(reshade::log::level::info, "  | Flags                                   |"                               " %-#39x |", desc.Flags);
 	reshade::log::message(reshade::log::level::info, "  +-----------------------------------------+-----------------------------------------+");
 
-#if RESHADE_ADDON
 	return modify_swapchain_desc(api, desc, sync_interval, fullscreen_desc, window);
-#else
-	return false;
-#endif
 }
 
 reshade::api::device_api query_device(IUnknown *&device, com_ptr<IUnknown> &device_proxy)
 {
+#if ULTRARESHADE_D3D10
 	if (com_ptr<D3D10Device> device_d3d10;
 		SUCCEEDED(device->QueryInterface(&device_d3d10)))
 	{
@@ -299,6 +290,7 @@ reshade::api::device_api query_device(IUnknown *&device, com_ptr<IUnknown> &devi
 		device_proxy = std::move(reinterpret_cast<com_ptr<IUnknown> &>(device_d3d10));
 		return reshade::api::device_api::d3d10;
 	}
+#endif
 	if (com_ptr<D3D11Device> device_d3d11;
 		SUCCEEDED(device->QueryInterface(&device_d3d11)))
 	{
@@ -315,6 +307,7 @@ reshade::api::device_api query_device(IUnknown *&device, com_ptr<IUnknown> &devi
 	}
 
 	// Fall back to checking private data in case original device pointer was passed in (e.g. because D3D11 device was created with video support and then queried though 'D3D11Device::QueryInterface')
+#if ULTRARESHADE_D3D10
 	// Note that D3D11 devices can expose the 'ID3D10Device' interface too, if 'ID3D11Device::CreateDeviceContextState' has been called
 	// But since there is a follow-up check for the proxy 'D3D10Device' interface that is only set on real D3D10 devices, the query order doesn't matter here
 	if (com_ptr<ID3D10Device> device_d3d10_orig;
@@ -327,6 +320,7 @@ reshade::api::device_api query_device(IUnknown *&device, com_ptr<IUnknown> &devi
 			return reshade::api::device_api::d3d10;
 		}
 	}
+#endif
 	if (com_ptr<ID3D11Device> device_d3d11_orig;
 		SUCCEEDED(device->QueryInterface(&device_d3d11_orig)))
 	{
@@ -351,12 +345,14 @@ static void init_swapchain_proxy(IDXGIFactory *factory, reshade::api::device_api
 	{
 		reshade::log::message(reshade::log::level::warning, "Skipping swap chain due to missing 'DXGI_USAGE_RENDER_TARGET_OUTPUT' flag.");
 	}
+#if ULTRARESHADE_D3D10
 	else if (direct3d_version == reshade::api::device_api::d3d10)
 	{
 		const com_ptr<D3D10Device> &device = reinterpret_cast<const com_ptr<D3D10Device> &>(device_proxy);
 
 		swapchain_proxy = new DXGISwapChain(factory, device.get(), swapchain); // Overwrite returned swap chain with proxy swap chain
 	}
+#endif
 	else if (direct3d_version == reshade::api::device_api::d3d11)
 	{
 		const com_ptr<D3D11Device> &device = reinterpret_cast<const com_ptr<D3D11Device> &>(device_proxy);
@@ -384,11 +380,9 @@ static void init_swapchain_proxy(IDXGIFactory *factory, reshade::api::device_api
 
 	if (swapchain_proxy != nullptr)
 	{
-#if RESHADE_ADDON
 		swapchain_proxy->_sync_interval = sync_interval;
 		swapchain_proxy->_orig_desc = orig_desc;
 		swapchain_proxy->_is_desc_modified = desc_modified;
-#endif
 
 #if RESHADE_VERBOSE_LOG
 		reshade::log::message(reshade::log::level::debug, "Returning IDXGISwapChain%hu object %p (%p).", swapchain_proxy->_interface_version, swapchain_proxy, swapchain_proxy->_orig);
@@ -693,16 +687,7 @@ extern "C" HRESULT WINAPI CreateDXGIFactory2(UINT Flags, REFIID riid, void **ppF
 		"Redirecting CreateDXGIFactory2(Flags = %#x, riid = %s, ppFactory = %p) ...",
 		Flags, reshade::log::iid_to_string(riid).c_str(), ppFactory);
 
-	const auto trampoline = is_windows7() ? nullptr : reshade::hooks::call(CreateDXGIFactory2);
-
-	// CreateDXGIFactory2 is not available on Windows 7, so fall back to CreateDXGIFactory1 if the application calls it
-	// This needs to happen because some applications only check if CreateDXGIFactory2 exists, which is always the case if they load ReShade, to decide whether to call it or CreateDXGIFactory1
-	if (trampoline == nullptr)
-	{
-		reshade::log::message(reshade::log::level::info, "> Passing on to CreateDXGIFactory1:");
-
-		return CreateDXGIFactory1(riid, ppFactory);
-	}
+	const auto trampoline = reshade::hooks::call(CreateDXGIFactory2);
 
 	// It is crucial that ReShade hooks this after the Steam overlay already hooked it, so that ReShade is called first and the Steam overlay is called through the trampoline below
 	// This is because the Steam overlay only hooks the swap chain creation functions when the vtable entries for them still point to the original functions, it will no longer do so once ReShade replaced them ("... points to another module, skipping hooks" in GameOverlayRenderer.log)
@@ -783,13 +768,7 @@ extern "C" HRESULT WINAPI CreateDXGIFactory2(UINT Flags, REFIID riid, void **ppF
 
 extern "C" HRESULT WINAPI DXGIGetDebugInterface1(UINT Flags, REFIID riid, void **pDebug)
 {
-	const auto trampoline = reshade::hooks::call(DXGIGetDebugInterface1);
-
-	// DXGIGetDebugInterface1 is not available on Windows 7, so act as if Windows SDK is not installed
-	if (trampoline == nullptr)
-		return E_NOINTERFACE;
-
-	return trampoline(Flags, riid, pDebug);
+	return reshade::hooks::call(DXGIGetDebugInterface1)(Flags, riid, pDebug);
 }
 
 extern "C" HRESULT WINAPI DXGIDeclareAdapterRemovalSupport()

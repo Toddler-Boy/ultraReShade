@@ -38,19 +38,6 @@ bool is_uwp_app()
 }
 
 /// <summary>
-/// Checks whether the current operating system is Windows 7 or earlier.
-/// </summary>
-bool is_windows7()
-{
-	ULONGLONG condition = 0;
-	VER_SET_CONDITION(condition, VER_MAJORVERSION, VER_LESS_EQUAL);
-	VER_SET_CONDITION(condition, VER_MINORVERSION, VER_LESS_EQUAL);
-
-	OSVERSIONINFOEX verinfo_windows7 = { sizeof(verinfo_windows7), 6, 1 };
-	return VerifyVersionInfo(&verinfo_windows7, VER_MAJORVERSION | VER_MINORVERSION, condition) != FALSE;
-}
-
-/// <summary>
 /// Returns the path to the Windows System32 directory.
 /// </summary>
 std::filesystem::path get_system_path()
@@ -225,20 +212,6 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 					reshade::hooks::register_module(get_system_path() / L"dinput8.dll");
 				}
 
-#if RESHADE_ADDON == 1
-				if (!GetEnvironmentVariableW(L"RESHADE_DISABLE_NETWORK_HOOK", nullptr, 0))
-				{
-					reshade::hooks::register_module(L"ws2_32.dll");
-				}
-				else
-				{
-					// Disable network hooks when requested through an environment variable and always disable add-ons in that case
-					extern volatile long g_network_traffic;
-					g_network_traffic = std::numeric_limits<long>::max(); // Special value to indicate that add-ons should never be enabled
-					reshade::addon_enabled = false;
-				}
-#endif
-
 				if (!GetEnvironmentVariableW(L"RESHADE_DISABLE_GRAPHICS_HOOK", nullptr, 0))
 				{
 					// Can optionally hook the graphics entry points exported by NVIDIA Streamline, instead of the system ones, to have ReShade apply before Streamline
@@ -259,14 +232,17 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 							reshade::hooks::register_module(get_system_path() / L"ddraw.dll");
 
 						reshade::hooks::register_module(get_system_path() / L"d2d1.dll");
+#if ULTRARESHADE_D3D9
 						reshade::hooks::register_module(get_system_path() / L"d3d9.dll");
+#endif
 
+#if ULTRARESHADE_D3D10
 						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_dxgi, L"d3d10.dll"));
 						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_dxgi, L"d3d10_1.dll"));
+#endif
 						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_dxgi, L"d3d11.dll"));
 
-						// On Windows 7 the d3d12on7 module is not in the system path, so register to hook any d3d12.dll loaded instead
-						reshade::hooks::register_module(get_target_path((is_windows7() && _wcsicmp(module_name.c_str(), L"d3d12") != 0) || (!export_module_path.empty() && is_dxgi), L"d3d12.dll"));
+						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_dxgi, L"d3d12.dll"));
 
 						reshade::hooks::register_module(get_target_path(!export_module_path.empty() && is_d3d && !is_dxgi, L"dxgi.dll"));
 					}
@@ -278,34 +254,10 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 					}
 
 					// Do not register Vulkan hooks, since Vulkan layering mechanism is used instead
-
-					reshade::hooks::register_module(L"openvr_api.dll");
 				}
 			}
 
 			reshade::log::message(reshade::log::level::info, "Initialized.");
-
-#if RESHADE_ADDON >= 2
-			// It is not safe to call 'LoadLibrary' from 'DllMain', but there are cases where add-ons want to be loaded as early as possible, so at least give the option
-			if (std::vector<std::filesystem::path> addons;
-				config.get("ADDON", "LoadFromDllMain", addons))
-			{
-				std::filesystem::path addon_search_path = g_reshade_base_path;
-				if (config.get("ADDON", "AddonPath", addon_search_path))
-					addon_search_path = g_reshade_base_path / addon_search_path;
-
-				for (std::filesystem::path &path : addons)
-				{
-					path = addon_search_path / path;
-
-					reshade::log::message(reshade::log::level::info, "Loading add-on module \"%s\" ...", path.u8string().c_str());
-
-					// Any add-ons registered by this module are marked external by default
-					if (!LoadLibraryExW(path.c_str(), nullptr, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS))
-						reshade::log::message(reshade::log::level::error, "Failed to load add-on from '%s' with error code %lu!", path.u8string().c_str(), GetLastError());
-				}
-			}
-#endif
 		}
 		break;
 	case DLL_PROCESS_DETACH:

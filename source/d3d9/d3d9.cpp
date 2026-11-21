@@ -58,7 +58,6 @@ void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, [[maybe_unuse
 	reshade::log::message(reshade::log::level::info, "  | PresentationInterval                    |"                               " %-#39x |", pp.PresentationInterval);
 	reshade::log::message(reshade::log::level::info, "  +-----------------------------------------+-----------------------------------------+");
 
-#if RESHADE_ADDON
 	reshade::api::swapchain_desc desc = {};
 	desc.back_buffer.type = reshade::api::resource_type::surface;
 	desc.back_buffer.texture.width = pp.BackBufferWidth;
@@ -195,7 +194,6 @@ void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, [[maybe_unuse
 			break;
 		}
 	}
-#endif
 }
 void dump_and_modify_present_parameters(D3DPRESENT_PARAMETERS &pp, D3DDISPLAYMODEEX &fullscreen_desc, IDirect3D9 *d3d, UINT adapter_index, HWND focus_window)
 {
@@ -288,11 +286,8 @@ HRESULT STDMETHODCALLTYPE IDirect3D9_CreateDevice(IDirect3D9 *pD3D, UINT Adapter
 		return D3DERR_NOTAVAILABLE;
 	}
 
-#if RESHADE_ADDON
 	// Load add-ons before 'create_device' event and 'create_swapchain' event in 'dump_and_modify_present_parameters'
 	reshade::load_addons();
-#endif
-#if RESHADE_ADDON >= 2
 	uint32_t api_version = 0x9000;
 	if (reshade::invoke_addon_event<reshade::addon_event::create_device>(reshade::api::device_api::d3d9, api_version) && api_version > 0x9000)
 	{
@@ -306,7 +301,6 @@ HRESULT STDMETHODCALLTYPE IDirect3D9_CreateDevice(IDirect3D9 *pD3D, UINT Adapter
 				return d3dex->CreateDeviceEx(Adapter, DeviceType, hFocusWindow, BehaviorFlags, pPresentationParameters, nullptr, reinterpret_cast<IDirect3DDevice9Ex **>(ppReturnedDeviceInterface));
 			};
 	}
-#endif
 
 	D3DPRESENT_PARAMETERS pp = *pPresentationParameters;
 	dump_and_modify_present_parameters(pp, pD3D, Adapter, hFocusWindow);
@@ -339,10 +333,8 @@ HRESULT STDMETHODCALLTYPE IDirect3D9_CreateDevice(IDirect3D9 *pD3D, UINT Adapter
 		reshade::log::message(reshade::log::level::warning, "IDirect3D9::CreateDevice failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
 	}
 
-#if RESHADE_ADDON
 	// Device proxy was created at this point, which increased the add-on manager reference count, so can release the reference added above again
 	reshade::unload_addons();
-#endif
 
 	return hr;
 }
@@ -368,17 +360,13 @@ HRESULT STDMETHODCALLTYPE IDirect3D9Ex_CreateDeviceEx(IDirect3D9Ex *pD3D, UINT A
 		return D3DERR_NOTAVAILABLE;
 	}
 
-#if RESHADE_ADDON
 	// Load add-ons before 'create_device' event and 'create_swapchain' event in 'dump_and_modify_present_parameters'
 	reshade::load_addons();
-#endif
-#if RESHADE_ADDON >= 2
 	uint32_t api_version = 0x9100;
 	if (reshade::invoke_addon_event<reshade::addon_event::create_device>(reshade::api::device_api::d3d9, api_version))
 	{
 		assert(api_version > 0x9000);
 	}
-#endif
 
 	D3DDISPLAYMODEEX fullscreen_mode = { sizeof(fullscreen_mode) };
 	if (pFullscreenDisplayMode != nullptr)
@@ -414,10 +402,8 @@ HRESULT STDMETHODCALLTYPE IDirect3D9Ex_CreateDeviceEx(IDirect3D9Ex *pD3D, UINT A
 		reshade::log::message(reshade::log::level::warning, "IDirect3D9Ex::CreateDeviceEx failed with error code %s.", reshade::log::hr_to_string(hr).c_str());
 	}
 
-#if RESHADE_ADDON
 	// Device proxy was created at this point, which increased the add-on manager reference count, so can release the reference added above again
 	reshade::unload_addons();
-#endif
 
 	return hr;
 }

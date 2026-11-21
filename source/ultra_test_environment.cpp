@@ -14,10 +14,9 @@
 #include <numeric>
 #include <optional>
 
-#include <stb_image.h>
-
 #include "dll_log.hpp"
 #include "ultra_test_environment.hpp"
+#include "ultra_test_image.hpp"
 
 //-----------------------------------------------------------------------------
 
@@ -210,17 +209,12 @@ namespace
 			return std::nullopt;
 
 		const std::vector<unsigned char>	bytes { std::istreambuf_iterator<char> ( stream ), std::istreambuf_iterator<char> () };
-		auto								width = 0;
-		auto								height = 0;
-		auto								channels = 0;
-		const auto							pixels = stbi_loadf_from_memory ( bytes.data (), static_cast<int> ( bytes.size () ), &width, &height, &channels, 4 );
+		auto								picture = reshade::ultra::decodeTestPictureFloat ( bytes );
 
-		if ( pixels == nullptr )
+		if ( picture.rgbaFloat.empty () )
 			return std::nullopt;
 
-		Level	level { static_cast<uint32_t> ( width ), static_cast<uint32_t> ( height ), { pixels, pixels + size_t ( width ) * height * 4 } };
-		stbi_image_free ( pixels );
-		return level;
+		return Level { picture.width, picture.height, std::move ( picture.rgbaFloat ) };
 	}
 }
 //-----------------------------------------------------------------------------

@@ -454,18 +454,6 @@ EXPORTS
 	wglUseFontOutlinesA PRIVATE
 	wglUseFontOutlinesW PRIVATE
 
-	; openxr_loader.dll
-	xrNegotiateLoaderApiLayerInterface
-
-	; openvr_api.dll
-	VR_GetInitToken PRIVATE
-	VR_Init PRIVATE
-	VR_InitInternal PRIVATE
-	VR_InitInternal2 PRIVATE
-	VR_Shutdown PRIVATE
-	VR_ShutdownInternal PRIVATE
-	VR_GetGenericInterface PRIVATE
-
 	; vulkan-1.dll
 	vkNegotiateLoaderLayerInterfaceVersion
 	vkCreateDevice PRIVATE

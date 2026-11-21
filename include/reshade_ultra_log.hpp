@@ -6,7 +6,6 @@
 #pragma once
 
 #include <cstdint>
-#include <string>
 
 #include "reshade.hpp"
 
@@ -29,24 +28,20 @@
 // A log is opened again freely (an add-on that reloads, a module and its add-on): the same name gives the same handle, its
 // first open's size and build text stay, and no second run starts. Logs stay open until the process ends.
 //
-// Handles are opaque numbers; 0 is none. A call with a handle that open did not give, a level outside 1 to 4, a null text
-// or a place that is too small is refused (false, 0) and says so once in reshade.log; a failed open still gives a handle
-// when only the file could not be opened (the lines are kept for recent, and the failure is in reshade.log), and 0 when
-// it was refused. On a ReShade without these functions every call is refused quietly, and nothing is written.
+// Handles are opaque numbers; 0 is none. A call with a handle that open did not give, a level outside 1 to 4 or a null
+// text is refused (false, 0) and says so once in reshade.log; a failed open still gives a handle when only the file could
+// not be opened (the failure is in reshade.log, the lines are dropped), and 0 when it was refused. On a ReShade without
+// these functions every call is refused quietly, and nothing is written.
 //
 // Threads: every function may be called from any thread. Nothing blocks on file I/O: a line waits in memory for the writer
 // thread (up to 1 MiB per log; beyond it lines are dropped and the file says how many). A line is cut at 32 KiB, its
 // trailing newlines are dropped, and it may hold line breaks inside (shown as several lines).
-//
-// The recent lines (the last 10000 lines or 4 MB of each log, for a viewer) are numbered from the first line this process
-// wrote: seen counts the lines a viewer has taken, 0 at the start.
 
 #if defined(RESHADE_API_LIBRARY)
 
 RESHADE_API_LIBRARY_DECL uint64_t ReShadeLogOpen ( const char* name, uint64_t max_bytes, const char* build );
 RESHADE_API_LIBRARY_DECL bool ReShadeLogWrite ( uint64_t log, int level, const char* message );
 RESHADE_API_LIBRARY_DECL bool ReShadeLogFlush ( uint64_t log );
-RESHADE_API_LIBRARY_DECL bool ReShadeLogRecent ( uint64_t log, uint64_t* seen, char* text, size_t* size, bool* is_complete );
 
 #endif
 
@@ -67,13 +62,12 @@ namespace reshade::logs
 			uint64_t ( *open ) ( const char*, uint64_t, const char* ) = nullptr;
 			bool ( *write ) ( uint64_t, int, const char* ) = nullptr;
 			bool ( *flush ) ( uint64_t ) = nullptr;
-			bool ( *recent ) ( uint64_t, uint64_t*, char*, size_t*, bool* ) = nullptr;
 		};
 
 #if defined(RESHADE_API_LIBRARY)
 		inline const functions& get ()
 		{
-			static const functions	table { &ReShadeLogOpen, &ReShadeLogWrite, &ReShadeLogFlush, &ReShadeLogRecent };
+			static const functions	table { &ReShadeLogOpen, &ReShadeLogWrite, &ReShadeLogFlush };
 			return table;
 		}
 #else
@@ -90,7 +84,6 @@ namespace reshade::logs
 					f.open = reinterpret_cast<decltype ( f.open )> ( GetProcAddress ( module, "ReShadeLogOpen" ) );
 					f.write = reinterpret_cast<decltype ( f.write )> ( GetProcAddress ( module, "ReShadeLogWrite" ) );
 					f.flush = reinterpret_cast<decltype ( f.flush )> ( GetProcAddress ( module, "ReShadeLogFlush" ) );
-					f.recent = reinterpret_cast<decltype ( f.recent )> ( GetProcAddress ( module, "ReShadeLogRecent" ) );
 				}
 
 				return f;
@@ -120,41 +113,5 @@ namespace reshade::logs
 	{
 		const auto	f = internal::get ().flush;
 		return f != nullptr && f ( log );
-	}
-
-	// Appends the lines after line number seen to lines (each ends in '\n', as many as fit into max_bytes of text but at
-	// least one, a longer first line cut) and moves seen on to the last one taken; call again for the rest. Nothing
-	// appended when there are no new lines. is_complete (optional) is false when lines after seen are no longer in memory:
-	// lines then starts at the oldest one kept. False when refused
-	inline bool recent ( uint64_t log, uint64_t& seen, std::string& lines, bool* is_complete = nullptr, size_t max_bytes = size_t ( 1 ) << 20 )
-	{
-		const auto	f = internal::get ().recent;
-
-		if ( f == nullptr || max_bytes < 2 )
-			return false;
-
-		auto	next = seen;
-		auto	size = size_t ( 0 );
-		auto	has_all = true;
-
-		if ( ! f ( log, &next, nullptr, &size, &has_all ) )
-			return false;
-
-		if ( size > 1 )
-		{
-			size = size < max_bytes ? size : max_bytes;
-			std::string	buffer ( size, '\0' );
-
-			if ( ! f ( log, &next, buffer.data (), &size, &has_all ) )
-				return false;
-
-			lines.append ( buffer.data (), size - 1 );
-			seen = next;
-		}
-
-		if ( is_complete != nullptr )
-			*is_complete = has_all;
-
-		return true;
 	}
 }

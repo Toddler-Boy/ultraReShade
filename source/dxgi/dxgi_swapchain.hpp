@@ -31,8 +31,10 @@ MIDL_INTERFACE("8C803E30-9E41-4DDF-B206-46F28E90E405") IDXGISwapChainTest : IUnk
 class DECLSPEC_UUID("1F445F9F-9887-4C4C-9055-4E3BADAFCCA8") DXGISwapChain final : public IDXGISwapChain4
 {
 public:
+#if ULTRARESHADE_D3D10
 	DXGISwapChain(IDXGIFactory *factory, D3D10Device *device, IDXGISwapChain  *original);
 	DXGISwapChain(IDXGIFactory *factory, D3D10Device *device, IDXGISwapChain1 *original);
+#endif
 	DXGISwapChain(IDXGIFactory *factory, D3D11Device *device, IDXGISwapChain  *original);
 	DXGISwapChain(IDXGIFactory *factory, D3D11Device *device, IDXGISwapChain1 *original);
 	DXGISwapChain(IDXGIFactory *factory, D3D12CommandQueue *command_queue, IDXGISwapChain3 *original);
@@ -127,11 +129,9 @@ private:
 	bool _is_initialized = false;
 	bool _was_still_drawing_last_frame = false;
 
-#if RESHADE_ADDON
 public:
 	UINT _sync_interval = UINT_MAX;
 	BOOL _current_fullscreen_state = -1;
 	bool _is_desc_modified = false;
 	DXGI_SWAP_CHAIN_DESC _orig_desc = {};
-#endif
 };

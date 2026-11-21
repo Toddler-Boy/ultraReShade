@@ -24,7 +24,7 @@ public:
 	{
 	}
 
-	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &cso, std::string &assembly, std::string &errors) const override
+	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &cso, std::string &errors) const override
 	{
 		const auto entry_point_it = std::find_if(_module.entry_points.begin(), _module.entry_points.end(),
 			[&entry_point_name](const std::pair<std::string, shader_type> &entry_point) {
@@ -38,7 +38,7 @@ public:
 			return false;
 
 		std::string hlsl;
-		if (!codegen_hlsl::assemble_code_for_entry_point(entry_point_name, hlsl, hlsl, errors))
+		if (!codegen_hlsl::assemble_code_for_entry_point(entry_point_name, hlsl, errors))
 			return false;
 
 		WCHAR profile[] = L"cs_0_0";
@@ -86,18 +86,6 @@ public:
 			SUCCEEDED(hr = result->GetOutput(DXC_OUT_OBJECT, IID_PPV_ARGS(&d3d_compiled), nullptr)))
 		{
 			cso.assign(static_cast<const char *>(d3d_compiled->GetBufferPointer()), d3d_compiled->GetBufferSize());
-
-			const DxcBuffer cso_buffer = { cso.data(), cso.size(), DXC_CP_ACP };
-
-			result.reset();
-
-			if (com_ptr<IDxcBlob> d3d_disassembled;
-				SUCCEEDED(compiler->Disassemble(&cso_buffer, IID_PPV_ARGS(&result))) &&
-				result != nullptr &&
-				SUCCEEDED(result->GetOutput(DXC_OUT_DISASSEMBLY, IID_PPV_ARGS(&d3d_disassembled), nullptr)))
-			{
-				assembly.assign(static_cast<const char *>(d3d_disassembled->GetBufferPointer()), d3d_disassembled->GetBufferSize());
-			}
 		}
 
 		return SUCCEEDED(hr);

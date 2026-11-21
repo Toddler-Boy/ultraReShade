@@ -7,7 +7,6 @@
 
 #include "reshade_api.hpp"
 #include "state_block.hpp"
-#include "imgui_code_editor.hpp"
 #include "ultra_effect_settings.hpp"
 #include "ultra_splash.hpp"
 #include <atomic>
@@ -18,6 +17,12 @@
 #include <mutex>
 #include <optional>
 #include <shared_mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
+struct ImDrawData;
+struct ImGuiContext;
 
 namespace reshade
 {
@@ -32,7 +37,7 @@ namespace reshade
 	class __declspec(uuid("77FF8202-5BEC-42AD-8CE0-397F3E84EAA6")) runtime : public api::effect_runtime
 	{
 	public:
-		runtime(api::swapchain *swapchain, api::command_queue *graphics_queue, bool is_vr);
+		runtime(api::swapchain *swapchain, api::command_queue *graphics_queue);
 		~runtime();
 
 		bool on_init();
@@ -68,7 +73,7 @@ namespace reshade
 		/// <summary>
 		/// Captures a screenshot of the current back buffer resource and writes it to an image file on disk.
 		/// </summary>
-		void save_screenshot(const char *postfix) final;
+		void save_screenshot() final;
 		bool capture_screenshot(void *pixels) final { return get_texture_data(_back_buffer_resolved != 0 ? _back_buffer_resolved : _swapchain->get_current_back_buffer(), _back_buffer_resolved != 0 ? api::resource_usage::render_target : api::resource_usage::present, static_cast<uint8_t *>(pixels), _back_buffer_format); }
 
 		void get_screenshot_width_and_height(uint32_t *out_width, uint32_t *out_height) const final { *out_width = _width; *out_height = _height; }
@@ -175,8 +180,6 @@ namespace reshade
 		void save_config() const;
 
 	private:
-		static void check_for_update();
-
 		// Before effects load: the home's files into '_effect_settings' and the saved preprocessor definitions
 		void read_effect_settings();
 		// The values, states and order of the effects, once they are loaded
@@ -184,7 +187,7 @@ namespace reshade
 		// The user's effects into reshade-user.json, after each change
 		void save_effect_settings();
 
-		bool load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool force_load = false, bool preprocess_required = false);
+		bool load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool preprocess_required = false);
 		void destroy_effect(size_t effect_index, bool unload = true);
 
 		// While the effect files compile, their effects, textures and techniques are being added to on the worker threads
@@ -219,9 +222,9 @@ namespace reshade
 
 		void reorder_techniques(std::vector<size_t> &&technique_indices);
 
-		void load_effects(bool force_load_all = false);
+		void load_effects();
 		bool reload_effect(size_t effect_index);
-		void reload_effects(bool force_load_all = false);
+		void reload_effects();
 		void destroy_effects();
 
 		[[nodiscard]] bool wants_effect_cache() const { return !_no_effect_cache && _has_effect_cache; }
@@ -234,7 +237,6 @@ namespace reshade
 		void update_effects();
 		void render_technique(technique &technique, api::command_list *cmd_list, api::resource back_buffer_resource, api::resource_view back_buffer_rtv, api::resource_view back_buffer_rtv_srgb, size_t permutation_index);
 
-		void save_texture(const texture &texture);
 		[[nodiscard]] bool has_screenshot_folder();
 		void update_texture(texture &texture, uint32_t width, uint32_t height, uint32_t depth, const void *pixels);
 
@@ -263,8 +265,6 @@ namespace reshade
 
 		bool get_texture_data(api::resource resource, api::resource_usage state, uint8_t *pixels, api::format quantization_format);
 
-		bool execute_screenshot_post_save_command(const std::filesystem::path &screenshot_path, unsigned int screenshot_count, std::string_view postfix);
-
 		api::swapchain *const _swapchain;
 		api::device *const _device;
 		api::command_queue *const _graphics_queue;
@@ -276,9 +276,7 @@ namespace reshade
 		uint16_t _back_buffer_samples = 1;
 		api::format _back_buffer_format = api::format::unknown;
 		api::color_space _back_buffer_color_space = api::color_space::unknown;
-		bool _is_vr = false;
 
-#if RESHADE_ADDON
 		bool _is_in_present_call = false;
 
 		// Effects whose files changed recompile (development builds); each present, before update_effects
@@ -287,11 +285,8 @@ namespace reshade
 #else
 		void ultra_reload_changed_effects() {}
 #endif
-#endif
 
 		#pragma region Status
-		static unsigned int s_latest_version[3];
-
 		bool _is_initialized = false;
 		bool _settings_save_successful = true;
 
@@ -318,7 +313,6 @@ namespace reshade
 		bool _has_effect_cache = false;
 		bool _no_reload_on_init = false;
 		bool _performance_mode = false;
-		bool _effect_load_skipping = false;
 		unsigned int _reload_key_data[4] = {};
 
 		// Saved: [GENERAL] PreprocessorDefinitions, and per effect file ({} for the preset scope) those of the home's files
@@ -374,9 +368,6 @@ namespace reshade
 		std::unordered_map<size_t, api::sampler> _effect_sampler_states;
 		std::mutex _effect_sampler_mutex;
 		std::unordered_map<std::string, std::pair<api::resource_view, api::resource_view>> _texture_semantic_bindings;
-#if RESHADE_ADDON == 1
-		std::unordered_map<std::string, std::pair<api::resource_view, api::resource_view>> _backup_texture_semantic_bindings;
-#endif
 		api::pipeline _copy_pipeline = {};
 		api::pipeline_layout _copy_pipeline_layout = {};
 		api::sampler  _copy_sampler_state = {};
@@ -389,27 +380,14 @@ namespace reshade
 		#pragma endregion
 
 		#pragma region Screenshot
-		bool _screenshot_save_before = false;
-		bool _screenshot_include_preset = false;
-#if RESHADE_GUI
-		bool _screenshot_save_gui = false;
-#endif
-		bool _screenshot_clear_alpha = true;
 		unsigned int _screenshot_count = 0;
-		unsigned int _screenshot_format = 1;
-		unsigned int _screenshot_jpeg_quality = 90;
 		unsigned int _screenshot_key_data[4] = {};
-		std::filesystem::path _screenshot_sound_path;
 		std::filesystem::path _screenshot_path; // From ultraGame's settings, absolute; empty: no screenshots, for the reason below (logged at the first one asked for)
 		std::string _screenshot_path_problem;
-		std::string _screenshot_name;
-		std::filesystem::path _screenshot_post_save_command;
-		std::string _screenshot_post_save_command_arguments;
-		std::filesystem::path _screenshot_post_save_command_working_directory;
-		bool _screenshot_post_save_command_hide_window = false;
 
 		bool _should_save_screenshot = false;
 		std::atomic<bool> _last_screenshot_save_successful = true;
+		std::atomic<int> _screenshots_saving = 0;
 		bool _screenshot_directory_creation_successful = true;
 		std::filesystem::path _last_screenshot_file;
 		std::chrono::high_resolution_clock::time_point _last_screenshot_time;
@@ -425,9 +403,7 @@ namespace reshade
 
 #if RESHADE_GUI
 		void init_gui();
-		bool init_gui_vr();
 		void deinit_gui();
-		void deinit_gui_vr();
 		void build_font_atlas();
 
 		void load_config_gui(const class ini_file &config);
@@ -435,20 +411,11 @@ namespace reshade
 		void save_overlay_window(class ini_file &config) const;
 		void draw_overlay_window();
 
-		void load_custom_style();
-		void save_custom_style() const;
+		void apply_overlay_style();
 
 		void draw_gui();
-		void draw_gui_vr();
 
-		void draw_gui_home();
-		void draw_gui_settings();
-		void draw_gui_statistics();
-		void draw_gui_log();
-		void draw_gui_about();
-#if RESHADE_ADDON
-		void draw_gui_addons();
-#endif
+		void draw_gui_shaders();
 		void draw_variable_editor();
 		void draw_technique_editor();
 
@@ -459,13 +426,7 @@ namespace reshade
 		#pragma region Overlay
 		ImGuiContext *_imgui_context = nullptr;
 
-		bool _show_splash = true;
 		bool _show_overlay = false;
-		unsigned int _show_fps = 2;
-		unsigned int _show_clock = false;
-		unsigned int _show_frametime = false;
-		bool _show_screenshot_message = true;
-		unsigned int _reload_count = 0;
 
 		bool _is_font_scaling = false;
 		bool _no_font_scaling = false;
@@ -476,11 +437,6 @@ namespace reshade
 		bool _block_input_next_frame = false;
 		bool _rebuild_font_atlas = true;
 		unsigned int _overlay_key_data[4];
-		unsigned int _fps_key_data[4] = {};
-		unsigned int _frametime_key_data[4] = {};
-		unsigned int _fps_pos = 1;
-		unsigned int _clock_format = 0;
-		unsigned int _input_processing_mode = 2;
 
 		api::pipeline _imgui_pipeline = {};
 		api::pipeline_layout _imgui_pipeline_layout = {};
@@ -490,9 +446,6 @@ namespace reshade
 		api::resource _imgui_indices[8] = {};
 		int _imgui_num_vertices[8] = {};
 		api::resource _imgui_vertices[8] = {};
-
-		api::resource _vr_overlay_tex = {};
-		api::resource_view _vr_overlay_target = {};
 
 		ultra::SplashState _ultra_splash;
 
@@ -505,69 +458,14 @@ namespace reshade
 		bool _is_overlay_tab_selected = false;
 		#pragma endregion
 
-		#pragma region Overlay Home
+		#pragma region Overlay Shaders
+		// Whether the game has effect files of its own installed (the route's do not count), known once they are all loaded
+		bool _has_user_shaders = false;
 		char _effect_filter[32] = {};
-		bool _variable_editor_tabs = false;
-		bool _was_preprocessor_popup_edited = false;
 		size_t _focused_effect = std::numeric_limits<size_t>::max();
 		size_t _selected_technique = std::numeric_limits<size_t>::max();
 		unsigned int _effects_expanded_state = 2;
 		float _variable_editor_height = 200.0f;
-		#pragma endregion
-
-		#pragma region Overlay Add-ons
-		char _addons_filter[32] = {};
-		#pragma endregion
-
-		#pragma region Overlay Settings
-		std::string _selected_language, _current_language;
-		float _font_size = 13.0f;
-		float _editor_font_size = 13.0f;
-		int _style_index = 2;
-		int _editor_style_index = 0;
-		std::filesystem::path _font_path, _default_font_path;
-		std::filesystem::path _latin_font_path;
-		std::filesystem::path _editor_font_path, _default_editor_font_path;
-		std::filesystem::path _file_selection_path;
-		float _fps_col[4] = { 1.0f, 1.0f, 0.784314f, 1.0f };
-		float _fps_scale = 1.0f;
-		float _hdr_overlay_brightness = 203.f; // HDR reference white as per BT.2408
-		api::color_space _hdr_overlay_overwrite_color_space = api::color_space::unknown;
-		bool  _show_force_load_effects_button = true;
-		#pragma endregion
-
-		#pragma region Overlay Statistics
-		bool _gather_gpu_statistics = false;
-		size_t _preview_texture = std::numeric_limits<size_t>::max();
-		unsigned int _preview_size[3] = { 0, 0, 0xFFFFFFFF };
-		uint64_t _timestamp_frequency = 0;
-		#pragma endregion
-
-		#pragma region Overlay Log
-		char _log_filter[32] = {};
-		uintmax_t _last_log_size = 0;
-		imgui::code_editor _log_editor;
-		#pragma endregion
-
-		#pragma region Overlay Code Editor
-		struct editor_instance
-		{
-			size_t effect_index;
-			size_t permutation_index;
-			std::filesystem::path file_path;
-			std::string entry_point_name;
-			bool selected = false;
-			bool generated = false;
-			imgui::code_editor editor;
-		};
-
-		void open_code_editor(size_t effect_index, size_t permutation_index, const std::string &entry_point);
-		void open_code_editor(size_t effect_index, const std::filesystem::path &path);
-		void open_code_editor(editor_instance &instance) const;
-		void draw_code_editor(editor_instance &instance);
-
-		std::vector<editor_instance> _editors;
-		uint32_t _editor_palette[imgui::code_editor::color_palette_max];
 		#pragma endregion
 #endif
 	};

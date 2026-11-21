@@ -352,7 +352,7 @@ protected:
 
 		return code;
 	}
-	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &code, std::string &, std::string &) const override
+	bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &code, std::string &) const override
 	{
 		const function *const entry_point = find_function(entry_point_name);
 		if (entry_point == nullptr)

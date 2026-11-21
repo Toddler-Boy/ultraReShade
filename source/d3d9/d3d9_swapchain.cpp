@@ -35,10 +35,8 @@ Direct3DSwapChain9::Direct3DSwapChain9(Direct3DDevice9 *device, IDirect3DSwapCha
 	if (device->_implicit_swapchain != nullptr)
 		return;
 
-#if RESHADE_ADDON
 	// Update auto depth-stencil now that implicit swap chain proxy was created and back buffer render target views are known
 	device->init_auto_depth_stencil();
-#endif
 }
 Direct3DSwapChain9::Direct3DSwapChain9(Direct3DDevice9 *device, IDirect3DSwapChain9Ex *original) :
 	Direct3DSwapChain9(device, static_cast<IDirect3DSwapChain9 *>(original))
@@ -200,7 +198,6 @@ void Direct3DSwapChain9::on_init(bool resize)
 	if (!resize)
 		reshade::create_effect_runtime(this, _device);
 
-#if RESHADE_ADDON
 	reshade::invoke_addon_event<reshade::addon_event::init_swapchain>(this, resize);
 
 	D3DPRESENT_PARAMETERS pp = {};
@@ -217,7 +214,6 @@ void Direct3DSwapChain9::on_init(bool resize)
 		to_handle(_back_buffer.get()));
 
 	reshade::invoke_addon_event<reshade::addon_event::set_fullscreen_state>(this, pp.Windowed == FALSE, nullptr);
-#endif
 
 	reshade::init_effect_runtime(this);
 
@@ -230,11 +226,9 @@ void Direct3DSwapChain9::on_reset(bool resize)
 	{
 		reshade::reset_effect_runtime(this);
 
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::destroy_resource_view>(_device, to_handle(_back_buffer.get()));
 
 		reshade::invoke_addon_event<reshade::addon_event::destroy_swapchain>(this, resize);
-#endif
 
 		_back_buffer.reset();
 
@@ -262,7 +256,6 @@ void Direct3DSwapChain9::on_present(const RECT *source_rect, [[maybe_unused]] co
 	{
 		_hwnd = window_override;
 
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::present>(
 			_device,
 			this,
@@ -270,7 +263,6 @@ void Direct3DSwapChain9::on_present(const RECT *source_rect, [[maybe_unused]] co
 			reinterpret_cast<const reshade::api::rect *>(dest_rect),
 			dirty_region != nullptr ? dirty_region->rdh.nCount : 0,
 			dirty_region != nullptr ? reinterpret_cast<const reshade::api::rect *>(dirty_region->Buffer) : nullptr);
-#endif
 
 		// Only call into the effect runtime if the entire surface is presented, to avoid partial updates messing up effects and the GUI
 		if (is_presenting_entire_surface(source_rect, window_override))
@@ -292,10 +284,8 @@ void Direct3DSwapChain9::on_finish_present(HRESULT hr)
 		reshade::log::message(reshade::log::level::error, "Device was lost with %s!", reshade::log::hr_to_string(hr).c_str());
 		// Do not clean up resources, since application has to call 'IDirect3DDevice9::Reset' anyway, which will take care of that
 	}
-#if RESHADE_ADDON
 	else if (!_was_still_drawing_last_frame)
 	{
 		reshade::invoke_addon_event<reshade::addon_event::finish_present>(_device, this);
 	}
-#endif
 }

@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON
-
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -859,4 +857,3 @@ void reshade::ultra::forgetExclusiveCalls ( HMODULE owner )
 }
 //-----------------------------------------------------------------------------
 
-#endif

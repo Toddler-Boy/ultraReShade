@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON
-
 #include <algorithm>
 #include <cstring>
 #include <mutex>
@@ -255,4 +253,3 @@ void ReShadeJsonUnwatch ( uint64_t id )
 
 #endif
 
-#endif

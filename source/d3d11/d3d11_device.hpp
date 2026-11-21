@@ -114,12 +114,8 @@ public:
 	D3D11DeviceContext *_immediate_context = nullptr;
 
 private:
-#if RESHADE_ADDON
 	reshade::api::pipeline_layout _global_pipeline_layout = {};
-#endif
 
-#if RESHADE_ADDON >= 2
 public:
 	D3D_FEATURE_LEVEL _orig_feature_level = static_cast<D3D_FEATURE_LEVEL>(0);
-#endif
 };

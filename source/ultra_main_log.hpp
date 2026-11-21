@@ -15,8 +15,7 @@
 // and modules logs of their own in the same home
 namespace reshade::ultra
 {
-	// Opens reshade.log in the home; false when its file cannot be written (lines are kept in memory, the reason is the
-	// log's first error). Without it every message is dropped
+	// Opens reshade.log in the home; false when its file cannot be written (every message is dropped)
 	[[ nodiscard ]] bool openMainLog ();
 
 	[[ nodiscard ]] ultralog::Id mainLog ();

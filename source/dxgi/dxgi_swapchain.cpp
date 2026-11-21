@@ -4,8 +4,10 @@
  */
 
 #include "dxgi_swapchain.hpp"
+#if ULTRARESHADE_D3D10
 #include "d3d10/d3d10_device.hpp"
 #include "d3d10/d3d10_impl_swapchain.hpp"
+#endif
 #include "d3d11/d3d11_device.hpp"
 #include "d3d11/d3d11_device_context.hpp"
 #include "d3d11/d3d11_impl_swapchain.hpp"
@@ -17,10 +19,8 @@
 #include "addon_manager.hpp"
 #include "runtime_manager.hpp"
 
-#if RESHADE_ADDON
 extern bool modify_swapchain_desc(reshade::api::device_api api, DXGI_SWAP_CHAIN_DESC &desc, UINT &sync_interval);
 extern bool modify_swapchain_desc(reshade::api::device_api api, DXGI_SWAP_CHAIN_DESC1 &desc, UINT &sync_interval, DXGI_SWAP_CHAIN_FULLSCREEN_DESC *fullscreen_desc, HWND window);
-#endif
 
 extern reshade::api::device_api query_device(IUnknown *&device, com_ptr<IUnknown> &device_proxy);
 
@@ -30,6 +30,7 @@ thread_local bool g_in_dxgi_runtime = false;
 // SpecialK uses this private data GUID to track the current swap chain color space, so do the same
 inline constexpr GUID SKID_SwapChainColorSpace = { 0x18b57e4, 0x1493, 0x4953, { 0xad, 0xf2, 0xde, 0x6d, 0x99, 0xcc, 0x5, 0xe5 } }; // {018B57E4-1493-4953-ADF2-DE6D99CC05E5}
 
+#if ULTRARESHADE_D3D10
 DXGISwapChain::DXGISwapChain(IDXGIFactory *factory, D3D10Device *device, IDXGISwapChain  *original) :
 	_orig(original),
 	_interface_version(0),
@@ -55,6 +56,7 @@ DXGISwapChain::DXGISwapChain(IDXGIFactory *factory, D3D10Device *device, IDXGISw
 {
 	_interface_version = 1;
 }
+#endif
 DXGISwapChain::DXGISwapChain(IDXGIFactory *factory, D3D11Device *device, IDXGISwapChain  *original) :
 	_orig(original),
 	_interface_version(0),
@@ -111,9 +113,11 @@ DXGISwapChain::~DXGISwapChain()
 	// Destroy effect runtime first to release all internal references to device objects
 	switch (_direct3d_version)
 	{
+#if ULTRARESHADE_D3D10
 	case reshade::api::device_api::d3d10:
 		delete static_cast<reshade::d3d10::swapchain_impl *>(_impl);
 		break;
+#endif
 	case reshade::api::device_api::d3d11:
 		delete static_cast<reshade::d3d11::swapchain_impl *>(_impl);
 		break;
@@ -258,7 +262,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::Present(UINT SyncInterval, UINT Flags)
 	assert(!g_in_dxgi_runtime);
 	g_in_dxgi_runtime = true;
 
-#if RESHADE_ADDON
 	// If an add-on allows tearing, force it on when possible (application is not in fullscreen exclusive mode)
 	if (_sync_interval == 0x10000000)
 	{
@@ -278,7 +281,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::Present(UINT SyncInterval, UINT Flags)
 			SyncInterval > 0 || (_is_desc_modified && SUCCEEDED(_orig->GetDesc(&desc)) && (desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) == 0))
 			Flags &= ~DXGI_PRESENT_ALLOW_TEARING;
 	}
-#endif
 
 	const HRESULT hr = _orig->Present(SyncInterval, Flags);
 	g_in_dxgi_runtime = false;
@@ -298,7 +300,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::SetFullscreenState(BOOL Fullscreen, IDX
 		"Redirecting IDXGISwapChain::SetFullscreenState(this = %p, Fullscreen = %s, pTarget = %p) ...",
 		this, Fullscreen ? "TRUE" : "FALSE", pTarget);
 
-#if RESHADE_ADDON
 	_current_fullscreen_state = -1;
 
 	HMONITOR hmonitor = nullptr;
@@ -314,7 +315,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::SetFullscreenState(BOOL Fullscreen, IDX
 		_current_fullscreen_state = Fullscreen;
 		return S_OK;
 	}
-#endif
 
 	const bool was_in_dxgi_runtime = g_in_dxgi_runtime;
 	g_in_dxgi_runtime = true;
@@ -324,7 +324,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::SetFullscreenState(BOOL Fullscreen, IDX
 }
 HRESULT STDMETHODCALLTYPE DXGISwapChain::GetFullscreenState(BOOL *pFullscreen, IDXGIOutput **ppTarget)
 {
-#if RESHADE_ADDON
 	if (_current_fullscreen_state >= 0)
 	{
 		if (pFullscreen != nullptr)
@@ -340,7 +339,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::GetFullscreenState(BOOL *pFullscreen, I
 
 		return S_OK;
 	}
-#endif
 
 	const bool was_in_dxgi_runtime = g_in_dxgi_runtime;
 	g_in_dxgi_runtime = true;
@@ -352,7 +350,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::GetDesc(DXGI_SWAP_CHAIN_DESC *pDesc)
 {
 	const bool was_in_dxgi_runtime = g_in_dxgi_runtime;
 
-#if RESHADE_ADDON
 	if (_is_desc_modified)
 	{
 		assert(pDesc != nullptr);
@@ -373,7 +370,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::GetDesc(DXGI_SWAP_CHAIN_DESC *pDesc)
 
 		return S_OK;
 	}
-#endif
 
 	g_in_dxgi_runtime = true;
 	const HRESULT hr = _orig->GetDesc(pDesc);
@@ -392,7 +388,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::ResizeBuffers(UINT BufferCount, UINT Wi
 	const bool was_in_dxgi_runtime = g_in_dxgi_runtime;
 
 	// Handle update of the swap chain description
-#if RESHADE_ADDON
 	const DXGI_SWAP_CHAIN_DESC prev_orig_desc = _orig_desc;
 	{
 		g_in_dxgi_runtime = true;
@@ -427,7 +422,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::ResizeBuffers(UINT BufferCount, UINT Wi
 			_is_desc_modified = false;
 		}
 	}
-#endif
 
 	g_in_dxgi_runtime = true;
 	const HRESULT hr = _orig->ResizeBuffers(BufferCount, Width, Height, NewFormat, SwapChainFlags);
@@ -438,18 +432,14 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::ResizeBuffers(UINT BufferCount, UINT Wi
 	}
 	else if (hr == DXGI_ERROR_INVALID_CALL) // Ignore invalid call errors since the device is still in a usable state afterwards
 	{
-#if RESHADE_ADDON
 		_orig_desc = prev_orig_desc;
-#endif
 
 		reshade::log::message(reshade::log::level::warning, "IDXGISwapChain::ResizeBuffers failed with error code DXGI_ERROR_INVALID_CALL.");
 		on_init(true);
 	}
 	else
 	{
-#if RESHADE_ADDON
 		_orig_desc = prev_orig_desc;
-#endif
 
 		reshade::log::message(reshade::log::level::error, "IDXGISwapChain::ResizeBuffers failed with error code %s!", reshade::log::hr_to_string(hr).c_str());
 	}
@@ -483,7 +473,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::GetDesc1(DXGI_SWAP_CHAIN_DESC1 *pDesc)
 
 	const bool was_in_dxgi_runtime = g_in_dxgi_runtime;
 
-#if RESHADE_ADDON
 	if (_is_desc_modified)
 	{
 		assert(pDesc != nullptr);
@@ -517,7 +506,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::GetDesc1(DXGI_SWAP_CHAIN_DESC1 *pDesc)
 
 		return S_OK;
 	}
-#endif
 
 	g_in_dxgi_runtime = true;
 	const HRESULT hr = static_cast<IDXGISwapChain1 *>(_orig)->GetDesc1(pDesc);
@@ -551,7 +539,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::Present1(UINT SyncInterval, UINT Presen
 	assert(!g_in_dxgi_runtime);
 	g_in_dxgi_runtime = true;
 
-#if RESHADE_ADDON
 	// If an add-on allows tearing, force it on when possible (application is not in fullscreen exclusive mode)
 	if (_sync_interval == 0x10000000)
 	{
@@ -571,7 +558,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::Present1(UINT SyncInterval, UINT Presen
 			SyncInterval > 0 || (_is_desc_modified && SUCCEEDED(_orig->GetDesc(&desc)) && (desc.Flags & DXGI_SWAP_CHAIN_FLAG_ALLOW_TEARING) == 0))
 			PresentFlags &= ~DXGI_PRESENT_ALLOW_TEARING;
 	}
-#endif
 
 	const HRESULT hr = static_cast<IDXGISwapChain1 *>(_orig)->Present1(SyncInterval, PresentFlags, pPresentParameters);
 	g_in_dxgi_runtime = false;
@@ -700,7 +686,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::SetColorSpace1(DXGI_COLOR_SPACE_TYPE Co
 #endif
 		reshade::log::message(reshade::log::level::info, "Redirecting IDXGISwapChain3::SetColorSpace1(ColorSpace = %d) ...", static_cast<int>(ColorSpace));
 
-#if RESHADE_ADDON
 	// Skip if an add-on modified the back buffer format, since color space change may fail in that case and cause some games to crash
 	{
 		assert(!g_in_dxgi_runtime);
@@ -712,7 +697,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::SetColorSpace1(DXGI_COLOR_SPACE_TYPE Co
 		if (desc.BufferDesc.Format != _orig_desc.BufferDesc.Format)
 			return S_OK;
 	}
-#endif
 
 	DXGI_COLOR_SPACE_TYPE prev_color_space = DXGI_COLOR_SPACE_RGB_FULL_G22_NONE_P709;
 	{
@@ -758,7 +742,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::ResizeBuffers1(UINT BufferCount, UINT W
 	const bool was_in_dxgi_runtime = g_in_dxgi_runtime;
 
 	// Handle update of the swap chain description
-#if RESHADE_ADDON
 	const DXGI_SWAP_CHAIN_DESC prev_orig_desc = _orig_desc;
 	{
 		g_in_dxgi_runtime = true;
@@ -800,7 +783,6 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::ResizeBuffers1(UINT BufferCount, UINT W
 			_is_desc_modified = false;
 		}
 	}
-#endif
 
 	// Need to extract the original command queue object from the proxies passed in
 	assert(ppPresentQueue != nullptr);
@@ -821,18 +803,14 @@ HRESULT STDMETHODCALLTYPE DXGISwapChain::ResizeBuffers1(UINT BufferCount, UINT W
 	}
 	else if (hr == DXGI_ERROR_INVALID_CALL)
 	{
-#if RESHADE_ADDON
 		_orig_desc = prev_orig_desc;
-#endif
 
 		reshade::log::message(reshade::log::level::warning, "IDXGISwapChain3::ResizeBuffers1 failed with error code DXGI_ERROR_INVALID_CALL.");
 		on_init(true);
 	}
 	else
 	{
-#if RESHADE_ADDON
 		_orig_desc = prev_orig_desc;
-#endif
 
 		reshade::log::message(reshade::log::level::error, "IDXGISwapChain3::ResizeBuffers1 failed with error code %s!", reshade::log::hr_to_string(hr).c_str());
 	}
@@ -894,10 +872,12 @@ public:
 	{
 		switch (direct3d_version)
 		{
+#if ULTRARESHADE_D3D10
 		case reshade::api::device_api::d3d10:
 			// 'ID3D10Multithread' and 'ID3D11Multithread' are the same interface
 			static_cast<D3D10Device *>(static_cast<ID3D10Device *>(direct3d_device))->_orig->QueryInterface(&multithread);
 			break;
+#endif
 		case reshade::api::device_api::d3d11:
 			static_cast<D3D11Device *>(static_cast<ID3D11Device *>(direct3d_device))->_immediate_context->_orig->QueryInterface(&multithread);
 			break;
@@ -940,9 +920,11 @@ void DXGISwapChain::on_init(bool resize)
 	reshade::api::command_queue *graphics_queue = nullptr;
 	switch (_direct3d_version)
 	{
+#if ULTRARESHADE_D3D10
 	case reshade::api::device_api::d3d10:
 		graphics_queue = static_cast<D3D10Device *>(static_cast<ID3D10Device *>(_direct3d_device));
 		break;
+#endif
 	case reshade::api::device_api::d3d11:
 		graphics_queue = static_cast<D3D11Device *>(static_cast<ID3D11Device *>(_direct3d_device))->_immediate_context;
 		break;
@@ -958,7 +940,6 @@ void DXGISwapChain::on_init(bool resize)
 	if (!resize)
 		reshade::create_effect_runtime(_impl, graphics_queue);
 
-#if RESHADE_ADDON
 	reshade::invoke_addon_event<reshade::addon_event::init_swapchain>(_impl, resize);
 
 	BOOL fullscreen = FALSE;
@@ -975,7 +956,6 @@ void DXGISwapChain::on_init(bool resize)
 	}
 
 	reshade::invoke_addon_event<reshade::addon_event::set_fullscreen_state>(_impl, fullscreen != FALSE, hmonitor);
-#endif
 
 	reshade::init_effect_runtime(_impl);
 
@@ -989,9 +969,7 @@ void DXGISwapChain::on_reset(bool resize)
 	{
 		reshade::reset_effect_runtime(_impl);
 
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::destroy_swapchain>(_impl, resize);
-#endif
 
 		_is_initialized = false;
 	}
@@ -1021,8 +999,8 @@ void DXGISwapChain::on_present(UINT flags, [[maybe_unused]] const DXGI_PRESENT_P
 
 	switch (_direct3d_version)
 	{
+#if ULTRARESHADE_D3D10
 	case reshade::api::device_api::d3d10:
-#if RESHADE_ADDON
 		// Behave as if immediate command list is flushed
 		reshade::invoke_addon_event<reshade::addon_event::execute_command_list>(
 			static_cast<D3D10Device *>(static_cast<ID3D10Device *>(_direct3d_device)),
@@ -1035,11 +1013,10 @@ void DXGISwapChain::on_present(UINT flags, [[maybe_unused]] const DXGI_PRESENT_P
 			nullptr,
 			params != nullptr ? params->DirtyRectsCount : 0,
 			params != nullptr ? reinterpret_cast<const reshade::api::rect *>(params->pDirtyRects) : nullptr);
-#endif
 		reshade::present_effect_runtime(_impl);
 		break;
+#endif
 	case reshade::api::device_api::d3d11:
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::execute_command_list>(
 			static_cast<D3D11Device *>(static_cast<ID3D11Device *>(_direct3d_device))->_immediate_context,
 			static_cast<D3D11Device *>(static_cast<ID3D11Device *>(_direct3d_device))->_immediate_context);
@@ -1051,11 +1028,9 @@ void DXGISwapChain::on_present(UINT flags, [[maybe_unused]] const DXGI_PRESENT_P
 			nullptr,
 			params != nullptr ? params->DirtyRectsCount : 0,
 			params != nullptr ? reinterpret_cast<const reshade::api::rect *>(params->pDirtyRects) : nullptr);
-#endif
 		reshade::present_effect_runtime(_impl);
 		break;
 	case reshade::api::device_api::d3d12:
-#if RESHADE_ADDON
 		reshade::invoke_addon_event<reshade::addon_event::present>(
 			static_cast<D3D12CommandQueue *>(_direct3d_command_queue),
 			_impl,
@@ -1063,7 +1038,6 @@ void DXGISwapChain::on_present(UINT flags, [[maybe_unused]] const DXGI_PRESENT_P
 			nullptr,
 			params != nullptr ? params->DirtyRectsCount : 0,
 			params != nullptr ? reinterpret_cast<const reshade::api::rect *>(params->pDirtyRects) : nullptr);
-#endif
 		reshade::present_effect_runtime(_impl);
 		static_cast<D3D12CommandQueue *>(_direct3d_command_queue)->flush_immediate_command_list();
 		break;
@@ -1083,9 +1057,11 @@ void DXGISwapChain::on_finish_present(HRESULT hr)
 			HRESULT reason = DXGI_ERROR_INVALID_CALL;
 			switch (_direct3d_version)
 			{
+#if ULTRARESHADE_D3D10
 			case reshade::api::device_api::d3d10:
 				reason = static_cast<ID3D10Device *>(_direct3d_device)->GetDeviceRemovedReason();
 				break;
+#endif
 			case reshade::api::device_api::d3d11:
 				reason = static_cast<ID3D11Device *>(_direct3d_device)->GetDeviceRemovedReason();
 				break;
@@ -1097,14 +1073,15 @@ void DXGISwapChain::on_finish_present(HRESULT hr)
 			reshade::log::message(reshade::log::level::error, "> Device removal reason is %s.", reshade::log::hr_to_string(reason).c_str());
 		}
 	}
-#if RESHADE_ADDON
 	else if (!_was_still_drawing_last_frame)
 	{
 		switch (_direct3d_version)
 		{
+#if ULTRARESHADE_D3D10
 		case reshade::api::device_api::d3d10:
 			reshade::invoke_addon_event<reshade::addon_event::finish_present>(static_cast<D3D10Device *>(static_cast<ID3D10Device *>(_direct3d_device)), _impl);
 			break;
+#endif
 		case reshade::api::device_api::d3d11:
 			reshade::invoke_addon_event<reshade::addon_event::finish_present>(static_cast<D3D11Device *>(static_cast<ID3D11Device *>(_direct3d_device))->_immediate_context, _impl);
 			break;
@@ -1113,5 +1090,4 @@ void DXGISwapChain::on_finish_present(HRESULT hr)
 			break;
 		}
 	}
-#endif
 }

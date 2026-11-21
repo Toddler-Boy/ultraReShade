@@ -1652,11 +1652,8 @@ namespace reshade
 		/// <item><description>IDirect3DSwapChain9::Present</description></item>
 		/// <item><description>IDXGISwapChain::Present</description></item>
 		/// <item><description>IDXGISwapChain3::Present1</description></item>
-		/// <item><description>ID3D12CommandQueueDownlevel::Present</description></item>
 		/// <item><description>wglSwapBuffers</description></item>
 		/// <item><description>vkQueuePresentKHR</description></item>
-		/// <item><description>IVRCompositor::Submit</description></item>
-		/// <item><description>xrEndFrame</description></item>
 		/// </list>
 		/// <para>Callback function signature: <c>void (api::command_queue *queue, api::swapchain *swapchain, const api::rect *source_rect, const api::rect *dest_rect, uint32_t dirty_rect_count, const api::rect *dirty_rects)</c></para>
 		/// </summary>
@@ -1672,7 +1669,6 @@ namespace reshade
 		/// <item><description>IDirect3DSwapChain9::Present</description></item>
 		/// <item><description>IDXGISwapChain::Present</description></item>
 		/// <item><description>IDXGISwapChain3::Present1</description></item>
-		/// <item><description>ID3D12CommandQueueDownlevel::Present</description></item>
 		/// <item><description>wglSwapBuffers</description></item>
 		/// <item><description>vkQueuePresentKHR</description></item>
 		/// </list>
@@ -1743,9 +1739,6 @@ namespace reshade
 		/// Can be used to perform custom Dear ImGui calls, but it is recommended to instead use <see cref="register_overlay"/> to register a dedicated overlay.
 		/// <para>Callback function signature: <c>void (api::effect_runtime *runtime)</c></para>
 		/// </summary>
-		/// <remarks>
-		/// This is not called for effect runtimes in VR.
-		/// </remarks>
 		reshade_overlay,
 
 		/// <summary>
@@ -1898,9 +1891,7 @@ namespace reshade
 		/// </remarks>
 		ultra_process_exit = 107,
 
-#if RESHADE_ADDON
 		max = 108 // Last value used internally by ReShade to determine number of events in this enum
-#endif
 	};
 
 	namespace api

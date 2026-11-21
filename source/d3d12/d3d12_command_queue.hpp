@@ -8,12 +8,9 @@
 #include "d3d12_impl_command_queue.hpp"
 
 class D3D12Device;
-class D3D12CommandQueueDownlevel;
 
 class DECLSPEC_UUID("2C576D2A-0C1C-4D1D-AD7C-BC4FAEC15ABC") D3D12CommandQueue final : public ID3D12CommandQueue1, public reshade::d3d12::command_queue_impl
 {
-	friend class D3D12CommandQueueDownlevel;
-
 public:
 	D3D12CommandQueue(D3D12Device *device, ID3D12CommandQueue *original);
 	~D3D12CommandQueue();
@@ -58,7 +55,4 @@ public:
 	using command_queue_impl::_device;
 	LONG _ref = 1;
 	unsigned short _interface_version = 0;
-
-private:
-	D3D12CommandQueueDownlevel *_downlevel = nullptr;
 };

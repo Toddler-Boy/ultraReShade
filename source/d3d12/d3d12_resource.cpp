@@ -33,8 +33,6 @@ HRESULT STDMETHODCALLTYPE ID3D12Resource_GetDevice(ID3D12Resource *pResource, RE
 	return hr;
 }
 
-#if RESHADE_ADDON >= 2
-
 #include "d3d12_impl_type_convert.hpp"
 #include "addon_manager.hpp"
 
@@ -128,4 +126,3 @@ HRESULT STDMETHODCALLTYPE ID3D12Resource_Unmap(ID3D12Resource *pResource, UINT S
 	return reshade::hooks::call(ID3D12Resource_Unmap, reshade::hooks::vtable_from_instance(pResource) + 9)(pResource, Subresource, pWrittenRange);
 }
 
-#endif

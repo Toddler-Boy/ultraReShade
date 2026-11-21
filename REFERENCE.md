@@ -56,7 +56,7 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
 
 After building an add-on DLL, change its file extension from `.dll` to `.addon` and put it into the add-on search directory configured in ReShade (which defaults to the same directory as ReShade). It will be picked up and loaded automatically on the next launch of the application.
 
-For more complex examples, see the [examples directory in the repository](https://github.com/crosire/reshade/tree/main/examples). Contents of this document:
+Contents of this document:
 
 * [Events](#events)
 * [Overlays](#overlays)
@@ -124,7 +124,7 @@ static bool on_draw(reshade::api::command_list *cmd_list, uint32_t vertices, uin
 }
 ```
 
-Showing results on the screen is done through a `reshade::api::swapchain` object. This is a collection of back buffers that the application can render into, which will eventually be presented to the screen. There may be multiple swap chains, if for example the application is rendering to multiple windows, or to a screen and a VR headset. ReShade again will call the `reshade::addon_event::init_swapchain` event after such an object was created by the application (and `reshade::addon_event::destroy_swapchain` on destruction). In addition ReShade will call the `reshade::addon_event::create_swapchain` event before a swap chain is created, so an add-on may modify its description before that happens. For example, to force the resolution to a specific value, one can do the following:
+Showing results on the screen is done through a `reshade::api::swapchain` object. This is a collection of back buffers that the application can render into, which will eventually be presented to the screen. There may be multiple swap chains, if for example the application is rendering to multiple windows. ReShade again will call the `reshade::addon_event::init_swapchain` event after such an object was created by the application (and `reshade::addon_event::destroy_swapchain` on destruction). In addition ReShade will call the `reshade::addon_event::create_swapchain` event before a swap chain is created, so an add-on may modify its description before that happens. For example, to force the resolution to a specific value, one can do the following:
 ```cpp
 // Example callback function that can be registered via 'reshade::register_event<reshade::addon_event::create_swapchain>(&on_create_swapchain)'.
 static bool on_create_swapchain(reshade::api::device_api api, reshade::api::swapchain_desc &desc, void *hwnd)
@@ -152,7 +152,7 @@ Buffers and textures are referenced via `reshade::api::resource` handles. Depth-
 ## Overlays
 
 It is also supported to add an overlay, which can e.g. be used to display debug information or interact with the user in-application.
-Overlays are created with the use of the docking branch of [Dear ImGui](https://github.com/ocornut/imgui/tree/v1.92.2b-docking). Including `reshade.hpp` after [`imgui.h`](https://github.com/ocornut/imgui/blob/v1.92.2b-docking/imgui.h) will automatically overwrite all Dear ImGui functions to use the instance created and managed by ReShade. This means all you have to do is include these two headers and use Dear ImGui as usual (without having to build its source code files):
+Overlays are created with the use of the docking branch of [Dear ImGui](https://github.com/ocornut/imgui/tree/v1.93.0-docking). Including `reshade.hpp` after [`imgui.h`](https://github.com/ocornut/imgui/blob/v1.93.0-docking/imgui.h) will automatically overwrite all Dear ImGui functions to use the instance created and managed by ReShade. This means all you have to do is include these two headers and use Dear ImGui as usual (without having to build its source code files):
 
 ```cpp
 #define IMGUI_DISABLE_INCLUDE_IMCONFIG_H
@@ -176,11 +176,6 @@ static void draw_debug_overlay(reshade::api::effect_runtime *runtime)
     }
 }
 
-static void draw_settings_overlay(reshade::api::effect_runtime *runtime)
-{
-    ImGui::Checkbox("Popup window is visible", &g_popup_window_visible);
-}
-
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
 {
     switch (fdwReason)
@@ -190,12 +185,9 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
         if (!reshade::register_addon(hinstDLL))
             return FALSE;
         // This registers a new overlay with the specified name with ReShade.
-        // It will be displayed as an additional window when the ReShade overlay is opened.
+        // It will be displayed as an additional tab when the ReShade overlay is opened.
         // Its contents are defined by Dear ImGui commands issued in the specified callback function.
         reshade::register_overlay("Test", &draw_debug_overlay);
-        // It is also possible to register a special settings overlay by passing 'nullptr' instead of a title.
-        // This is shown beneath the add-on information in the add-on list of the ReShade overlay and can be used to present settings to users.
-        reshade::register_overlay(nullptr, &draw_settings_overlay);
         break;
     case DLL_PROCESS_DETACH:
         reshade::unregister_addon(hinstDLL);
@@ -206,10 +198,10 @@ BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID)
 ```
 
 Do not call `ImGui::Begin` and `ImGui::End` in the callback to create the overlay window itself, ReShade already does this for you before and after calling the callback function.
-You can however call `ImGui::Begin` and `ImGui::End` with a different title to open additional popup windows (this is not recommended though, since those are difficult to navigate in VR).
+You can however call `ImGui::Begin` and `ImGui::End` with a different title to open additional popup windows.
 
 Overlay names are shared across ReShade and all add-ons, which means you can register with a name already used by ReShade or another add-on to append widgets to their overlay.
-For example, `reshade::register_overlay("###settings", ...)` allows you to add widgets to the settings page in ReShade and `reshade::register_overlay("OSD", ...)` allows you to add additional information to the always visible on-screen display (clock, FPS, frametime) ReShade provides.
+For example, `reshade::register_overlay("OSD", ...)` allows you to add additional information to the always visible on-screen display (clock, FPS, frametime) ReShade provides.
 
 ## Abstraction
 

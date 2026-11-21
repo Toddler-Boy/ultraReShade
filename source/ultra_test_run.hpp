@@ -78,7 +78,7 @@ namespace reshade::ultra
 		size_t							stressThreads = 0;	//   at once, with the time each call took on its thread
 		bool							isLoggingFrames = false;	// -log-frames: a line in every frame
 		bool							isLoggingThroughAddons = false;	// -log-addons: in frame 1 a line through the add-on API for each loaded add-on, and one for dxgi.dll
-		bool							isCheckingLogLines = false;	// -check-log-lines: in frame 2 the Log tab's copy of new lines, also past the lines kept, and the named logs
+		bool							isCheckingNamedLogs = false;	// -check-named-logs: in frame 2 a log of its own opened, written and read back from its file
 		size_t							handledFaults = 0;	// -handled-faults <n>: n access violations caught in every frame, the frame times every 120 frames
 		std::vector<TestConfigAccess>	configAccesses;		// -set-config <frame> <section> <key> <value|->, -get-config <frame> <section> <key>
 		std::vector<TestKeys>			keys;				// -key-at <frame> <virtual key>[+<virtual key>...]
@@ -131,7 +131,7 @@ namespace reshade::ultra
 		size_t									stressThreads;
 		bool									isLoggingFrames;
 		bool									isLoggingThroughAddons;
-		bool									isCheckingLogLines;
+		bool									isCheckingNamedLogs;
 		size_t									handledFaults;
 		std::vector<TestConfigAccess>			configAccesses;
 		std::vector<TestKeys>					keys;

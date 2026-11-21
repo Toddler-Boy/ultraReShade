@@ -840,7 +840,6 @@ namespace reshade::api
 		/// <summary>
 		/// Captures a screenshot of the current back buffer resource and saves it to an image file on disk.
 		/// </summary>
-		/// <param name="postfix">Optional string to append to the screenshot filename, or <see langword="nullptr"/> for no postfix.</param>
-		virtual void save_screenshot(const char *postfix = nullptr) = 0;
+		virtual void save_screenshot() = 0;
 	};
 }

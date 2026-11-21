@@ -10,7 +10,7 @@
 
 namespace reshade
 {
-	void create_effect_runtime(api::swapchain *swapchain, api::command_queue *graphics_queue, bool vr = false);
+	void create_effect_runtime(api::swapchain *swapchain, api::command_queue *graphics_queue);
 	void destroy_effect_runtime(api::swapchain *swapchain);
 
 	void init_effect_runtime(api::swapchain *swapchain);

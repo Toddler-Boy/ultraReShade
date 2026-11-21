@@ -279,7 +279,7 @@ namespace
 
 		drawList->AddCircle ( center, radius, white ( ringTrackAlpha * alpha ), 0, thickness );
 		drawList->PathArcTo ( center, radius, start, start + 2.0f * pi * length );
-		drawList->PathStroke ( white ( ringArcAlpha * alpha ), ImDrawFlags_None, thickness );
+		drawList->PathStroke ( white ( ringArcAlpha * alpha ), thickness );
 	}
 
 	void advanceLogo ( reshade::ultra::SplashState& state, const reshade::ultra::SplashFrame& frame, float step )

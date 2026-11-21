@@ -12,7 +12,7 @@
 static std::mutex s_runtime_count_mutex;
 static size_t s_runtime_count = 0;
 
-void reshade::create_effect_runtime(api::swapchain *swapchain, api::command_queue *graphics_queue, bool vr)
+void reshade::create_effect_runtime(api::swapchain *swapchain, api::command_queue *graphics_queue)
 {
 	if (graphics_queue == nullptr || swapchain->get_private_data<reshade::runtime>() != nullptr)
 		return;
@@ -34,7 +34,7 @@ void reshade::create_effect_runtime(api::swapchain *swapchain, api::command_queu
 		++s_runtime_count;
 	}
 
-	swapchain->create_private_data<reshade::runtime>(swapchain, graphics_queue, vr);
+	swapchain->create_private_data<reshade::runtime>(swapchain, graphics_queue);
 }
 void reshade::destroy_effect_runtime(api::swapchain *swapchain)
 {

@@ -10,7 +10,6 @@
 #include <string>
 #include <string_view>
 #include <system_error>
-#include <vector>
 
 //-----------------------------------------------------------------------------
 
@@ -57,7 +56,7 @@ namespace ultralog
 		badName,		// not 1 to namesMax of letters, digits, '-' and '_'
 		badSize,		// outside minBytes to maxBytes
 		tooMany,		// logsMax logs are open
-		fileFailed		// the lines are kept in memory for viewers but not written (error says why)
+		fileFailed		// the lines are not written (error says why)
 	};
 
 	struct Opened
@@ -90,16 +89,6 @@ namespace ultralog
 	// The process ends in a crash that no unhandled exception filter saw (its exit status says so): no log gets an end line
 	// any more, and what waits is written
 	void noteCrash ();
-
-	// Recent lines for viewers: up to 10000 lines or 4 MB per log, each ending in '\n' (the file's CRLF is not in them)
-	[[ nodiscard ]] uint64_t lineCount ( Id log );
-
-	// The lines after line number seen, which moves on to the last one taken. At most maxBytesOfLines of them when that is
-	// less than all (always one). False when some lines are no longer in memory: lines then starts at the oldest kept
-	[[ nodiscard ]] bool copyLines ( Id log, uint64_t& seen, std::vector<std::string>& lines, size_t maxBytesOfLines = SIZE_MAX );
-
-	// Forgets the recent lines; the file keeps its lines
-	void clearRecent ( Id log );
 
 	// The last run of a log file's text: from its last header line to the end, the whole text without one
 	[[ nodiscard ]] std::string_view lastRun ( std::string_view fileText );

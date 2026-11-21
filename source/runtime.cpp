@@ -31,8 +31,6 @@
 #include <emmintrin.h>
 #include <smmintrin.h>
 #include <immintrin.h>
-#include <fpng.h>
-#include <simple_lossless.h>
 #include <stb_image.h>
 #include <stb_image_dds.h>
 #include <stb_image_write.h>
@@ -48,7 +46,7 @@ static __m128 cvtph_ps(__m128i value)
 	return _mm_cvtph_ps(value);
 }
 
-std::string expand_macro_string(const std::string &input, std::vector<std::pair<std::string_view, std::string>> macros = {})
+static std::string expand_environment_variables(const std::string &input)
 {
 	std::string result;
 
@@ -79,22 +77,9 @@ std::string expand_macro_string(const std::string &input, std::vector<std::pair<
 		const std::string_view input_macro_name = (colon_pos == std::string_view::npos) ? input_macro : input_macro.substr(0, colon_pos);
 
 		std::string value;
-		for (const std::pair<std::string_view, std::string> &macro : macros)
-		{
-			if (macro.first == input_macro_name)
-			{
-				value = macro.second;
-				break;
-			}
-		}
-
-		// Allow using environment variables alongside macros
-		if (value.empty())
-		{
-			char buf[512] = ""; size_t buf_len = 0;
-			if (getenv_s(&buf_len, buf, sizeof(buf) - 1, std::string(input_macro_name).c_str()) == 0)
-				value = buf;
-		}
+		char buf[512] = ""; size_t buf_len = 0;
+		if (getenv_s(&buf_len, buf, sizeof(buf) - 1, std::string(input_macro_name).c_str()) == 0)
+			value = buf;
 
 		if (colon_pos == std::string_view::npos)
 		{
@@ -120,51 +105,13 @@ std::string expand_macro_string(const std::string &input, std::vector<std::pair<
 
 	return result;
 }
-static std::string expand_macro_string(const std::string &input, std::vector<std::pair<std::string_view, std::string>> macros, std::chrono::system_clock::time_point now)
-{
-	const auto now_seconds = std::chrono::time_point_cast<std::chrono::seconds>(now);
-
-	char timestamp[21];
-	const std::time_t t = std::chrono::system_clock::to_time_t(now_seconds);
-	struct tm tm; localtime_s(&tm, &t);
-
-	std::snprintf(timestamp, std::size(timestamp), "%.4d-%.2d-%.2d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday);
-	macros.emplace_back("Date", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.4d", tm.tm_year + 1900);
-	macros.emplace_back("DateYear", timestamp);
-	macros.emplace_back("Year", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.2d", tm.tm_mon + 1);
-	macros.emplace_back("DateMonth", timestamp);
-	macros.emplace_back("Month", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.2d", tm.tm_mday);
-	macros.emplace_back("DateDay", timestamp);
-	macros.emplace_back("Day", timestamp);
-
-	std::snprintf(timestamp, std::size(timestamp), "%.2d-%.2d-%.2d", tm.tm_hour, tm.tm_min, tm.tm_sec);
-	macros.emplace_back("Time", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.2d", tm.tm_hour);
-	macros.emplace_back("TimeHour", timestamp);
-	macros.emplace_back("Hour", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.2d", tm.tm_min);
-	macros.emplace_back("TimeMinute", timestamp);
-	macros.emplace_back("Minute", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.2d", tm.tm_sec);
-	macros.emplace_back("TimeSecond", timestamp);
-	macros.emplace_back("Second", timestamp);
-	std::snprintf(timestamp, std::size(timestamp), "%.3lld", std::chrono::duration_cast<std::chrono::milliseconds>(now - now_seconds).count());
-	macros.emplace_back("TimeMillisecond", timestamp);
-	macros.emplace_back("Millisecond", timestamp);
-	macros.emplace_back("TimeMS", timestamp);
-
-	return expand_macro_string(input, macros);
-}
 
 bool resolve_path(std::filesystem::path &path, std::error_code &ec, const std::filesystem::path &base = g_reshade_base_path)
 {
 	if (path.empty())
 		return false;
 
-	path = std::filesystem::u8path(expand_macro_string(path.u8string()));
+	path = std::filesystem::u8path(expand_environment_variables(path.u8string()));
 
 	// First convert path to an absolute path
 	// Ignore the working directory and instead start relative paths at the DLL location
@@ -331,20 +278,16 @@ struct reshade::runtime::effect_creation
 	std::atomic<bool> is_cancelled = false;
 };
 
-reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphics_queue, bool is_vr) :
+reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphics_queue) :
 	_swapchain(swapchain),
 	_device(swapchain->get_device()),
 	_graphics_queue(graphics_queue),
-	_is_vr(is_vr),
 	_last_frame_duration(std::chrono::milliseconds(1)),
 	_start_time(std::chrono::high_resolution_clock::now()),
 	_last_present_time(_start_time),
 	_effect_search_paths({ L".\\" }),
 	_texture_search_paths({ L".\\" }),
-	_screenshot_path(L".\\"),
-	_screenshot_name("%AppName% %Date% %Time%_%Count%"), // Ensure unique naming with screenshot count because users may request more than one screenshot per second
-	_screenshot_post_save_command_arguments("\"%TargetPath%\""),
-	_screenshot_post_save_command_working_directory(L".\\")
+	_screenshot_path(L".\\")
 {
 	assert(swapchain != nullptr && graphics_queue != nullptr);
 
@@ -380,8 +323,6 @@ reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphic
 	_screenshot_key_data[0] = 0x2C;
 
 #if RESHADE_GUI
-	_timestamp_frequency = graphics_queue->get_timestamp_frequency();
-
 	init_gui();
 #endif
 
@@ -392,18 +333,14 @@ reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphic
 		const ini_file::defaults_scope recording_defaults;
 		save_config();
 	}
-
-	fpng::fpng_init();
 }
 reshade::runtime::~runtime()
 {
 	assert(_worker_threads.empty() && _effect_creations.empty());
 	assert(!_is_initialized && _techniques.empty() && _technique_sorting.empty());
 
-#if RESHADE_ADDON
 	if (ultra::isAddonReloadEnabled)
 		ultra::forgetEffectWatch(this);
-#endif
 
 #if RESHADE_GUI
 	// Save configuration before shutting down to ensure the current window state is written to disk
@@ -433,7 +370,7 @@ bool reshade::runtime::on_init()
 	// Create resolve texture and copy pipeline (do this before creating effect resources, to ensure correct back buffer format is set up)
 	if (back_buffer_desc.texture.samples > 1 ||
 		// Always use resolve texture in OpenGL to flip vertically and support sRGB + binding effect stencil
-		(_device->get_api() == api::device_api::opengl && !_is_vr) ||
+		(_device->get_api() == api::device_api::opengl) ||
 		// Some effects rely on there being an alpha channel available, so create resolve texture if that is not the case
 		(_back_buffer_format == api::format::r8g8b8x8_unorm || _back_buffer_format == api::format::b8g8r8x8_unorm))
 	{
@@ -594,14 +531,11 @@ bool reshade::runtime::on_init()
 #if RESHADE_GUI
 	if (!init_imgui_resources())
 		goto exit_failure;
-
-	if (_is_vr && !init_gui_vr())
-		goto exit_failure;
 #endif
 
 	{
 		const input::window_handle window = get_hwnd();
-		if (window != nullptr && !_is_vr)
+		if (window != nullptr)
 			_input = input::register_window(window);
 		else
 			_input.reset();
@@ -618,9 +552,7 @@ bool reshade::runtime::on_init()
 	_settings_save_successful = true;
 	_last_screenshot_save_successful = true;
 
-#if RESHADE_ADDON
 	invoke_addon_event<addon_event::init_effect_runtime>(this);
-#endif
 
 	log::message(log::level::info, "Recreated runtime environment on runtime %p.", this);
 
@@ -663,9 +595,6 @@ exit_failure:
 	_app_state = {};
 
 #if RESHADE_GUI
-	if (_is_vr)
-		deinit_gui_vr();
-
 	destroy_imgui_resources();
 #endif
 
@@ -727,15 +656,10 @@ void reshade::runtime::on_reset()
 	_back_buffer_color_space = api::color_space::unknown;
 
 #if RESHADE_GUI
-	if (_is_vr)
-		deinit_gui_vr();
-
 	destroy_imgui_resources();
 #endif
 
-#if RESHADE_ADDON
 	invoke_addon_event<addon_event::destroy_effect_runtime>(this);
-#endif
 
 	log::message(log::level::info, "Destroyed runtime environment on runtime %p.", this);
 }
@@ -744,7 +668,6 @@ void reshade::runtime::on_present()
 	if (!_is_initialized)
 		return;
 
-#if RESHADE_ADDON
 	if (!ultra::hasProcessExitBegun())
 	{
 		ultra::deliverFileChanges();
@@ -753,7 +676,6 @@ void reshade::runtime::on_present()
 	ultra_reload_changed_effects();
 
 	_is_in_present_call = true;
-#endif
 
 	api::command_list *const cmd_list = _graphics_queue->get_immediate_command_list();
 
@@ -788,9 +710,6 @@ void reshade::runtime::on_present()
 
 	_current_time = std::chrono::system_clock::now();
 
-	if (_should_save_screenshot && _screenshot_save_before && _effects_enabled && !_effects_rendered_this_frame)
-		save_screenshot("Before");
-
 	if (!is_compiling_effects() && !_techniques.empty())
 	{
 		if (_back_buffer_resolved != 0)
@@ -806,9 +725,8 @@ void reshade::runtime::on_present()
 	}
 
 	if (_should_save_screenshot)
-		save_screenshot(_screenshot_save_before ? "After" : nullptr);
+		save_screenshot();
 
-#if RESHADE_ADDON
 	// Every frame, whether the effects ran or not; screenshots of the effects are taken before
 	if (has_addon_event<addon_event::ultra_finish_present>())
 	{
@@ -823,7 +741,6 @@ void reshade::runtime::on_present()
 			cmd_list->barrier(back_buffer_resource, api::resource_usage::render_target, api::resource_usage::present);
 		}
 	}
-#endif
 
 	if (ultra_after_effects != nullptr)
 		ultra_after_effects(this);
@@ -834,13 +751,7 @@ void reshade::runtime::on_present()
 
 #if RESHADE_GUI
 	// Draw overlay
-	if (_is_vr)
-		draw_gui_vr();
-	else
-		draw_gui();
-
-	if (_should_save_screenshot && _screenshot_save_gui && (_show_overlay || (_preview_texture != std::numeric_limits<size_t>::max() && _effects_enabled)))
-		save_screenshot("Overlay");
+	draw_gui();
 
 	_block_input_next_frame = false;
 #endif
@@ -853,9 +764,7 @@ void reshade::runtime::on_present()
 	{
 		if (_input->is_key_pressed(_effects_key_data, _force_shortcut_modifiers))
 		{
-#if RESHADE_ADDON
 			if (!invoke_addon_event<addon_event::reshade_set_effects_state>(this, !_effects_enabled))
-#endif
 				_effects_enabled = !_effects_enabled;
 		}
 
@@ -975,11 +884,9 @@ void reshade::runtime::on_present()
 	// Apply previous state from application
 	apply_state(cmd_list, _app_state);
 
-#if RESHADE_ADDON
 	invoke_addon_event<addon_event::reshade_present>(this);
 
 	_is_in_present_call = false;
-#endif
 	_effects_rendered_this_frame = false;
 
 	// Update input status
@@ -992,40 +899,6 @@ void reshade::runtime::on_present()
 	if (!ini_file::flush_cache())
 		_settings_save_successful = false;
 
-#if RESHADE_ADDON == 1
-	// Detect high network traffic
-	extern volatile long g_network_traffic;
-
-	static int cooldown = 0, traffic = 0;
-	if (cooldown-- > 0)
-	{
-		traffic += g_network_traffic > 0;
-	}
-	else
-	{
-		const bool was_enabled = addon_enabled;
-		addon_enabled = traffic < 10;
-		traffic = 0;
-		cooldown = 60;
-
-		if (addon_enabled != was_enabled)
-		{
-			if (was_enabled)
-				_backup_texture_semantic_bindings = _texture_semantic_bindings;
-
-			for (const auto &binding : _backup_texture_semantic_bindings)
-			{
-				if (binding.second.first == _effect_permutations[0].color_srv[0] && binding.second.second == _effect_permutations[0].color_srv[1])
-					continue;
-
-				update_texture_bindings(binding.first.c_str(), addon_enabled ? binding.second.first : api::resource_view { 0 }, addon_enabled ? binding.second.second : api::resource_view { 0 });
-			}
-		}
-	}
-
-	if (std::numeric_limits<long>::max() != g_network_traffic)
-		g_network_traffic = 0;
-#endif
 }
 
 // A game's title as a folder's name, as ultraGame's add-on makes it: what Windows reserves taken out, no space or dot at its end
@@ -1109,7 +982,6 @@ void reshade::runtime::load_config()
 	config_get("GENERAL", "EffectSearchPaths", _effect_search_paths);
 	config_get("GENERAL", "PerformanceMode", _performance_mode);
 	config_get("GENERAL", "PreprocessorDefinitions", _global_preprocessor_definitions);
-	config_get("GENERAL", "SkipLoadingDisabledEffects", _effect_load_skipping);
 	config_get("GENERAL", "TextureSearchPaths", _texture_search_paths);
 	config_get("GENERAL", "IntermediateCachePath", _effect_cache_path);
 
@@ -1125,20 +997,6 @@ void reshade::runtime::load_config()
 
 	_screenshot_path_problem.clear();
 	_screenshot_path = screenshot_folder(config, _screenshot_path_problem);
-	config_get("SCREENSHOT", "SoundPath", _screenshot_sound_path);
-	config_get("SCREENSHOT", "ClearAlpha", _screenshot_clear_alpha);
-	config_get("SCREENSHOT", "FileFormat", _screenshot_format);
-	config_get("SCREENSHOT", "FileNaming", _screenshot_name);
-	config_get("SCREENSHOT", "JPEGQuality", _screenshot_jpeg_quality);
-	config_get("SCREENSHOT", "SaveBeforeShot", _screenshot_save_before);
-	config_get("SCREENSHOT", "SavePresetFile", _screenshot_include_preset);
-#if RESHADE_GUI
-	config_get("SCREENSHOT", "SaveOverlayShot", _screenshot_save_gui);
-#endif
-	config_get("SCREENSHOT", "PostSaveCommand", _screenshot_post_save_command);
-	config_get("SCREENSHOT", "PostSaveCommandArguments", _screenshot_post_save_command_arguments);
-	config_get("SCREENSHOT", "PostSaveCommandWorkingDirectory", _screenshot_post_save_command_working_directory);
-	config_get("SCREENSHOT", "PostSaveCommandHideWindow", _screenshot_post_save_command_hide_window);
 
 #if RESHADE_GUI
 	load_config_gui(config);
@@ -1154,24 +1012,8 @@ void reshade::runtime::save_config() const
 
 	config.set("GENERAL", "EffectSearchPaths", _effect_search_paths);
 	config.set("GENERAL", "PerformanceMode", _performance_mode);
-	config.set("GENERAL", "SkipLoadingDisabledEffects", _effect_load_skipping);
 	config.set("GENERAL", "TextureSearchPaths", _texture_search_paths);
 	config.set("GENERAL", "IntermediateCachePath", _effect_cache_path);
-
-	config.set("SCREENSHOT", "SoundPath", _screenshot_sound_path);
-	config.set("SCREENSHOT", "ClearAlpha", _screenshot_clear_alpha);
-	config.set("SCREENSHOT", "FileFormat", _screenshot_format);
-	config.set("SCREENSHOT", "FileNaming", _screenshot_name);
-	config.set("SCREENSHOT", "JPEGQuality", _screenshot_jpeg_quality);
-	config.set("SCREENSHOT", "SaveBeforeShot", _screenshot_save_before);
-	config.set("SCREENSHOT", "SavePresetFile", _screenshot_include_preset);
-#if RESHADE_GUI
-	config.set("SCREENSHOT", "SaveOverlayShot", _screenshot_save_gui);
-#endif
-	config.set("SCREENSHOT", "PostSaveCommand", _screenshot_post_save_command);
-	config.set("SCREENSHOT", "PostSaveCommandArguments", _screenshot_post_save_command_arguments);
-	config.set("SCREENSHOT", "PostSaveCommandWorkingDirectory", _screenshot_post_save_command_working_directory);
-	config.set("SCREENSHOT", "PostSaveCommandHideWindow", _screenshot_post_save_command_hide_window);
 
 #if RESHADE_GUI
 	save_config_gui(config);
@@ -1195,7 +1037,6 @@ void reshade::runtime::load_effect_settings()
 {
 	_settings_save_successful = true;
 
-	// The user's switched off ones may be skipped on purpose ([GENERAL] SkipLoadingDisabledEffects)
 	const auto log_unknown = [this](const std::vector<ultra::EffectEntry> &effects, const char *file) {
 		for (const ultra::EffectEntry &entry : effects)
 			if (entry.enabled && std::none_of(_techniques.cbegin(), _techniques.cend(),
@@ -1368,7 +1209,7 @@ void reshade::runtime::save_effect_settings()
 			effect_list.insert(tech.effect_index);
 	}
 
-	// Entries of effects that are not loaded (skipped or missing) stay as they were
+	// Entries of effects that are not loaded (missing) stay as they were
 	for (const ultra::EffectEntry &entry : _effect_settings.user.effects)
 		if (std::none_of(effects.cbegin(), effects.cend(),
 				[&entry](const ultra::EffectEntry &saved) { return saved.technique == entry.technique && saved.file == entry.file; }) &&
@@ -1434,7 +1275,7 @@ void reshade::runtime::save_effect_settings()
 	_effect_settings.user.effects = std::move(effects);
 }
 
-bool reshade::runtime::load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool force_load, bool preprocess_required)
+bool reshade::runtime::load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool preprocess_required)
 {
 	const std::chrono::high_resolution_clock::time_point time_load_started = std::chrono::high_resolution_clock::now();
 
@@ -1465,7 +1306,6 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		}
 	}
 
-#if RESHADE_ADDON
 	std::vector<std::string> addon_definitions;
 	addon_definitions.reserve(addon_loaded_info.size());
 	for (const addon_info &info : addon_loaded_info)
@@ -1480,9 +1320,8 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 			[](const std::string::value_type c) {
 				return (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ? c : (c >= 'a' && c <= 'z') ? static_cast<std::string::value_type>(c - 'a' + 'A') : '_';
 			});
-		preprocessor_definitions.emplace_back(addon_definition, std::to_string(std::max(1, info.version.number.major * 10000 + info.version.number.minor * 100 + info.version.number.build)));
+		preprocessor_definitions.emplace_back(addon_definition, "1");
 	}
-#endif
 
 	for (const std::pair<std::string, std::string> &definition : preprocessor_definitions)
 		attributes += definition.first + '=' + definition.second + ';';
@@ -1554,19 +1393,6 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 	}
 
 	effect.is_route = _effect_settings.isRouteFile(effect_name);
-
-	if (_effect_load_skipping && !force_load && !effect.is_route)
-	{
-		effect.skipped = std::none_of(_effect_settings.user.effects.cbegin(), _effect_settings.user.effects.cend(),
-			[&effect_name](const ultra::EffectEntry &entry) { return entry.enabled && entry.file == effect_name; });
-
-		if (effect.skipped)
-		{
-			if (_reload_remaining_effects != std::numeric_limits<size_t>::max())
-				_reload_remaining_effects--;
-			return false;
-		}
-	}
 
 	assert(permutation_index < effect.permutations.size());
 	effect::permutation &permutation = effect.permutations[permutation_index];
@@ -1652,10 +1478,6 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		{
 			effect.definitions = std::move(preprocessor_definitions);
 			std::sort(effect.definitions.begin(), effect.definitions.end());
-
-			// Keep track of included files
-			effect.included_files = pp.included_files();
-			std::sort(effect.included_files.begin(), effect.included_files.end()); // Sort file names alphabetically
 
 			effect.preprocessed = preprocessed;
 		}
@@ -1907,7 +1729,7 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 
 				spec_constants_hash = std::hash<std::string>()(spec_constant_attributes);
 
-				// Update specialization constant values for when code is generated below in 'finalize_code' and 'assemble_code_for_entry_point'
+				// Update specialization constant values for when code is generated below in 'assemble_code_for_entry_point'
 				codegen->module().spec_constants = permutation.module.spec_constants;
 			}
 		}
@@ -1915,10 +1737,8 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		{
 			assert(!preprocess_required);
 
-			return load_effect(source_file, effect_index, permutation_index, force_load, true);
+			return load_effect(source_file, effect_index, permutation_index, true);
 		}
-
-		permutation.generated_code = codegen->finalize_code();
 	}
 
 	if ((preprocessed || source_cached) && compiled)
@@ -1936,28 +1756,24 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 				}
 
 				std::string &cso = permutation.cso[entry_point.first];
-				std::string &assembly = permutation.assembly[entry_point.first];
 
 				const std::string cache_id = source_file.stem().u8string() + '-' + std::to_string(_renderer_id) + '-' + std::to_string(source_hash) + '-' + std::to_string(spec_constants_hash) + '-' + entry_point.first;
 
-				if (load_effect_cache(cache_id, "cso", cso) &&
-					load_effect_cache(cache_id, "asm", assembly))
+				if (load_effect_cache(cache_id, "cso", cso))
 				{
 					continue;
 				}
 				else
 				{
 					cso.clear();
-					assembly.clear();
 
-					if (!codegen->assemble_code_for_entry_point(entry_point.first, cso, assembly, errors))
+					if (!codegen->assemble_code_for_entry_point(entry_point.first, cso, errors))
 					{
 						compiled = false;
 						break;
 					}
 
 					save_effect_cache(cache_id, "cso", cso);
-					save_effect_cache(cache_id, "asm", assembly);
 				}
 			}
 		}
@@ -2918,18 +2734,8 @@ bool reshade::runtime::finish_effect_creation(effect_creation &creation)
 			_graphics_queue->signal(_effect_upload_fence, ++_effect_upload_fence_value);
 	}
 
-	// Create optional query heap for time measurements (on the render thread, since Vulkan resets it with a command)
-	size_t total_pass_count = 0;
-	for (const reshadefx::technique &tech : permutation.module.techniques)
-		total_pass_count += tech.passes.size();
-
 	if (permutation_index == 0)
-	{
 		effect.cb = creation.cb;
-
-		if (!_device->create_query_heap(api::query_type::timestamp, static_cast<uint32_t>((permutation.module.techniques.size() + total_pass_count) * 2 * 4), &effect.query_heap))
-			log::message(log::level::error, "Failed to create query heap for effect file '%s'!", effect.source_file.u8string().c_str());
-	}
 
 	permutation.layout = creation.layout;
 	permutation.cb_table = creation.cb_table;
@@ -2940,17 +2746,10 @@ bool reshade::runtime::finish_effect_creation(effect_creation &creation)
 	std::vector<api::descriptor_table_update> descriptor_writes = std::move(creation.descriptor_writes);
 	std::vector<api::sampler_with_resource_view> &sampler_descriptors = creation.sampler_descriptors;
 
-	size_t pass_index_in_effect = 0, query_base_index = 0;
+	size_t pass_index_in_effect = 0;
 	for (effect_creation::technique_passes &created_tech : creation.techniques)
 	{
 		technique &tech = _techniques[created_tech.technique_index];
-
-		// Offset index so that a query exists for each command frame and two subsequent ones are used for before/after stamps
-		if (permutation_index == 0)
-		{
-			tech.query_base_index = static_cast<uint32_t>(query_base_index);
-			query_base_index += (1 + tech.permutations[0].passes.size()) * 2 * 4;
-		}
 
 		for (size_t pass_index = 0; pass_index < created_tech.passes.size(); ++pass_index, ++pass_index_in_effect)
 		{
@@ -3179,21 +2978,6 @@ void reshade::runtime::update_effect_creations()
 		if (!finish_effect_creation(*creation))
 			fail_effect_creation(creation->effect_index);
 
-#if RESHADE_GUI
-		// Update assembly in all code editors after a reload
-		const effect &effect = _effects[creation->effect_index];
-		for (editor_instance &instance : _editors)
-		{
-			if (!instance.generated || instance.entry_point_name.empty() || instance.permutation_index != creation->permutation_index || instance.file_path != effect.source_file)
-				continue;
-
-			assert(instance.effect_index == creation->effect_index);
-
-			if (effect.permutations[creation->permutation_index].assembly.find(instance.entry_point_name) != effect.permutations[creation->permutation_index].assembly.end())
-				open_code_editor(instance);
-		}
-#endif
-
 		has_finished = true;
 	}
 
@@ -3203,10 +2987,8 @@ void reshade::runtime::update_effect_creations()
 	// Before the event, so that add-ons find the effects in it
 	_is_creating_reloaded_effects = false;
 
-#if RESHADE_ADDON
 	if (has_finished)
 		invoke_addon_event<addon_event::reshade_reloaded_effects>(this);
-#endif
 }
 
 void reshade::runtime::destroy_effect(size_t effect_index, bool unload)
@@ -3243,9 +3025,6 @@ void reshade::runtime::destroy_effect(size_t effect_index, bool unload)
 	{
 		_device->destroy_resource(effect.cb);
 		effect.cb = {};
-
-		_device->destroy_query_heap(effect.query_heap);
-		effect.query_heap = {};
 
 		for (effect::permutation &permutation : effect.permutations)
 		{
@@ -3823,10 +3602,8 @@ void reshade::runtime::enable_technique(technique &tech)
 	if (!_effects[tech.effect_index].compiled)
 		return; // Cannot enable techniques that failed to compile
 
-#if RESHADE_ADDON
 	if (!is_loading() && invoke_addon_event<addon_event::reshade_set_technique_state>(this, api::effect_technique { reinterpret_cast<uintptr_t>(&tech) }, true))
 		return;
-#endif
 
 	const bool status_changed = !tech.enabled;
 	tech.enabled = true;
@@ -3843,16 +3620,12 @@ void reshade::runtime::disable_technique(technique &tech)
 {
 	assert(tech.effect_index < _effects.size());
 
-#if RESHADE_ADDON
 	if (!is_loading() && invoke_addon_event<addon_event::reshade_set_technique_state>(this, api::effect_technique { reinterpret_cast<uintptr_t>(&tech) }, false))
 		return;
-#endif
 
 	const bool status_changed = tech.enabled;
 	tech.enabled = false;
 	tech.time_left = 0;
-	tech.average_cpu_duration.clear();
-	tech.average_gpu_duration.clear();
 
 	if (status_changed) // Decrease rendering reference count
 		_effects[tech.effect_index].rendering--;
@@ -3866,7 +3639,6 @@ void reshade::runtime::reorder_techniques(std::vector<size_t> &&technique_indice
 				return std::find(_technique_sorting.cbegin(), _technique_sorting.cend(), technique_index) != _technique_sorting.cend();
 			}));
 
-#if RESHADE_ADDON
 	if (!is_loading())
 	{
 		std::vector<api::effect_technique> techniques(technique_indices.size());
@@ -3887,7 +3659,6 @@ void reshade::runtime::reorder_techniques(std::vector<size_t> &&technique_indice
 			technique_indices[i] = tech - _techniques.data();
 		}
 	}
-#endif
 
 	// The route's effects always run first
 	std::stable_partition(technique_indices.begin(), technique_indices.end(), [this](size_t technique_index) { return _techniques[technique_index].is_route; });
@@ -3895,7 +3666,7 @@ void reshade::runtime::reorder_techniques(std::vector<size_t> &&technique_indice
 	_technique_sorting = std::move(technique_indices);
 }
 
-void reshade::runtime::load_effects(bool force_load_all)
+void reshade::runtime::load_effects()
 {
 	// Build a list of effect files by walking through the effect search paths
 	const std::vector<std::filesystem::path> effect_files =
@@ -3925,22 +3696,18 @@ void reshade::runtime::load_effects(bool force_load_all)
 
 	// Keep track of the spawned threads, so the runtime cannot be destroyed while they are still running
 	for (size_t n = 0; n < num_splits; ++n)
-		_worker_threads.emplace_back([this, effect_files, offset, num_splits, n, force_load_all]() {
+		_worker_threads.emplace_back([this, effect_files, offset, num_splits, n]() {
 			SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
 
 			// Abort loading when initialization state changes (indicating that 'on_reset' was called in the meantime)
 			for (size_t i = 0; i < effect_files.size() && _is_initialized; ++i)
 				if (i * num_splits / effect_files.size() == n)
-					load_effect(effect_files[i], offset + i, 0, force_load_all || effect_files[i].extension() == L".addonfx");
+					load_effect(effect_files[i], offset + i, 0);
 		});
 }
 bool reshade::runtime::reload_effect(size_t effect_index)
 {
 	assert(!is_loading() || _reload_remaining_effects == 0);
-
-#if RESHADE_GUI
-	_show_splash = false; // Hide splash bar when reloading a single effect file
-#endif
 
 	cancel_effect_creations();
 
@@ -3950,33 +3717,25 @@ bool reshade::runtime::reload_effect(size_t effect_index)
 	const std::filesystem::path source_file = _effects[effect_index].source_file;
 	destroy_effect(effect_index);
 
-#if RESHADE_ADDON
 	// Call event after destroying the effect, so add-ons get a chance to release any handles they hold to variables and techniques
 	invoke_addon_event<addon_event::reshade_reloaded_effects>(this);
-#endif
 
 	// Make sure 'is_loading' is true while loading the effect
 	_reload_remaining_effects = 1;
 
-	return load_effect(source_file, effect_index, 0, true, true);
+	return load_effect(source_file, effect_index, 0, true);
 }
-void reshade::runtime::reload_effects(bool force_load_all)
+void reshade::runtime::reload_effects()
 {
 	// Clear out any previous effects
 	destroy_effects();
 
-#if RESHADE_ADDON
 	// Call event after destroying previous effects, so add-ons get a chance to release any handles they hold to variables and techniques
 	invoke_addon_event<addon_event::reshade_reloaded_effects>(this);
-#endif
 
-#if RESHADE_GUI
-	_show_splash = true; // Always show splash bar when reloading everything
-	_reload_count++;
-#endif
 	_last_reload_successful = true;
 
-	load_effects(force_load_all);
+	load_effects();
 }
 void reshade::runtime::destroy_effects()
 {
@@ -3990,7 +3749,7 @@ void reshade::runtime::destroy_effects()
 
 #if RESHADE_GUI
 	_effect_filter[0] = '\0';
-	_preview_texture = std::numeric_limits<size_t>::max();
+	_has_user_shaders = false;
 #endif
 
 	// Reset the effect creation queue
@@ -4072,7 +3831,7 @@ void reshade::runtime::clear_effect_cache()
 
 		const std::filesystem::path filename = entry.path().filename();
 		const std::filesystem::path extension = entry.path().extension();
-		if (filename.wstring().compare(0, 8, L"reshade-") != 0 || (extension != L".i" && extension != L".cso" && extension != L".asm"))
+		if (filename.wstring().compare(0, 8, L"reshade-") != 0 || (extension != L".i" && extension != L".cso"))
 			continue;
 
 		std::filesystem::remove(entry, ec);
@@ -4198,7 +3957,7 @@ void reshade::runtime::update_effects()
 
 				_worker_threads.emplace_back([this, effect_index = effect_index, permutation_index = permutation_index]() {
 						SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_LOWEST);
-						load_effect(_effects[effect_index].source_file, effect_index, permutation_index, true);
+						load_effect(_effects[effect_index].source_file, effect_index, permutation_index);
 					});
 			}
 
@@ -4221,6 +3980,10 @@ void reshade::runtime::update_effects()
 		// Finished loading effects, so apply the settings to figure out which ones need compiling
 		load_effect_settings();
 
+#if RESHADE_GUI
+		_has_user_shaders = std::ranges::any_of(_effects, [](const effect &effect) { return !effect.is_route && !effect.addon; });
+#endif
+
 		if (_wants_effect_settings_save)
 		{
 			_wants_effect_settings_save = false;
@@ -4230,28 +3993,6 @@ void reshade::runtime::update_effects()
 		_last_reload_time = std::chrono::high_resolution_clock::now();
 		_reload_remaining_effects = std::numeric_limits<size_t>::max();
 		_is_creating_reloaded_effects = true;
-
-#if RESHADE_GUI
-		// Update all code editors after a reload
-		for (editor_instance &instance : _editors)
-		{
-			if (const auto it = std::find_if(_effects.cbegin(), _effects.cend(),
-					[&instance](const effect &effect) {
-						return effect.source_file == instance.file_path || std::find(effect.included_files.begin(), effect.included_files.end(), instance.file_path) != effect.included_files.end();
-					});
-				it != _effects.cend())
-			{
-				// Set effect index again in case it was moved during the reload
-				instance.effect_index = std::distance(_effects.cbegin(), it);
-
-				if (instance.entry_point_name.empty() && (instance.permutation_index < it->permutations.size() || !instance.generated))
-					open_code_editor(instance);
-				else
-					// Those editors referencing assembly will be updated in a separate step below
-					instance.editor.clear_text();
-			}
-		}
-#endif
 		return;
 	}
 
@@ -4276,9 +4017,7 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 	// Lock input so it cannot be modified by other threads while we are reading it here
 	std::unique_lock<std::recursive_mutex> input_lock;
 	if (_input != nullptr
-#if RESHADE_ADDON
 		&& !_is_in_present_call
-#endif
 		)
 		input_lock = _input->lock();
 
@@ -4455,7 +4194,6 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 	const api::resource back_buffer_resource = _device->get_resource_from_view(rtv);
 
 	size_t permutation_index = 0;
-#if RESHADE_ADDON
 	if (!_is_in_present_call &&
 		// Special case for when add-on passed in the back buffer, which behaves as if this was called from within present, using the default permutation
 		back_buffer_resource != get_current_back_buffer())
@@ -4479,7 +4217,6 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 		api::capture_state(cmd_list, _app_state);
 
 	invoke_addon_event<addon_event::reshade_begin_effects>(this, cmd_list, rtv, rtv_srgb);
-#endif
 
 #ifndef NDEBUG
 	cmd_list->begin_debug_event("ReShade effects");
@@ -4524,12 +4261,10 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 	cmd_list->end_debug_event();
 #endif
 
-#if RESHADE_ADDON
 	invoke_addon_event<addon_event::reshade_finish_effects>(this, cmd_list, rtv, rtv_srgb);
 
 	if (!_is_in_present_call)
 		api::apply_state(cmd_list, _app_state);
-#endif
 }
 void reshade::runtime::render_technique(technique &tech, api::command_list *cmd_list, api::resource back_buffer_resource, api::resource_view back_buffer_rtv, api::resource_view back_buffer_rtv_srgb, size_t permutation_index)
 {
@@ -4538,35 +4273,6 @@ void reshade::runtime::render_technique(technique &tech, api::command_list *cmd_
 
 #ifndef NDEBUG
 	cmd_list->begin_debug_event(tech.name.c_str());
-#endif
-
-#if RESHADE_GUI
-	uint32_t query_base_index = 0;
-	const bool gather_gpu_statistics = _gather_gpu_statistics && _timestamp_frequency != 0 && effect.query_heap != 0 && permutation_index == 0;
-
-	if (gather_gpu_statistics)
-	{
-		const uint32_t query_count = static_cast<uint32_t>((1 + tech.permutations[0].passes.size()) * 2);
-		query_base_index = tech.query_base_index + (_frame_count % 4) * query_count;
-
-		// Evaluate queries from oldest frame in queue
-		if (temp_mem<uint64_t> timestamps(query_count);
-			_device->get_query_heap_results(effect.query_heap, api::query_type::timestamp, query_base_index, query_count, timestamps.p, sizeof(uint64_t)))
-		{
-			const uint64_t tech_duration = timestamps[1] - timestamps[0];
-			tech.average_gpu_duration.append(tech_duration * 1'000'000'000ull / _timestamp_frequency);
-
-			for (size_t pass_index = 0; pass_index < tech.permutations[0].passes.size(); ++pass_index)
-			{
-				const uint64_t pass_duration = timestamps[2 + pass_index * 2 + 1] - timestamps[2 + pass_index * 2];
-				tech.permutations[0].passes[pass_index].average_gpu_duration.append(pass_duration * 1'000'000'000ull / _timestamp_frequency);
-			}
-		}
-
-		cmd_list->end_query(effect.query_heap, api::query_type::timestamp, query_base_index);
-	}
-
-	const std::chrono::high_resolution_clock::time_point time_technique_started = std::chrono::high_resolution_clock::now();
 #endif
 
 	// Update shader constants
@@ -4604,11 +4310,6 @@ void reshade::runtime::render_technique(technique &tech, api::command_list *cmd_
 
 #ifndef NDEBUG
 		cmd_list->begin_debug_event((pass.name.empty() ? "Pass " + std::to_string(pass_index) : pass.name).c_str());
-#endif
-
-#if RESHADE_GUI
-		if (gather_gpu_statistics)
-			cmd_list->end_query(effect.query_heap, api::query_type::timestamp, query_base_index + static_cast<uint32_t>((1 + pass_index) * 2));
 #endif
 
 		const uint32_t num_barriers = static_cast<uint32_t>(pass.modified_resources.size());
@@ -4761,11 +4462,6 @@ void reshade::runtime::render_technique(technique &tech, api::command_list *cmd_
 			cmd_list->barrier(num_barriers, pass.modified_resources.data(), state_new.p, state_old.p);
 		}
 
-#if RESHADE_GUI
-		if (gather_gpu_statistics)
-			cmd_list->end_query(effect.query_heap, api::query_type::timestamp, query_base_index + static_cast<uint32_t>((1 + pass_index) * 2) + 1);
-#endif
-
 #ifndef NDEBUG
 		cmd_list->end_debug_event();
 #endif
@@ -4775,22 +4471,11 @@ void reshade::runtime::render_technique(technique &tech, api::command_list *cmd_
 			cmd_list->generate_mipmaps(modified_texture);
 	}
 
-#if RESHADE_GUI
-	const std::chrono::high_resolution_clock::time_point time_technique_finished = std::chrono::high_resolution_clock::now();
-
-	tech.average_cpu_duration.append(std::chrono::duration_cast<std::chrono::nanoseconds>(time_technique_finished - time_technique_started).count());
-
-	if (gather_gpu_statistics)
-		cmd_list->end_query(effect.query_heap, api::query_type::timestamp, query_base_index + 1);
-#endif
-
 #ifndef NDEBUG
 	cmd_list->end_debug_event();
 #endif
 
-#if RESHADE_ADDON
 	invoke_addon_event<addon_event::reshade_render_technique>(const_cast<runtime *>(this), api::effect_technique { reinterpret_cast<uintptr_t>(&tech) }, cmd_list, back_buffer_rtv, back_buffer_rtv_srgb);
-#endif
 }
 
 bool reshade::runtime::has_screenshot_folder()
@@ -4804,135 +4489,6 @@ bool reshade::runtime::has_screenshot_folder()
 	return false;
 }
 
-void reshade::runtime::save_texture(const texture &tex)
-{
-	if (tex.type == reshadefx::texture_type::texture_3d)
-	{
-		log::message(log::level::error, "Texture saving is not supported for 3D textures!");
-		return;
-	}
-	if (!has_screenshot_folder())
-		return;
-
-	std::string screenshot_name = tex.unique_name;
-	switch (_screenshot_format)
-	{
-	case 0:
-		screenshot_name += ".bmp";
-		break;
-	case 1:
-		screenshot_name += ".png";
-		break;
-	case 2:
-		screenshot_name += ".jpg";
-		break;
-	case 3:
-		screenshot_name += ".jxl";
-		break;
-	default:
-		return;
-	}
-
-	const std::filesystem::path screenshot_path = _screenshot_path / std::filesystem::u8path(screenshot_name);
-
-	_last_screenshot_save_successful = true;
-
-	if (std::vector<uint8_t> pixels(static_cast<size_t>(tex.width) * static_cast<size_t>(tex.height) * 4);
-		get_texture_data(tex.resource, api::resource_usage::shader_resource, pixels.data(), api::format::r8g8b8a8_unorm))
-	{
-		_worker_threads.emplace_back([this, screenshot_path, pixels = std::move(pixels), width = tex.width, height = tex.height]() mutable {
-				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
-
-			// Default to a save failure unless it is reported to succeed below
-			bool save_success = false;
-
-			if (FILE *const file = _wfsopen(screenshot_path.c_str(), L"wb", SH_DENYNO))
-			{
-				const auto write_callback = [](void *context, void *data, int size) {
-					fwrite(data, 1, size, static_cast<FILE *>(context));
-				};
-
-				switch (_screenshot_format)
-				{
-				case 0:
-					save_success = stbi_write_bmp_to_func(write_callback, file, width, height, 4, pixels.data()) != 0;
-					break;
-				case 1:
-#if 1
-					if (std::vector<uint8_t> encoded_data;
-						fpng::fpng_encode_image_to_memory(pixels.data(), width, height, 4, encoded_data))
-						save_success = fwrite(encoded_data.data(), 1, encoded_data.size(), file) == encoded_data.size();
-#else
-					save_success = stbi_write_png_to_func(write_callback, file, width, height, 4, pixels.data(), 0) != 0;
-#endif
-					break;
-				case 2:
-					save_success = stbi_write_jpg_to_func(write_callback, file, width, height, 4, pixels.data(), _screenshot_jpeg_quality) != 0;
-					break;
-				case 3:
-					JxlColorEncoding color_encoding;
-					color_encoding.color_space = JXL_COLOR_SPACE_RGB;
-					color_encoding.white_point = JXL_WHITE_POINT_D65;
-					color_encoding.primaries = JXL_PRIMARIES_SRGB;
-					color_encoding.transfer_function = JXL_TRANSFER_FUNCTION_SRGB;
-					color_encoding.rendering_intent = JXL_RENDERING_INTENT_RELATIVE;
-					color_encoding.is_float = false;
-
-					uint8_t *encoded_data = nullptr;
-					const size_t encoded_size = JxlSimpleLosslessEncode(
-						pixels.data(),
-						width,
-						static_cast<size_t>(width) * 4,
-						height,
-						4,
-						/* bitdepth = */ 8,
-						/* big_endian = */ false,
-						/* effort = */ 2,
-						&encoded_data,
-						nullptr,
-						[](void *, void *opaque, void fun(void *, size_t), size_t count) {
-							const size_t num_splits = std::min(count, static_cast<size_t>(std::thread::hardware_concurrency()));
-							if (num_splits == 1)
-							{
-								for (size_t i = 0; i < count; ++i)
-									fun(opaque, i);
-								return;
-							}
-							std::vector<std::thread> worker_threads;
-							for (size_t n = 0; n < num_splits; ++n)
-								worker_threads.emplace_back([count, opaque, fun, num_splits, n]() {
-									for (size_t i = 0; i < count; ++i)
-										if (i * num_splits / count == n)
-											fun(opaque, i);
-								});
-							for (std::thread &thread : worker_threads)
-								thread.join();
-						},
-						color_encoding);
-
-					if (encoded_data && encoded_size > 0)
-					{
-						save_success = fwrite(encoded_data, 1, encoded_size, file) == encoded_size;
-						free(encoded_data);
-					}
-					break;
-				}
-
-				if (ferror(file))
-					save_success = false;
-
-				fclose(file);
-			}
-
-			if (_last_screenshot_save_successful)
-			{
-				_last_screenshot_time = std::chrono::high_resolution_clock::now();
-				_last_screenshot_file = screenshot_path;
-				_last_screenshot_save_successful = save_success;
-			}
-		});
-	}
-}
 void reshade::runtime::update_texture(texture &tex, uint32_t width, uint32_t height, uint32_t depth, const void *pixels)
 {
 	std::vector<uint8_t> resized;
@@ -5083,10 +4639,8 @@ template <> void reshade::runtime::get_uniform_value<uint32_t>(const uniform &va
 
 void reshade::runtime::set_uniform_value_data(uniform &variable, const uint8_t *data, size_t size, size_t base_index)
 {
-#if RESHADE_ADDON
 	if (!is_loading() && invoke_addon_event<addon_event::reshade_set_uniform_value>(this, api::effect_uniform_variable { reinterpret_cast<uintptr_t>(&variable) }, data, size))
 		return;
-#endif
 
 	size = std::min(size, static_cast<size_t>(variable.size));
 	assert(data != nullptr && (size % 4) == 0);
@@ -5188,96 +4742,45 @@ template <> void reshade::runtime::set_uniform_value<uint32_t>(uniform &variable
 	}
 }
 
-void reshade::runtime::save_screenshot(const char *postfix_in)
+void reshade::runtime::save_screenshot()
 {
 	if (!has_screenshot_folder())
 		return;
 
-	std::string postfix;
-	if (postfix_in != nullptr)
-		postfix = postfix_in;
+	// No tonemapping is implemented, so an HDR back buffer is saved as a 16-bit PNG in BT.2100
+	const bool is_hdr = _back_buffer_format == api::format::r16g16b16a16_float || _back_buffer_color_space == api::color_space::hdr10_pq;
 
-	const unsigned int screenshot_count = _screenshot_count;
-	// Use PNG or JPEG XL for HDR (no tonemapping is implemented, so this is the only way to capture a screenshot in HDR)
-	const unsigned int screenshot_format =
-		(_back_buffer_format == api::format::r16g16b16a16_float || _back_buffer_color_space == api::color_space::hdr10_pq) ? (_screenshot_format == 3 ? 5 : 4) : _screenshot_format;
-
-	std::string screenshot_name = expand_macro_string(_screenshot_name, {
-		{ "AppName", g_target_executable_path.stem().u8string() },
-		{ "BeforeAfter", postfix },
-		{ "Count", std::to_string(screenshot_count) }
-	}, _current_time);
-
-	if (!postfix.empty() && _screenshot_name.find("%BeforeAfter%") == std::string::npos)
+	// The count keeps apart two screenshots of one second
+	char timestamp[32];
 	{
-		screenshot_name += ' ';
-		screenshot_name += postfix;
+		const std::time_t t = std::chrono::system_clock::to_time_t(_current_time);
+		struct tm tm; localtime_s(&tm, &t);
+		std::snprintf(timestamp, std::size(timestamp), "%.4d-%.2d-%.2d %.2d-%.2d-%.2d", tm.tm_year + 1900, tm.tm_mon + 1, tm.tm_mday, tm.tm_hour, tm.tm_min, tm.tm_sec);
 	}
-
-	switch (screenshot_format)
-	{
-	case 0:
-		screenshot_name += ".bmp";
-		break;
-	case 1:
-	case 4:
-		screenshot_name += ".png";
-		break;
-	case 2:
-		screenshot_name += ".jpg";
-		break;
-	case 3:
-	case 5:
-		screenshot_name += ".jxl";
-		break;
-	default:
-		return;
-	}
-
-	const std::filesystem::path screenshot_path = _screenshot_path / std::filesystem::u8path(screenshot_name).lexically_normal();
+	const std::filesystem::path screenshot_path = _screenshot_path / std::filesystem::u8path(g_target_executable_path.stem().u8string() + ' ' + timestamp + '_' + std::to_string(_screenshot_count) + ".png");
 
 	log::message(log::level::info, "Saving screenshot to '%s'.", screenshot_path.u8string().c_str());
 
 	_last_screenshot_save_successful = true;
 
-	if (std::vector<uint8_t> pixels(static_cast<size_t>(_width) * static_cast<size_t>(_height) * (screenshot_format >= 4 ? 6 : 4));
+	if (std::vector<uint8_t> pixels(static_cast<size_t>(_width) * static_cast<size_t>(_height) * (is_hdr ? 6 : 4));
 		get_texture_data(
 			_back_buffer_resolved != 0 ? _back_buffer_resolved : _swapchain->get_current_back_buffer(),
 			_back_buffer_resolved != 0 ? api::resource_usage::render_target : api::resource_usage::present,
 			pixels.data(),
-			screenshot_format >= 4 ? (_back_buffer_format == api::format::r16g16b16a16_float ? api::format::r16g16b16_float : api::format::r16g16b16_unorm) : api::format::r8g8b8a8_unorm))
+			is_hdr ? (_back_buffer_format == api::format::r16g16b16a16_float ? api::format::r16g16b16_float : api::format::r16g16b16_unorm) : api::format::r8g8b8a8_unorm))
 	{
-		// The user's effects as reshade-user.json holds them, beside the image
-		ultra::JsonTree effects_json;
-		if (_screenshot_include_preset && postfix != "Before" && postfix != "Overlay")
-		{
-			const ini_file &home = global_config();
-			effects_json.reset(ReShadeJsonCreate(json::type::object));
-			ReShadeJsonSetInt(ReShadeJsonMember(effects_json.get(), "schema"), 1);
-			for (const char *const name : { "effects", "effectFiles" })
-				if (const json::value *const member = home.user_member(name))
-					ReShadeJsonAssign(ReShadeJsonMember(effects_json.get(), name), member);
-		}
+		_last_screenshot_file = screenshot_path;
+		_screenshots_saving++;
 
-		// Play screenshot sound
-		if (!_screenshot_sound_path.empty())
-			utils::play_sound_async(g_reshade_base_path / _screenshot_sound_path);
-
-		_worker_threads.emplace_back([this, screenshot_count, screenshot_format, screenshot_path, postfix, pixels = std::move(pixels), effects_json = std::move(effects_json)]() mutable {
+		_worker_threads.emplace_back([this, is_hdr, screenshot_path, pixels = std::move(pixels)]() mutable {
 				SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_BELOW_NORMAL);
 
 			// Remove alpha channel
-			int comp = 4;
-			if (screenshot_format >= 4)
-			{
-				comp = 3;
-			}
-			else if (_screenshot_clear_alpha)
-			{
-				comp = 3;
+			constexpr int comp = 3;
+			if (!is_hdr)
 				for (size_t i = 0; i < static_cast<size_t>(_width) * static_cast<size_t>(_height); ++i)
 					*reinterpret_cast<uint32_t *>(pixels.data() + 3 * i) = *reinterpret_cast<const uint32_t *>(pixels.data() + 4 * i);
-			}
 
 			// Create screenshot directory if it does not exist
 			std::error_code ec;
@@ -5295,33 +4798,14 @@ void reshade::runtime::save_screenshot(const char *postfix_in)
 					fwrite(data, 1, size, static_cast<FILE *>(context));
 				};
 
-				switch (screenshot_format)
+				if (!is_hdr)
 				{
-				case 0:
-					save_success = stbi_write_bmp_to_func(write_callback, file, _width, _height, comp, pixels.data()) != 0;
-					break;
-				case 1:
-#if 1
-					if (std::vector<uint8_t> encoded_data;
-						fpng::fpng_encode_image_to_memory(pixels.data(), _width, _height, comp, encoded_data))
-						save_success = fwrite(encoded_data.data(), 1, encoded_data.size(), file) == encoded_data.size();
-#else
 					save_success = stbi_write_png_to_func(write_callback, file, _width, _height, comp, pixels.data(), 0) != 0;
-#endif
-					break;
-				case 2:
-					save_success = stbi_write_jpg_to_func(write_callback, file, _width, _height, comp, pixels.data(), _screenshot_jpeg_quality) != 0;
-					break;
-				case 4: // HDR PNG
+				}
+				else
+				{
 					if (_back_buffer_format == api::format::r16g16b16a16_float)
 					{
-						if (!fpng::fpng_cpu_supports_sse41())
-						{
-							// Technically requires F16C instruction set, not just SSE4.1
-							save_success = false;
-							break;
-						}
-
 						for (size_t i = 0; i < static_cast<size_t>(_width) * static_cast<size_t>(_height); ++i)
 						{
 							uint16_t *const pixel = reinterpret_cast<uint16_t *>(pixels.data()) + i * 3;
@@ -5361,6 +4845,11 @@ void reshade::runtime::save_screenshot(const char *postfix_in)
 						}
 					}
 
+					// The PNG's cICP chunk: BT.2100 primaries with the PQ or HLG transfer function (ITU-T H.273)
+					constexpr unsigned char cicp_primaries_bt2100 = 9;
+					constexpr unsigned char cicp_transfer_pq = 16;
+					constexpr unsigned char cicp_transfer_hlg = 18;
+
 					save_success = stbi_write_hdr_png_to_func(
 						write_callback,
 						file,
@@ -5369,76 +4858,8 @@ void reshade::runtime::save_screenshot(const char *postfix_in)
 						comp,
 						reinterpret_cast<uint16_t *>(pixels.data()),
 						0,
-						static_cast<unsigned char>(JXL_PRIMARIES_2100),
-						static_cast<unsigned char>(_back_buffer_color_space == api::color_space::hdr10_hlg ? JXL_TRANSFER_FUNCTION_HLG : JXL_TRANSFER_FUNCTION_PQ)) != 0;
-					break;
-				case 3:
-				case 5: // HDR JPEG XL
-					JxlColorEncoding color_encoding;
-					color_encoding.color_space = JXL_COLOR_SPACE_RGB;
-					color_encoding.white_point = JXL_WHITE_POINT_D65;
-					color_encoding.rendering_intent = JXL_RENDERING_INTENT_RELATIVE;
-					color_encoding.is_float = _back_buffer_format == api::format::r16g16b16a16_float;
-
-					switch (_back_buffer_color_space)
-					{
-					default:
-					case api::color_space::srgb:
-						color_encoding.primaries = JXL_PRIMARIES_SRGB;
-						color_encoding.transfer_function = JXL_TRANSFER_FUNCTION_SRGB;
-						break;
-					case api::color_space::scrgb:
-						color_encoding.primaries = JXL_PRIMARIES_SRGB;
-						color_encoding.transfer_function = JXL_TRANSFER_FUNCTION_LINEAR;
-						break;
-					case api::color_space::hdr10_pq:
-						color_encoding.primaries = JXL_PRIMARIES_2100;
-						color_encoding.transfer_function = JXL_TRANSFER_FUNCTION_PQ;
-						break;
-					case api::color_space::hdr10_hlg:
-						color_encoding.primaries = JXL_PRIMARIES_2100;
-						color_encoding.transfer_function = JXL_TRANSFER_FUNCTION_HLG;
-						break;
-					}
-
-					uint8_t *encoded_data = nullptr;
-					const size_t encoded_size = JxlSimpleLosslessEncode(
-						pixels.data(),
-						_width,
-						static_cast<size_t>(_width) * comp * (screenshot_format >= 4 ? 2 : 1),
-						_height,
-						comp,
-						screenshot_format >= 4 ? 16 : 8,
-						/* big_endian = */ false,
-						/* effort = */ 2,
-						&encoded_data,
-						nullptr,
-						[](void *, void *opaque, void fun(void *, size_t), size_t count) {
-							const size_t num_splits = std::min(count, static_cast<size_t>(std::thread::hardware_concurrency()));
-							if (num_splits == 1)
-							{
-								for (size_t i = 0; i < count; ++i)
-									fun(opaque, i);
-								return;
-							}
-							std::vector<std::thread> worker_threads;
-							for (size_t n = 0; n < num_splits; ++n)
-								worker_threads.emplace_back([count, opaque, fun, num_splits, n]() {
-									for (size_t i = 0; i < count; ++i)
-										if (i * num_splits / count == n)
-											fun(opaque, i);
-								});
-							for (std::thread &thread : worker_threads)
-								thread.join();
-						},
-						color_encoding);
-
-					if (encoded_data && encoded_size > 0)
-					{
-						save_success = fwrite(encoded_data, 1, encoded_size, file) == encoded_size;
-						free(encoded_data);
-					}
-					break;
+						cicp_primaries_bt2100,
+						_back_buffer_color_space == api::color_space::hdr10_hlg ? cicp_transfer_hlg : cicp_transfer_pq) != 0;
 				}
 
 				if (ferror(file))
@@ -5448,79 +4869,19 @@ void reshade::runtime::save_screenshot(const char *postfix_in)
 			}
 
 			if (save_success)
-			{
-				execute_screenshot_post_save_command(screenshot_path, screenshot_count, postfix);
-
-				if (effects_json != nullptr)
-				{
-					std::filesystem::path effects_path = screenshot_path;
-					effects_path.replace_extension(L".json");
-
-					if (json::error error; !ultra::writeJsonFile(effects_path, *effects_json, error))
-						log::message(log::level::error, "The screenshot's effects were not saved: %s", error.message);
-				}
-
-#if RESHADE_ADDON
 				invoke_addon_event<addon_event::reshade_screenshot>(this, screenshot_path.u8string().c_str());
-#endif
-			}
 			else
-			{
 				log::message(log::level::error, "Failed to write screenshot to '%s'!", screenshot_path.u8string().c_str());
-			}
 
-			if (_last_screenshot_save_successful)
+			if (!save_success)
 			{
 				_last_screenshot_time = std::chrono::high_resolution_clock::now();
-				_last_screenshot_file = screenshot_path;
-				_last_screenshot_save_successful = save_success;
+				_last_screenshot_save_successful = false;
 			}
+
+			_screenshots_saving--;
 		});
 	}
-}
-bool reshade::runtime::execute_screenshot_post_save_command(const std::filesystem::path &screenshot_path, unsigned int screenshot_count, std::string_view postfix)
-{
-	if (_screenshot_post_save_command.empty())
-		return false;
-
-	const std::wstring ext = _screenshot_post_save_command.extension().wstring();
-
-	std::string command_line;
-	if (ext == L".bat" || ext == L".cmd")
-		command_line = "cmd /C call ";
-	else if (ext == L".ps1")
-		command_line = "powershell -File ";
-	else if (ext == L".py")
-		command_line = "python ";
-	else if (ext != L".exe")
-		return false;
-
-	command_line += '\"';
-	command_line += _screenshot_post_save_command.u8string();
-	command_line += '\"';
-
-	if (!_screenshot_post_save_command_arguments.empty())
-	{
-		command_line += ' ';
-		command_line += expand_macro_string(_screenshot_post_save_command_arguments, {
-			{ "AppName", g_target_executable_path.stem().u8string() },
-			{ "BeforeAfter", std::string(postfix) },
-			{ "TargetPath", screenshot_path.u8string() },
-			{ "TargetDir", screenshot_path.parent_path().u8string() },
-			{ "TargetFileName", screenshot_path.filename().u8string() },
-			{ "TargetExt", screenshot_path.extension().u8string() },
-			{ "TargetName", screenshot_path.stem().u8string() },
-			{ "Count", std::to_string(screenshot_count) }
-		}, _current_time);
-	}
-
-	if (!utils::execute_command(command_line, g_reshade_base_path / _screenshot_post_save_command_working_directory, _screenshot_post_save_command_hide_window))
-	{
-		log::message(log::level::error, "Failed to execute screenshot post-save command!");
-		return false;
-	}
-
-	return true;
 }
 
 bool reshade::runtime::get_texture_data(api::resource resource, api::resource_usage state, uint8_t *pixels, api::format quantization_format)

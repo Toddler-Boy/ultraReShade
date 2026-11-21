@@ -10,7 +10,6 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cstring>
-#include <deque>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -30,8 +29,6 @@ namespace
 	constexpr size_t	pendingMax = 1 << 20;
 	constexpr size_t	wakeAt = pendingMax / 4;		// a burst goes out before the buffer fills
 	constexpr DWORD		drainEveryMs = 50;				// at most this much is lost when the process is killed
-	constexpr size_t	recentMax = 10000;
-	constexpr size_t	recentBytesMax = 4 << 20;
 	constexpr size_t	lineMax = 32 << 10;
 	constexpr DWORD		scanChunk = 64 << 10;
 	constexpr DWORD		moveChunk = 256 << 10;
@@ -52,7 +49,7 @@ namespace
 
 		// Timed: a thread that ExitProcess ended may still hold one. Taken in this order when both are
 		std::timed_mutex			fileLock;			// file, writeOffset, startOffset, draining, hasWriteFailed
-		std::timed_mutex			pendingLock;		// pending, dropped, recent, recentBytes
+		std::timed_mutex			pendingLock;		// pending, dropped
 		HANDLE						file = INVALID_HANDLE_VALUE;
 		uint64_t					writeOffset = 0;	// where the next write goes: the end of the file
 		uint64_t					startOffset = 0;	// the file's size when this run began
@@ -61,10 +58,7 @@ namespace
 
 		std::string					pending;
 		size_t						dropped = 0;		// lines that found no room since the last drain
-		std::deque<std::string>		recent;
-		size_t						recentBytes = 0;
 
-		std::atomic<uint64_t>		count = 0;
 		std::atomic<bool>			hasFile = false;
 		std::atomic<bool>			hasPending = false;
 		std::atomic<bool>			isTrimPending = false;
@@ -244,43 +238,28 @@ namespace
 		return reinterpret_cast<HMODULE> ( &__ImageBase ) == GetModuleHandleW ( nullptr );
 	}
 
-	// Puts a line among the waiting ones and the recent ones; true when the writer should wake for a burst. forced: it
-	// is never dropped for the buffer being full (header, end line, the log's own errors)
-	[[ nodiscard ]] bool queue ( Log& l, std::string&& line, bool isForced, std::string_view filePrefix = {} )
+	// Puts a line among the waiting ones; true when the writer should wake for a burst. forced: it is never dropped for
+	// the buffer being full (header, end line, the log's own errors)
+	[[ nodiscard ]] bool queue ( Log& l, const std::string& line, bool isForced, std::string_view filePrefix = {} )
 	{
 		std::unique_lock	lock ( l.pendingLock, lockTimeout );
 
-		if ( ! lock.owns_lock () )
+		if ( ! lock.owns_lock () || ! l.hasFile )
 			return false;
 
-		auto	shouldWake = false;
+		const auto	size = sizeWithCrLf ( line ) + filePrefix.size ();
+		auto		shouldWake = false;
 
-		if ( l.hasFile )
+		if ( ! isForced && l.pending.size () + size > pendingMax )
+			++l.dropped;
+		else
 		{
-			const auto	size = sizeWithCrLf ( line ) + filePrefix.size ();
-
-			if ( ! isForced && l.pending.size () + size > pendingMax )
-				++l.dropped;
-			else
-			{
-				shouldWake = l.pending.size () < wakeAt && l.pending.size () + size >= wakeAt;
-				l.pending.append ( filePrefix );
-				appendWithCrLf ( l.pending, line );
-			}
-
-			l.hasPending = true;
+			shouldWake = l.pending.size () < wakeAt && l.pending.size () + size >= wakeAt;
+			l.pending.append ( filePrefix );
+			appendWithCrLf ( l.pending, line );
 		}
 
-		l.recentBytes += line.size ();
-		l.recent.push_back ( std::move ( line ) );
-
-		while ( l.recent.size () > recentMax || ( l.recentBytes > recentBytesMax && l.recent.size () > 1 ) )
-		{
-			l.recentBytes -= l.recent.front ().size ();
-			l.recent.pop_front ();
-		}
-
-		l.count.fetch_add ( 1, std::memory_order_release );
+		l.hasPending = true;
 		return shouldWake;
 	}
 
@@ -440,9 +419,9 @@ namespace
 		forEachLog ( [] ( Log& l ) { drain ( l, true ); } );
 	}
 
-	void append ( Log& l, std::string&& line, bool isForced, std::string_view filePrefix = {} )
+	void append ( Log& l, const std::string& line, bool isForced, std::string_view filePrefix = {} )
 	{
-		const auto	shouldWake = queue ( l, std::move ( line ), isForced, filePrefix );
+		const auto	shouldWake = queue ( l, line, isForced, filePrefix );
 		auto&		r = registry ();
 
 		if ( ! r.hasWriter )
@@ -632,8 +611,6 @@ namespace
 		if ( std::unique_lock lock ( l.pendingLock, lockTimeout ); lock.owns_lock () )
 		{
 			std::string ().swap ( l.pending );
-			std::deque<std::string> ().swap ( l.recent );
-			l.recentBytes = 0;
 		}
 	}
 
@@ -770,62 +747,6 @@ void ultralog::noteCrash ()
 {
 	registry ().isCrashed = true;
 	flushAll ();
-}
-//-----------------------------------------------------------------------------
-
-uint64_t ultralog::lineCount ( Id log )
-{
-	const auto* const	l = find ( log );
-	return l != nullptr ? l->count.load ( std::memory_order_acquire ) : 0;
-}
-//-----------------------------------------------------------------------------
-
-bool ultralog::copyLines ( Id log, uint64_t& seen, std::vector<std::string>& lines, size_t maxBytesOfLines )
-{
-	auto* const	l = find ( log );
-
-	if ( l == nullptr )
-		return true;
-
-	std::unique_lock	lock ( l->pendingLock, lockTimeout );
-
-	if ( ! lock.owns_lock () )
-		return true;
-
-	const auto	count = l->count.load ( std::memory_order_relaxed );
-	const auto	first = count - l->recent.size ();
-	const auto	isComplete = seen >= first;
-	auto		bytes = size_t ( 0 );
-	auto		next = isComplete ? seen : first;
-
-	for ( ; next < count; ++next )
-	{
-		const auto&	line = l->recent[ size_t ( next - first ) ];
-
-		if ( bytes != 0 && bytes + line.size () > maxBytesOfLines )
-			break;
-
-		lines.push_back ( line );
-		bytes += line.size ();
-	}
-
-	seen = std::min ( next, count );
-	return isComplete;
-}
-//-----------------------------------------------------------------------------
-
-void ultralog::clearRecent ( Id log )
-{
-	auto* const	l = find ( log );
-
-	if ( l == nullptr )
-		return;
-
-	if ( std::unique_lock lock ( l->pendingLock, lockTimeout ); lock.owns_lock () )
-	{
-		l->recent.clear ();
-		l->recentBytes = 0;
-	}
 }
 //-----------------------------------------------------------------------------
 

@@ -11,8 +11,6 @@
 #include <algorithm> // std::copy_n
 #include <utf8/unchecked.h>
 
-extern bool is_windows7();
-
 static auto adapter_from_device(ID3D11Device *device, DXGI_ADAPTER_DESC *adapter_desc = nullptr) -> const com_ptr<IDXGIAdapter>
 {
 	com_ptr<IDXGIDevice> dxgi_device;
@@ -141,7 +139,7 @@ bool reshade::d3d11::device_impl::check_capability(api::device_caps capability) 
 	case api::device_caps::shared_resource:
 		return true;
 	case api::device_caps::shared_resource_nt_handle:
-		return _orig->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_1 && !is_windows7();
+		return _orig->GetFeatureLevel() >= D3D_FEATURE_LEVEL_11_1;
 	case api::device_caps::resolve_depth_stencil:
 		return false;
 	case api::device_caps::shared_fence:

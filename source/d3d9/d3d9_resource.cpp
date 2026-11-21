@@ -3,8 +3,6 @@
  * SPDX-License-Identifier: BSD-3-Clause
  */
 
-#if RESHADE_ADDON
-
 #include "d3d9_device.hpp"
 #include "d3d9_resource.hpp"
 
@@ -13,10 +11,8 @@ Direct3DDepthStencilSurface9::Direct3DDepthStencilSurface9(Direct3DDevice9 *devi
 	_device(device),
 	_orig_desc(desc)
 {
-#if RESHADE_ADDON >= 2
 	const auto device_proxy = device;
 	_orig->SetPrivateData(__uuidof(device_proxy), &device_proxy, sizeof(device_proxy), 0);
-#endif
 }
 
 HRESULT STDMETHODCALLTYPE Direct3DDepthStencilSurface9::QueryInterface(REFIID riid, void **ppvObj)
@@ -136,10 +132,6 @@ HRESULT STDMETHODCALLTYPE Direct3DDepthStencilSurface9::ReleaseDC(HDC hdc)
 {
 	return IDirect3DSurface9_ReleaseDC(_orig, hdc);
 }
-
-#endif
-
-#if RESHADE_ADDON >= 2
 
 #include "d3d9_impl_type_convert.hpp"
 #include "com_utils.hpp"
@@ -365,4 +357,3 @@ HRESULT STDMETHODCALLTYPE IDirect3DIndexBuffer9_Unlock(IDirect3DIndexBuffer9 *pI
 	return reshade::hooks::call(IDirect3DIndexBuffer9_Unlock, reshade::hooks::vtable_from_instance(pIndexBuffer) + 12)(pIndexBuffer);
 }
 
-#endif

@@ -38,9 +38,8 @@ namespace reshadefx
 		/// </summary>
 		/// <param name="entry_point_name">Name of the entry point function to generate code for.</param>
 		/// <param name="binary">Output binary code.</param>
-		/// <param name="assembly">Output assembly code.</param>
 		/// <param name="errors">Output list of error messages.</param>
-		virtual bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &binary, std::string &assembly, std::string &errors) const = 0;
+		virtual bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &binary, std::string &errors) const = 0;
 
 	protected:
 		/// <summary>
