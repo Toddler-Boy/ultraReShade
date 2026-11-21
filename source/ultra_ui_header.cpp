@@ -6,6 +6,7 @@
 #include <cctype>
 #include <cmath>
 #include <string>
+#include <vector>
 
 #include "ultra_ui_draw.hpp"
 #include "ultra_ui_font.hpp"
@@ -126,5 +127,24 @@ namespace ultra::ui
 		}
 
 		ImGui::Dummy ( ImVec2 ( width, height ) );
+	}
+
+	void header ( const ReShadeUiHeader& info, float width )
+	{
+		std::vector<Chip>	list;
+		for ( uint32_t i = 0; info.chips != nullptr && i < info.chipCount; ++i )
+			list.push_back ( { info.chips[ i ].text != nullptr ? info.chips[ i ].text : "", info.chips[ i ].filled != 0, info.chips[ i ].tooltip } );
+
+		HeaderInfo	h;
+		h.title = info.title;
+		h.titleImage = static_cast<const Texture*> ( info.titleImage );
+		h.chips = list;
+		h.cover = static_cast<const Texture*> ( info.cover );
+		for ( size_t i = 0; i < 3; ++i )
+		{
+			h.lines[ i ] = info.lines[ i ];
+			h.lineColors[ i ] = info.lineColors[ i ];
+		}
+		header ( h, width );
 	}
 }

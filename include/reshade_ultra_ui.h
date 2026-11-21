@@ -166,6 +166,104 @@ typedef struct ReShadeUiPlacedLine
 	uint32_t	glyphCount;
 } ReShadeUiPlacedLine;
 
+// A page as the overlay draws it: sections of rows, laid out in one label and one value column by ultraReShade, whose rows say what they
+// show and what they change through the callbacks below. Every callback gets the row's own context, and the frame the page is drawn with
+// (the add-on's, handed to pageDraw): they are called only inside pageDraw, on the thread that draws, and a text they return stays valid
+// until the next call of that callback. A callback that is null means the plain answer (always, never, none).
+enum
+{
+	RESHADE_UI_ITEM_SLIDER, RESHADE_UI_ITEM_TOGGLE, RESHADE_UI_ITEM_OPTIONS, RESHADE_UI_ITEM_BUTTON, RESHADE_UI_ITEM_TEXT,
+	RESHADE_UI_ITEM_SUBHEADING, RESHADE_UI_ITEM_FIELD, RESHADE_UI_ITEM_REPEAT, RESHADE_UI_ITEM_COLOR
+};
+
+// ROW: options as a choice row whatever their names. SET_APART: a row gap more above it, unless a heading is right above it. PRIMARY: a
+// button's look. HAS_JOB: a button's action runs on a thread of the add-on's, who tells isBusy, progress and takeFinished. HAS_TONE: a text
+// row's colour is tone (), else muted
+#define RESHADE_UI_ITEM_FLAG_ROW		1u
+#define RESHADE_UI_ITEM_FLAG_SET_APART	2u
+#define RESHADE_UI_ITEM_FLAG_PRIMARY	4u
+#define RESHADE_UI_ITEM_FLAG_HAS_JOB	8u
+#define RESHADE_UI_ITEM_FLAG_HAS_TONE	16u
+
+// Where a value lives: get and set on every change, save once the edit is finished (null: the value applies itself); isBound 0: none
+typedef struct ReShadeUiBinding
+{
+	uint32_t	isBound;
+	float		def;
+	float		( *get ) ( void* context, void* frame );
+	void		( *set ) ( void* context, void* frame, float value );
+	void		( *save ) ( void* context, void* frame );
+} ReShadeUiBinding;
+
+typedef struct ReShadeUiItem
+{
+	uint32_t			kind;
+	uint32_t			flags;
+	const char*			label;
+	const char*			tooltip;
+	ReShadeUiRange		range;
+	ReShadeUiFormat		format;
+	const char* const*	choices;				// options: choice i stands for choiceValues[ i ], else for the value i
+	uint32_t			choiceCount;
+	const float*		choiceValues;
+	uint32_t			applies;
+	const char*			appliesWhen;
+	const char*			doneText;
+	uint32_t			colorDefault;
+	void*				context;
+	ReShadeUiBinding	value;
+	ReShadeUiBinding	onOff;					// a slider's switch before its label; the slider stays live while off
+	ReShadeUiHotkey		( *hotkey ) ( void* context );
+	uint32_t			( *isVisible ) ( void* context, void* frame );
+	const char*			( *disabledReason ) ( void* context, void* frame );		// null: enabled; "": dimmed without a reason
+	const char*			( *title ) ( void* context, void* frame );				// the label as it is now
+	const char*			( *line ) ( void* context, void* frame );				// a text row's; null hides it
+	uint32_t			( *tone ) ( void* context, void* frame );
+	float				( *top ) ( void* context );								// a slider's top, read each frame
+	void				( *press ) ( void* context, void* frame );
+	float				( *progress ) ( void* context );						// a running job's: 0 to 1, below 0 for none
+	uint32_t			( *isBusy ) ( void* context );
+	uint32_t			( *takeFinished ) ( void* context );
+	const char*			( *fieldGet ) ( void* context );
+	void				( *fieldSet ) ( void* context, const char* text );
+	uint32_t			( *colorGet ) ( void* context );
+	void				( *colorSet ) ( void* context, uint32_t color, uint32_t isDone );
+	uint32_t			( *repeatCount ) ( void* context );
+	const struct ReShadeUiItem*	( *repeatRows ) ( void* context, uint32_t entry, uint32_t* count );	// entry's rows, kept by the add-on
+} ReShadeUiItem;
+
+// A section: its switch (if bound) turns all its items on and off, the rest of the heading row collapses it; either hides the sections
+// that name it as their parent. lockReason holds the switch with the items live
+typedef struct ReShadeUiSection
+{
+	const char*				label;
+	const char*				tooltip;
+	const char*				parent;
+	void*					context;
+	ReShadeUiBinding		toggle;
+	ReShadeUiHotkey			( *hotkey ) ( void* context );
+	uint32_t				( *isVisible ) ( void* context, void* frame );
+	const char*				( *disabledReason ) ( void* context, void* frame );
+	const char*				( *lockReason ) ( void* context, void* frame );
+	const char*				( *title ) ( void* context, void* frame );
+	const ReShadeUiItem*	items;
+	uint32_t				itemCount;
+} ReShadeUiSection;
+
+// header: fills the page's header at each draw (null: no header). isCollapsed and setCollapsed keep which sections are closed;
+// note, when set, hears of a section hidden or shown again by its parent
+typedef struct ReShadeUiPage
+{
+	const char*				id;
+	const ReShadeUiSection*	sections;
+	uint32_t				sectionCount;
+	void*					context;
+	void					( *header ) ( void* context, void* frame, ReShadeUiHeader* out );
+	uint32_t				( *isCollapsed ) ( void* context, const char* label );
+	void					( *setCollapsed ) ( void* context, const char* label, uint32_t isCollapsed );
+	void					( *note ) ( void* context, const char* section, const char* parent, uint32_t isHidden );
+} ReShadeUiPage;
+
 typedef struct ReShadeWidgetTable
 {
 	uint32_t	bytes;
@@ -235,6 +333,12 @@ typedef struct ReShadeWidgetTable
 	void		( *tooltip ) ( uint32_t id, uint32_t hovered, const char* text );
 	void		( *header ) ( const ReShadeUiHeader* info, float width );
 	int32_t		( *headerTitleHeight ) ( void );
+
+	// A page: its header, sections and rows laid out and drawn as the whole of the overlay tab being drawn (a child of its own, scrolled
+	// and filling it), the frame handed to every callback of the page. isMouseOver: the mouse was over ultraReShade's overlay at the last
+	// frame (its own input, not the game's); any thread
+	void		( *pageDraw ) ( void* runtime, const ReShadeUiPage* page, void* frame );
+	uint32_t	( *isMouseOver ) ( void );
 } ReShadeWidgetTable;
 
 // The table, or null where its size is less than bytes (the DLL is older than the caller)

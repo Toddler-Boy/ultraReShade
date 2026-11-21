@@ -13,8 +13,10 @@
 #include <reshade_ultra.hpp>
 
 #include "ultra_ui_colourspace.hpp"
+#include "ultra_ui_convert.hpp"
 #include "ultra_ui_font.hpp"
 #include "ultra_ui_image.hpp"
+#include "ultra_ui_layout.hpp"
 #include "ultra_ui_texture.hpp"
 #include "ultra_ui_theme.hpp"
 #include "ultra_ui_widgets.hpp"
@@ -32,27 +34,6 @@ namespace
 		return ( edit.changed ? RESHADE_UI_CHANGED : 0u ) | ( edit.committed ? RESHADE_UI_COMMITTED : 0u );
 	}
 
-	[[ nodiscard ]] Hotkey hotkeyOf ( const ReShadeUiHotkey* h )
-	{
-		return h == nullptr ? Hotkey {} : Hotkey { h->vk, ( h->modifiers & RESHADE_UI_MOD_SHIFT ) != 0, ( h->modifiers & RESHADE_UI_MOD_CTRL ) != 0, ( h->modifiers & RESHADE_UI_MOD_ALT ) != 0 };
-	}
-
-	[[ nodiscard ]] SliderRange rangeOf ( const ReShadeUiRange* r )
-	{
-		SliderRange	range;
-		if ( r == nullptr )
-			return range;
-		range.lo = r->lo;
-		range.hi = r->hi;
-		range.step = r->step;
-		range.def = r->def;
-		range.mid = r->mid;
-		range.hasMid = ( r->flags & RESHADE_UI_RANGE_HAS_MID ) != 0;
-		range.isMidCentred = ( r->flags & RESHADE_UI_RANGE_MID_CENTRED ) != 0;
-		range.log = ( r->flags & RESHADE_UI_RANGE_LOG ) != 0;
-		return range;
-	}
-
 	[[ nodiscard ]] std::wstring wide ( const char* utf8 )
 	{
 		if ( utf8 == nullptr || *utf8 == 0 )
@@ -61,11 +42,6 @@ namespace
 		std::wstring	out ( size_t ( n > 1 ? n - 1 : 0 ), L'\0' );
 		MultiByteToWideChar ( CP_UTF8, 0, utf8, -1, out.data (), n );
 		return out;
-	}
-
-	[[ nodiscard ]] Applies appliesOf ( uint32_t applies )
-	{
-		return applies == RESHADE_UI_APPLIES_NEXT_START ? Applies::nextStart : applies == RESHADE_UI_APPLIES_AFTER ? Applies::after : Applies::now;
 	}
 
 	[[ nodiscard ]] font::Face faceOf ( uint32_t face )
@@ -83,12 +59,19 @@ namespace
 	//-------------------------------------------------------------------------
 	// The look
 
-	void beginFrame ( void* runtime )
+	void beginFrameOf ( void* runtime )
 	{
-		auto* const	api = static_cast<api::effect_runtime*> ( runtime );
-		theme::measureScale ( api != nullptr ? api->get_hwnd () : nullptr, ImGui::GetIO ().DisplaySize.y );
-		font::prepare ( api != nullptr ? api->get_device () : nullptr );
-		tickTextures ();
+		beginFrame ( static_cast<api::effect_runtime*> ( runtime ) );
+	}
+
+	void pageDrawOf ( void* runtime, const ReShadeUiPage* page, void* frame )
+	{
+		drawPage ( static_cast<api::effect_runtime*> ( runtime ), *page, frame );
+	}
+
+	uint32_t isMouseOverOf ()
+	{
+		return isMouseOverOverlay () ? 1 : 0;
 	}
 
 	float scaleOf ()												{ return theme::scale (); }
@@ -254,10 +237,7 @@ namespace
 
 	uint32_t valueEditOf ( const char* id, float* value, const ReShadeUiRange* range, const ReShadeUiFormat* format, float width )
 	{
-		Format	f;
-		if ( format != nullptr )
-			f = { format->scale, format->decimals, format->suffix != nullptr ? format->suffix : "", format->sign != 0, format->prefix != nullptr ? format->prefix : "", format->zero };
-		return resultOf ( valueEdit ( id, *value, rangeOf ( range ), f, width ) );
+		return resultOf ( valueEdit ( id, *value, rangeOf ( range ), format != nullptr ? formatOf ( *format ) : Format {}, width ) );
 	}
 
 	uint32_t colorPickerOf ( const char* id, uint32_t* c, uint32_t def, float width )
@@ -320,21 +300,7 @@ namespace
 
 	void headerOf ( const ReShadeUiHeader* info, float width )
 	{
-		std::vector<Chip>	chips;
-		for ( uint32_t i = 0; info->chips != nullptr && i < info->chipCount; ++i )
-			chips.push_back ( { info->chips[ i ].text != nullptr ? info->chips[ i ].text : "", info->chips[ i ].filled != 0, info->chips[ i ].tooltip } );
-
-		HeaderInfo	h;
-		h.title = info->title;
-		h.titleImage = static_cast<const Texture*> ( info->titleImage );
-		h.chips = chips;
-		h.cover = static_cast<const Texture*> ( info->cover );
-		for ( size_t i = 0; i < 3; ++i )
-		{
-			h.lines[ i ] = info->lines[ i ];
-			h.lineColors[ i ] = info->lineColors[ i ];
-		}
-		header ( h, width );
+		header ( *info, width );
 	}
 
 	int32_t headerTitleHeightOf ()
@@ -344,7 +310,7 @@ namespace
 
 	const ReShadeWidgetTable	table {
 		sizeof ( ReShadeWidgetTable ),
-		&beginFrame, &scaleOf, &screenScale, &color, &size,
+		&beginFrameOf, &scaleOf, &screenScale, &color, &size,
 		&tunedSizeCount, &tunedSizeName, &tunedSizeValue, &tunedSizeShipped, &setTunedSize,
 		&tunedColorCount, &tunedColorName, &tunedColorValue, &tunedColorShipped, &setTunedColor,
 		&themeText, &themeTake,
@@ -352,7 +318,7 @@ namespace
 		&imageOf, &maskOf, &decode,
 		&colourSpaceOverride, &setColourSpaceOverride, &isColourSpaceShown,
 		&labelAt, &labelWidthOf, &toggleOf, &headingOf, &collapseArrowOf, &subheadingAt, &sliderOf, &valueEditOf, &colorPickerOf, &textFieldOf,
-		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf
+		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf
 	};
 
 	void onPresent ( reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect* )

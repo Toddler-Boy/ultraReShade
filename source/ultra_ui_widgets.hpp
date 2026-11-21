@@ -8,6 +8,8 @@
 #include <span>
 #include <string>
 
+#include <reshade_ultra_ui.h>
+
 #include "ultra_ui_format.hpp"
 #include "ultra_ui_hotkey.hpp"
 #include "ultra_ui_texture.hpp"
@@ -141,6 +143,9 @@ namespace ultra::ui
 	};
 
 	void header ( const HeaderInfo& info, float width );
+
+	// The same from the C struct of reshade_ultra_ui.h
+	void header ( const ReShadeUiHeader& info, float width );
 
 	// The title's line, whole pixels
 	[[ nodiscard ]] int headerTitleHeight ();

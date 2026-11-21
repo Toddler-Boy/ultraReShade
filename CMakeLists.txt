@@ -309,6 +309,7 @@ set(RESHADE_SOURCE
   source/ultra_ui_color_picker.cpp
   source/ultra_ui_colourspace.cpp
   source/ultra_ui_colourspace.hpp
+  source/ultra_ui_convert.hpp
   source/ultra_ui_draw.cpp
   source/ultra_ui_draw.hpp
   source/ultra_ui_dropdown.cpp
@@ -322,6 +323,8 @@ set(RESHADE_SOURCE
   source/ultra_ui_image.cpp
   source/ultra_ui_image.hpp
   source/ultra_ui_label.cpp
+  source/ultra_ui_layout.cpp
+  source/ultra_ui_layout.hpp
   source/ultra_ui_reset.cpp
   source/ultra_ui_slider.cpp
   source/ultra_ui_subheading.cpp
