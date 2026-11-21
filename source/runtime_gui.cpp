@@ -455,7 +455,11 @@ void reshade::runtime::draw_overlay_window()
 		save_overlay_window(global_config());
 	}
 	if (result.isCloseWanted)
+	{
+		// Closed as the key closes it: nothing held, so the key opens it again
+		ImGui::ClearActiveID();
 		open_overlay(false, api::input_source::mouse);
+	}
 }
 
 void reshade::runtime::draw_gui_shaders()

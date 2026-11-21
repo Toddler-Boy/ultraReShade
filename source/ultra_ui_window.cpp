@@ -293,7 +293,8 @@ namespace ultra::ui::window
 			ImGui::SetCursorScreenPos ( closeMin );
 			ImGui::InvisibleButton ( "##close", ImVec2 ( closeBox, closeBox ) );
 			const auto	isCloseHovered = ImGui::IsItemHovered ();
-			if ( ImGui::IsItemClicked () )
+			// On release, so no item stays held in the frames that do not run while the overlay is closed
+			if ( ImGui::IsItemDeactivated () && isCloseHovered )
 				result.isCloseWanted = true;
 			closeCross ( list, ImVec2 ( closeMin.x + closeBox * 0.5f, closeMin.y + closeBox * 0.5f ), px ( theme::closeSize ) * 0.35f, isCloseHovered ? theme::colors::tabActive : theme::colors::tab );
 
