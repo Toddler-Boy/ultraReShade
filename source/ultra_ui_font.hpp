@@ -13,15 +13,19 @@
 #include "ultra_ui_theme.hpp"
 
 //-----------------------------------------------------------------------------
-// Text in our own embedded faces (Inter, resources of the DLL), rasterized into a glyph atlas of ours. Sizes are pixel sizes (already
-// scaled). ASCII: everything we draw is ours
+// Text in our own embedded faces (Inter, resources of the DLL). Every glyph, of any code point, is rasterized the first time it is drawn,
+// in the size it is drawn in, into an atlas of ours; one the face lacks shows its replacement character, else a question mark. Sizes are
+// pixel sizes (already scaled)
 
 namespace ultra::ui::font
 {
 	enum class Face : int { regular, medium, semibold, bold, count };
 
-	// Once per drawn frame, before any text: the atlas for this device and the current scale
+	// Once per drawn frame, before any text: the atlas for this device; a full one starts over here
 	void prepare ( api::device* device );
+
+	// Before the frame's draw data is rendered: the glyphs rasterized since the last frame go into this device's atlas texture
+	void flush ( api::command_list* cmdList, api::device* device );
 
 	// A device goes: its atlas texture is destroyed now
 	void forgetDevice ( api::device* device );

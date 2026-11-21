@@ -1670,6 +1670,8 @@ bool reshade::runtime::init_imgui_resources()
 }
 void reshade::runtime::render_imgui_draw_data(api::command_list *cmd_list, ImDrawData *draw_data, api::resource_view rtv)
 {
+	::ultra::ui::font::flush(cmd_list, _device);
+
 	assert(draw_data->Textures != nullptr);
 	for (ImTextureData *const texture_data : *draw_data->Textures)
 	{
