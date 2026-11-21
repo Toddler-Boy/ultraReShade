@@ -584,7 +584,7 @@ else()
   )
 endif()
 
-target_link_libraries(ReShade PRIVATE ReShadeFX DirectXHeaders glad ImGui MinHook stb utfcpp VMA Windows dwmapi.lib shcore.lib)
+target_link_libraries(ReShade PRIVATE ReShadeFX DirectXHeaders glad ImGui MinHook stb utfcpp VMA Windows dwmapi.lib dwrite.lib shcore.lib)
 
 # ReShade FX
 

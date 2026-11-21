@@ -118,7 +118,7 @@ void reshade::runtime::build_font_atlas()
 	atlas->Clear();
 
 	// Our own face is ImGui's font: the text fields edit in it, invisibly, under the text we draw
-	const auto face = ::ultra::ui::font::faceData(::ultra::ui::font::Face::regular);
+	const auto face = ::ultra::ui::font::faceData();
 	ImFontConfig face_cfg;
 	face_cfg.FontDataOwnedByAtlas = false;
 	atlas->AddFontFromMemoryTTF(const_cast<unsigned char *>(face.data()), static_cast<int>(face.size()), 0.0f, &face_cfg);
