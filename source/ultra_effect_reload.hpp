@@ -10,7 +10,7 @@
 
 //-----------------------------------------------------------------------------
 
-// Recompiling effects while the game runs, alongside the add-on reload (Developer mode on): the folders of each runtime's
+// Recompiling effects while the game runs, alongside the add-on reload (with a source folder): the folders of each runtime's
 // effect search paths are watched for .fx, .fxh and .addonfx files
 namespace reshade::ultra
 {

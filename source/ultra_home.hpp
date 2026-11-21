@@ -31,9 +31,16 @@ namespace reshade::ultra
 	// screenshots the screenshot folder
 	[[ nodiscard ]] std::filesystem::path appSettingsPath ();
 
-	// Developer mode: development/enabled in ultraGame's settings.json, read once at the first call (after the home is found) and
-	// never again, so one value holds for the whole run. A file that is missing or does not read is off
+	// Developer mode (the development tools): development/enabled in ultraGame's settings.json, read once at the first call (after the
+	// home is found) and never again, so one value holds for the whole run. A file that is missing or does not read is off. It decides
+	// no path
 	[[ nodiscard ]] bool isDevelopmentOn ();
+
+	// The ultraGame checkout the environment variable ULTRAGAME_SOURCE names, with Developer mode on; empty otherwise: it holds Data\curation and build.sh,
+	// else the variable is ignored and the reason logged (once, so the first call is made with the log open). Add-ons reload while
+	// a game runs only with one
+	inline constexpr wchar_t	sourceVariable[] = L"ULTRAGAME_SOURCE";
+	[[ nodiscard ]] const std::filesystem::path& sourceFolder ();
 
 	// The game's shown title from its index entry (UTF-8), empty when the entry has none
 	[[ nodiscard ]] const std::string& gameTitle ();

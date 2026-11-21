@@ -283,7 +283,7 @@ namespace reshade
 
 		bool _is_in_present_call = false;
 
-		// Effects whose files changed recompile (Developer mode); each present, before update_effects
+		// Effects whose files changed recompile (with a source folder); each present, before update_effects
 		void ultra_reload_changed_effects();
 
 		#pragma region Status

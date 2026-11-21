@@ -144,6 +144,40 @@ bool reshade::ultra::isDevelopmentOn ()
 }
 //-----------------------------------------------------------------------------
 
+const std::filesystem::path& reshade::ultra::sourceFolder ()
+{
+	static const auto	folder = []
+	{
+		auto	named = environmentValue ( sourceVariable );
+		while ( named.size () > 1 && ( named.back () == L'\\' || named.back () == L'/' ) )
+			named.pop_back ();
+
+		if ( named.empty () )
+			return std::filesystem::path ();
+
+		if ( ! reshade::ultra::isDevelopmentOn () )
+		{
+			reshade::log::message ( reshade::log::level::info, "ULTRAGAME_SOURCE is ignored: Developer mode is off." );
+			return std::filesystem::path ();
+		}
+
+		std::error_code			error;
+		const std::filesystem::path	checkout ( named );
+		const char*				why = ! std::filesystem::is_directory ( checkout, error ) ? "is not a folder"
+									: ! std::filesystem::is_directory ( checkout / L"Data" / L"curation", error ) ? "has no Data\\curation, so it is no ultraGame checkout"
+									: ! std::filesystem::is_regular_file ( checkout / L"build.sh", error ) ? "has no build.sh, so it is no ultraGame checkout" : nullptr;
+
+		if ( why == nullptr )
+			return checkout;
+
+		reshade::log::message ( reshade::log::level::warning, "ULTRAGAME_SOURCE is ignored: '%s' %s.", checkout.u8string ().c_str (), why );
+		return std::filesystem::path ();
+	} ();
+
+	return folder;
+}
+//-----------------------------------------------------------------------------
+
 const std::string& reshade::ultra::gameTitle ()
 {
 	return title;

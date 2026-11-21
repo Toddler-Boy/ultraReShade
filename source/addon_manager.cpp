@@ -221,10 +221,10 @@ void reshade::load_addons()
 	{
 		if (has_addon_path)
 		{
-			if (ultra::isDevelopmentOn())
+			if (!ultra::sourceFolder().empty())
 				ultra::startAddonReload(addon_search_path);
 			else
-				log::message(log::level::info, "Developer mode is off: add-ons load in place and do not reload.");
+				log::message(log::level::info, "No source folder: add-ons load in place and do not reload.");
 		}
 		else
 			log::message(log::level::error, "[ADDON] AddonPath is not an absolute path ('%s'), so no add-on file loads!", addon_search_path.u8string().c_str());

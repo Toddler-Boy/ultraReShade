@@ -15,7 +15,7 @@ extern std::filesystem::path get_module_path ( HMODULE module );
 
 //-----------------------------------------------------------------------------
 
-// Reloading add-ons while the game runs, with Developer mode on (ultra::isDevelopmentOn): add-ons load from a copy in the add-on
+// Reloading add-ons while the game runs, with a source folder (ultra::sourceFolder): add-ons load from a copy in the add-on
 // folder, so a build can overwrite their file. When the file changes, the old add-on sees every live object destroyed, unloads,
 // the new copy loads and sees them all created again. The add-ons loaded after it reload with it (they may use it): out before
 // it, in after it. With it off every call below does nothing or returns the plain answer, and no event holds a guard

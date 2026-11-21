@@ -20,7 +20,7 @@ namespace reshade::ultra
 
 	extern std::atomic<uint32_t>	eventGate;
 
-	// Set once the add-ons load with Developer mode on; never changes after that
+	// Set once the add-ons load with a source folder; never changes after that
 	extern bool isAddonReloadEnabled;
 
 	// Held by every add-on event while reloading is enabled, so no event runs while an add-on is swapped
