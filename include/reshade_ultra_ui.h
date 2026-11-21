@@ -359,7 +359,14 @@ typedef struct ReShadeWidgetTable
 	// typed into a field of the overlay: the add-on's own keys stay silent meanwhile. Any thread
 	void		( *setTabDot ) ( const char* title, uint32_t color );
 	uint32_t	( *isTyping ) ( void );
+
+	// The layout of the page structs the DLL was built with: an add-on whose own differs (the two built from different states of this
+	// header) is refused by table () before it hands a page over, a page of the other layout being read with the wrong strides
+	uint32_t	( *specLayout ) ( void );
 } ReShadeWidgetTable;
+
+// What the layout is made of: the sizes of the three structs a page is made of
+#define RESHADE_UI_SPEC_LAYOUT	( ( uint32_t ) sizeof ( ReShadeUiItem ) * 65599u + ( uint32_t ) sizeof ( ReShadeUiSection ) * 31u + ( uint32_t ) sizeof ( ReShadeUiPage ) )
 
 // The table, or null where its size is less than bytes (the DLL is older than the caller)
 typedef const ReShadeWidgetTable* ( *ReShadeGetWidgetTableFn ) ( uint32_t bytes );

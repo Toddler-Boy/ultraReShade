@@ -80,6 +80,11 @@ namespace
 		return window::isTyping () ? 1 : 0;
 	}
 
+	uint32_t specLayoutOf ()
+	{
+		return RESHADE_UI_SPEC_LAYOUT;
+	}
+
 	uint32_t isMouseOverOf ()
 	{
 		return isMouseOverOverlay () ? 1 : 0;
@@ -329,7 +334,7 @@ namespace
 		&imageOf, &maskOf, &decode,
 		&colourSpaceOverride, &setColourSpaceOverride, &isColourSpaceShown,
 		&labelAt, &labelWidthOf, &toggleOf, &headingOf, &collapseArrowOf, &subheadingAt, &sliderOf, &valueEditOf, &colorPickerOf, &textFieldOf,
-		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &setTabDotOf, &isTypingOf
+		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &setTabDotOf, &isTypingOf, &specLayoutOf
 	};
 
 	void onPresent ( reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect* )
