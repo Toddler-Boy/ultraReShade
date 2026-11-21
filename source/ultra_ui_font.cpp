@@ -774,6 +774,24 @@ namespace ultra::ui::font
 		return shaped.width;
 	}
 
+	float drawMarked ( ImDrawList* drawList, ImVec2 pos, Face face, float size, ImU32 color, std::string_view text )
+	{
+		auto	x = pos.x;
+		auto	isMarked = false;
+		for ( size_t at = 0; at <= text.size (); )
+		{
+			const auto	end = text.find_first_of ( "\x01\x02", at );
+			const auto	stop = end == std::string_view::npos ? text.size () : end;
+			if ( stop > at )
+				x += draw ( drawList, ImVec2 ( x, pos.y ), face, size, color, text.substr ( at, stop - at ), isMarked );
+			if ( end == std::string_view::npos )
+				break;
+			isMarked = text[ end ] == '\x01';
+			at = end + 1;
+		}
+		return x - pos.x;
+	}
+
 	float width ( Face face, float size, std::string_view text, bool tabular )
 	{
 		const auto	slot = slotOf ( face );

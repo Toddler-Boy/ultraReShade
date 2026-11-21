@@ -37,6 +37,10 @@ namespace ultra::ui::font
 	// pos: the top left of the text box; returns the width drawn. tabular: digits all as wide as the widest
 	float draw ( ImDrawList* drawList, ImVec2 pos, Face face, float size, ImU32 color, std::string_view text, bool tabular = false );
 
+	// Text with stretches wrapped in the markers '\x01' and '\x02' (the numbers ultraGame's text formatter writes): those are drawn with the font's
+	// tabular digits, the markers are not drawn, the rest keeps its own digits; returns the width drawn
+	float drawMarked ( ImDrawList* drawList, ImVec2 pos, Face face, float size, ImU32 color, std::string_view text );
+
 	[[ nodiscard ]] float width ( Face face, float size, std::string_view text, bool tabular = false );
 	[[ nodiscard ]] float lineHeight ( Face face, float size );
 

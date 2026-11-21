@@ -122,7 +122,7 @@ namespace ultra::ui
 		for ( int i = 0; i < lineCount; ++i )
 		{
 			if ( info.lines[ i ] != nullptr )
-				font::draw ( dl, ImVec2 ( x, y ), font::Face::regular, bodySize, draw::color ( info.lineColors[ i ] ), info.lines[ i ], true );
+				font::drawMarked ( dl, ImVec2 ( x, y ), font::Face::regular, bodySize, draw::color ( info.lineColors[ i ] ), info.lines[ i ] );
 			y += lineH;
 		}
 

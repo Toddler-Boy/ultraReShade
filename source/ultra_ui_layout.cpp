@@ -386,7 +386,7 @@ namespace ultra::ui
 			auto*		dl = ImGui::GetWindowDrawList ();
 			if ( ! has ( item, RESHADE_UI_ITEM_FLAG_WRAP ) )
 			{
-				font::draw ( dl, ImVec2 ( row.x, font::centredTop ( font::Face::regular, size, row.y, rowH ) ), font::Face::regular, size, draw::color ( tone ), line );
+				font::drawMarked ( dl, ImVec2 ( row.x, font::centredTop ( font::Face::regular, size, row.y, rowH ) ), font::Face::regular, size, draw::color ( tone ), line );
 				return rowH;
 			}
 

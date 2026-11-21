@@ -363,6 +363,10 @@ typedef struct ReShadeWidgetTable
 	// The layout of the page structs the DLL was built with: an add-on whose own differs (the two built from different states of this
 	// header) is refused by table () before it hands a page over, a page of the other layout being read with the wrong strides
 	uint32_t	( *specLayout ) ( void );
+
+	// A status text at x, y on the window being drawn: the stretches between the markers '\x01' and '\x02' (what ultraGame's text formatter
+	// writes round every number it fills in) in tabular digits, the markers not drawn, the rest as it is. Returns the width
+	float		( *statusText ) ( float x, float y, uint32_t face, float size, uint32_t color, const char* text );
 } ReShadeWidgetTable;
 
 // What the layout is made of: the sizes of the three structs a page is made of
