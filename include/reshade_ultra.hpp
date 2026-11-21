@@ -6,6 +6,7 @@
 #pragma once
 
 #include "reshade.hpp"
+#include "reshade_ultra_api.h"
 #include "reshade_ultra_json.hpp"
 #include "reshade_ultra_log.hpp"
 
@@ -22,6 +23,7 @@ RESHADE_API_LIBRARY_DECL bool ReShadeRunExclusive ( void* module, void ( *callba
 RESHADE_API_LIBRARY_DECL bool ReShadeReloadAddon ( void* module );
 RESHADE_API_LIBRARY_DECL void ReShadeGetBuild ( const char** number, const char** built );
 RESHADE_API_LIBRARY_DECL bool ReShadeGetAddonSource ( void* module, wchar_t* path, uint32_t capacity );
+RESHADE_API_LIBRARY_DECL UgLookup ReShadeHost ( UgLookup other );
 
 #endif
 
@@ -147,6 +149,18 @@ namespace reshade
 		if ( path != nullptr && capacity > 0 )
 			path[ 0 ] = L'\0';
 		return false;
+#endif
+	}
+
+	// What ultraReShade answers an add-on that draws its overlay, in the form of reshade_ultra_api.h (the names are in
+	// reshade_ultra_host_names.h): its lookup, null on a ReShade without it. other: the add-on's own lookup, null where it has none
+	inline UgLookup get_host ( UgLookup other = nullptr )
+	{
+#if defined(RESHADE_API_LIBRARY)
+		return ReShadeHost ( other );
+#else
+		static const auto	func = reinterpret_cast<UgLookup ( * ) ( UgLookup )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeHost" ) );
+		return func != nullptr ? func ( other ) : nullptr;
 #endif
 	}
 

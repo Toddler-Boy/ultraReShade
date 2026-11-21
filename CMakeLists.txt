@@ -280,6 +280,8 @@ set(RESHADE_SOURCE
   source/ultra_file_watch.hpp
   source/ultra_home.cpp
   source/ultra_home.hpp
+  source/ultra_host_api.cpp
+  source/ultra_host_api.hpp
   source/ultra_json.cpp
   source/ultra_json.hpp
   source/ultra_json_watch.cpp

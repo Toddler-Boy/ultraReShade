@@ -291,6 +291,8 @@ reshade::runtime::runtime(api::swapchain *swapchain, api::command_queue *graphic
 {
 	assert(swapchain != nullptr && graphics_queue != nullptr);
 
+	ultra::noteRuntime(this);
+
 	_device->get_property(api::device_properties::vendor_id, &_vendor_id);
 	_device->get_property(api::device_properties::device_id, &_device_id);
 
@@ -338,6 +340,8 @@ reshade::runtime::~runtime()
 {
 	assert(_worker_threads.empty() && _effect_creations.empty());
 	assert(!_is_initialized && _techniques.empty() && _technique_sorting.empty());
+
+	ultra::forgetRuntime(this);
 
 	if (ultra::isAddonReloadEnabled)
 		ultra::forgetEffectWatch(this);
@@ -2997,6 +3001,8 @@ void reshade::runtime::destroy_effect(size_t effect_index, bool unload)
 {
 	assert(effect_index < _effects.size());
 
+	_effects_generation++;
+
 	for (technique &tech : _techniques)
 	{
 		if (tech.effect_index != effect_index)
@@ -3666,6 +3672,7 @@ void reshade::runtime::reorder_techniques(std::vector<size_t> &&technique_indice
 	std::stable_partition(technique_indices.begin(), technique_indices.end(), [this](size_t technique_index) { return _techniques[technique_index].is_route; });
 
 	_technique_sorting = std::move(technique_indices);
+	_effects_generation++;
 }
 
 void reshade::runtime::load_effects()
@@ -3995,6 +4002,7 @@ void reshade::runtime::update_effects()
 		_last_reload_time = std::chrono::high_resolution_clock::now();
 		_reload_remaining_effects = std::numeric_limits<size_t>::max();
 		_is_creating_reloaded_effects = true;
+		_effects_generation++;
 		return;
 	}
 

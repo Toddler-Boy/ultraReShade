@@ -8,6 +8,7 @@
 #include "reshade_api.hpp"
 #include "state_block.hpp"
 #include "ultra_effect_settings.hpp"
+#include "ultra_host_api.hpp"
 #include "ultra_splash.hpp"
 #include <atomic>
 #include <thread>
@@ -180,6 +181,8 @@ namespace reshade
 		void save_config() const;
 
 	private:
+		friend struct ultra::HostAccess;
+
 		// Before effects load: the home's files into '_effect_settings' and the saved preprocessor definitions
 		void read_effect_settings();
 		// The values, states and order of the effects, once they are loaded
@@ -326,6 +329,8 @@ namespace reshade
 		std::shared_mutex _reload_mutex;
 		std::vector<std::pair<size_t, size_t>> _reload_create_queue;
 		std::atomic<size_t> _reload_remaining_effects = std::numeric_limits<size_t>::max();
+		// Changes whenever the effects, their techniques or the order of these change (ultra_host_api.cpp "effects.state")
+		std::atomic<uint32_t> _effects_generation = 0;
 
 		std::vector<effect> _effects;
 		std::vector<texture> _textures;
@@ -452,6 +457,12 @@ namespace reshade
 		// The back buffer size the window was placed for from the fractions; a new size places it again
 		float _overlay_placed_for[2] = {};
 		bool _is_overlay_tab_selected = false;
+
+		// The window as the add-on that draws it has it, in back buffer pixels, and the back buffer size it was placed for
+		float _overlay_rect[4] = {};
+		float _overlay_rect_for[2] = {};
+		// An add-on asked for frames while the overlay is closed
+		bool _overlay_wanted = false;
 		#pragma endregion
 
 		#pragma region Overlay Shaders

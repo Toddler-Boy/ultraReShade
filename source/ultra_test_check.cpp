@@ -22,6 +22,7 @@
 
 #include <reshade.hpp>
 #include <reshade_ultra.hpp>
+#include <reshade_ultra_host_names.h>
 #include <stb_image.h>
 #include <stb_image_write.h>
 #include <stb_image_write_hdr_png.h>
@@ -357,6 +358,79 @@ namespace
 								isPresentThread ? "the presenting" : "another" );
 	}
 
+	// -check-host-api: every name of the host API (reshade_ultra_host_names.h) found, its record asked, and the calls it must refuse
+	// refused (no cells, too few cells, no runtime); a name, a record and a type it does not have are none
+	struct HostApiCheck
+	{
+		bool	isRequested = false;
+		bool	isDone = false;
+	};
+
+	HostApiCheck	hostApi;
+
+	void failHostApi ( const char* name, const char* what )
+	{
+		reshade::log::message ( reshade::log::level::error, "Test application: host API \"%s\": %s.", name, what );
+	}
+
+	void checkHostApi ( reshade::runtime* runtime )
+	{
+		namespace names = reshade::host::name;
+		const auto	lookup = reshade::get_host ();
+
+		if ( lookup == nullptr )
+			return failHostApi ( "ReShadeHost", "no lookup" );
+
+		const auto	start = reinterpret_cast<UgRecordStart> ( lookup ( "record.start" ) );
+		const auto	slot = reinterpret_cast<UgRecordSlot> ( lookup ( "record.slot" ) );
+
+		if ( start == nullptr || slot == nullptr )
+			return failHostApi ( "record.start", "the record functions are missing" );
+
+		if ( lookup ( "no.such.name" ) != nullptr || start ( "no.such.name", nullptr, 0 ) != 0 || slot ( "no.such.name", "x", ugU32 ) != 0 )
+			failHostApi ( "no.such.name", "an unknown name has an answer" );
+		if ( slot ( names::overlay_state, "no such cell", ugU32 ) != 0 || slot ( names::overlay_state, "open", ugF32 ) != 0 || slot ( names::overlay_state, "open", ugU32 ) == 0 )
+			failHostApi ( names::overlay_state, "a cell is not found by its name and type" );
+
+		// Called with a runtime, these answer without changing anything
+		constexpr const char*	harmless[] { names::overlay_state, names::settings_state, names::screenshot_state, names::effects_state, names::effects_failed };
+
+		for ( const auto name : { names::overlay_state, names::overlay_place, names::overlay_tab, names::overlay_wanted, names::screenshot_state, names::settings_state,
+								  names::effects_state, names::effects_technique, names::effects_uniform, names::effects_failed, names::effects_save, names::effects_definition,
+								  names::effects_definition_set } )
+		{
+			const auto	call = reinterpret_cast<UgCall> ( lookup ( name ) );
+			const auto	count = start ( name, nullptr, 0 );
+
+			if ( call == nullptr || count < 2 || count > 32 )
+			{
+				failHostApi ( name, "not found or without a record" );
+				continue;
+			}
+
+			UgCell	cells[ 32 ] {};
+
+			if ( call ( nullptr, nullptr, 0 ) != 0 || call ( nullptr, cells, count - 1 ) != 0 )
+				failHostApi ( name, "a call with too few cells was not refused" );
+
+			if ( start ( name, cells, count ) != count )
+				failHostApi ( name, "the record's start does not fill its cells" );
+
+			if ( call ( nullptr, cells, count ) != 0 )
+				failHostApi ( name, "a call without a runtime was not refused" );
+
+			if ( std::ranges::any_of ( harmless, [ name ] ( const char* h ) { return std::strcmp ( h, name ) == 0; } ) )
+			{
+				cells[ 1 ].ptr = static_cast<reshade::api::effect_runtime*> ( runtime );
+
+				if ( call ( nullptr, cells, count ) != 1 )
+					failHostApi ( name, "a call with a runtime was refused" );
+			}
+		}
+
+		reshade::log::message ( reshade::log::level::info, "Test application: the host API's names were checked." );
+	}
+
 	void writeToStream ( void* file, void* data, int size )
 	{
 		static_cast<std::ofstream*> ( file )->write ( static_cast<const char*> ( data ), size );
@@ -516,6 +590,12 @@ namespace
 
 		files.presentThread = GetCurrentThreadId ();
 
+		if ( hostApi.isRequested && ! hostApi.isDone && state.isLoaded )
+		{
+			hostApi.isDone = true;
+			checkHostApi ( runtime );
+		}
+
 		if ( order.frame.has_value () && ! order.isListening )
 		{
 			order.isListening = true;
@@ -589,6 +669,12 @@ reshade::ultra::TestCheck::TestCheck ()
 			}
 
 			ids.path = std::filesystem::absolute ( argv[ ++i ] );
+			continue;
+		}
+
+		if ( _wcsicmp ( argv[ i ], L"-check-host-api" ) == 0 )
+		{
+			hostApi.isRequested = true;
 			continue;
 		}
 
@@ -737,7 +823,7 @@ bool reshade::ultra::isReShadeLoaded ()
 bool reshade::ultra::TestCheck::needsNumberedFrames () const
 {
 	return captureFrame.has_value () || dump.frame.has_value () || ! ids.path.empty () || ! changes.toggles.empty () || changes.reloadEvery != 0 || files.unwatchAt.has_value ()
-		|| exclusive.frame.has_value () || order.frame.has_value ();
+		|| exclusive.frame.has_value () || order.frame.has_value () || hostApi.isRequested;
 }
 //-----------------------------------------------------------------------------
 
