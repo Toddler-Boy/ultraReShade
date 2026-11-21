@@ -20,6 +20,10 @@ namespace ultra::ui
 	// nullptr when the file is missing or unreadable; asked again only for another path
 	[[ nodiscard ]] const Texture* image ( api::effect_runtime* runtime, const std::wstring& path );
 
+	// Pixels made in memory (R in the lowest byte, sRGB) as a texture of the overlay's colour space, made once per device and key; nullptr
+	// while the device has none
+	[[ nodiscard ]] const Texture* pixelsImage ( api::effect_runtime* runtime, const std::wstring& key, const std::vector<uint32_t>& rgba, int width, int height );
+
 	// A device goes: its images are destroyed now
 	void forgetImages ( api::device* device );
 

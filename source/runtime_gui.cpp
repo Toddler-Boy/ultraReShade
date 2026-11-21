@@ -15,8 +15,9 @@
 #include "imgui_widgets.hpp"
 #include "platform_utils.hpp"
 #include "ultra_home.hpp"
-#include "ultra_overlay.hpp"
 #include "ultra_ui_font.hpp"
+#include "ultra_ui_layout.hpp"
+#include "ultra_ui_window.hpp"
 #include "fonts/forkawesome.inl"
 #include <cmath> // std::abs
 #include <cstdlib> // std::strtol
@@ -82,18 +83,8 @@ void reshade::runtime::init_gui()
 
 	ImGuiIO &imgui_io = _imgui_context->IO;
 	imgui_io.IniFilename = nullptr;
-	imgui_io.ConfigFlags = ImGuiConfigFlags_NavEnableKeyboard;
-	imgui_io.BackendFlags = ImGuiBackendFlags_HasMouseCursors | ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
-
-	ImGuiStyle &imgui_style = _imgui_context->Style;
-	// Disable rounding by default
-	imgui_style.GrabRounding = 0.0f;
-	imgui_style.FrameRounding = 0.0f;
-	imgui_style.ChildRounding = 0.0f;
-	imgui_style.ScrollbarRounding = 0.0f;
-	imgui_style.WindowRounding = 0.0f;
-	imgui_style.WindowBorderSize = 0.0f;
-	apply_overlay_style();
+	imgui_io.ConfigFlags = ImGuiConfigFlags_None;
+	imgui_io.BackendFlags = ImGuiBackendFlags_RendererHasVtxOffset | ImGuiBackendFlags_RendererHasTextures;
 
 	// Restore previous context in case this was called from a new runtime being created from an add-on event triggered by an existing runtime
 	ImGui::SetCurrentContext(backup_context);
@@ -137,21 +128,12 @@ void reshade::runtime::build_font_atlas()
 
 void reshade::runtime::load_config_gui(const ini_file &config)
 {
-	if (_input_gamepad != nullptr)
-		_imgui_context->IO.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;
-	else
-		_imgui_context->IO.ConfigFlags &= ~ImGuiConfigFlags_NavEnableGamepad;
-
 	config.get("INPUT", "KeyOverlay", _overlay_key_data);
-	config.get("OVERLAY", "NoFontScaling", _no_font_scaling);
 	config.get("OVERLAY", "VariableListHeight", _variable_editor_height);
 	config.get("OVERLAY", "Position", _overlay_position);
 	config.get("OVERLAY", "Size", _overlay_size);
 	config.get("OVERLAY", "Tab", _overlay_tab);
 
-	// Placed again from the fractions at the next frame
-	_overlay_placed_for[0] = _overlay_placed_for[1] = 0.0f;
-	_is_overlay_tab_selected = false;
 }
 void reshade::runtime::save_config_gui(ini_file &config) const
 {
@@ -167,57 +149,6 @@ void reshade::runtime::save_overlay_window(ini_file &config) const
 	config.set("OVERLAY", "Tab", _overlay_tab);
 }
 
-void reshade::runtime::apply_overlay_style()
-{
-	ImVec4 *const colors = _imgui_context->Style.Colors;
-	colors[ImGuiCol_Text] = ImVec4(0.862745f, 0.862745f, 0.862745f, 1.00f);
-	colors[ImGuiCol_TextDisabled] = ImVec4(0.862745f, 0.862745f, 0.862745f, 0.58f);
-	colors[ImGuiCol_WindowBg] = ImVec4(0.117647f, 0.117647f, 0.117647f, 1.00f);
-	colors[ImGuiCol_ChildBg] = ImVec4(0.156863f, 0.156863f, 0.156863f, 0.00f);
-	colors[ImGuiCol_Border] = ImVec4(0.862745f, 0.862745f, 0.862745f, 0.30f);
-	colors[ImGuiCol_FrameBg] = ImVec4(0.156863f, 0.156863f, 0.156863f, 1.00f);
-	colors[ImGuiCol_FrameBgHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.470588f);
-	colors[ImGuiCol_FrameBgActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.588235f);
-	colors[ImGuiCol_TitleBg] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.45f);
-	colors[ImGuiCol_TitleBgCollapsed] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.35f);
-	colors[ImGuiCol_TitleBgActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.58f);
-	colors[ImGuiCol_MenuBarBg] = ImVec4(0.156863f, 0.156863f, 0.156863f, 0.57f);
-	colors[ImGuiCol_ScrollbarBg] = ImVec4(0.156863f, 0.156863f, 0.156863f, 1.00f);
-	colors[ImGuiCol_ScrollbarGrab] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.31f);
-	colors[ImGuiCol_ScrollbarGrabHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.78f);
-	colors[ImGuiCol_ScrollbarGrabActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_PopupBg] = ImVec4(0.117647f, 0.117647f, 0.117647f, 0.92f);
-	colors[ImGuiCol_CheckMark] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.80f);
-	colors[ImGuiCol_SliderGrab] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.784314f);
-	colors[ImGuiCol_SliderGrabActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_Button] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.44f);
-	colors[ImGuiCol_ButtonHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.86f);
-	colors[ImGuiCol_ButtonActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_Header] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.76f);
-	colors[ImGuiCol_HeaderHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.86f);
-	colors[ImGuiCol_HeaderActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_Separator] = ImVec4(0.862745f, 0.862745f, 0.862745f, 0.32f);
-	colors[ImGuiCol_SeparatorHovered] = ImVec4(0.862745f, 0.862745f, 0.862745f, 0.78f);
-	colors[ImGuiCol_SeparatorActive] = ImVec4(0.862745f, 0.862745f, 0.862745f, 1.00f);
-	colors[ImGuiCol_ResizeGrip] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.20f);
-	colors[ImGuiCol_ResizeGripHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.78f);
-	colors[ImGuiCol_ResizeGripActive] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_Tab] = colors[ImGuiCol_Button];
-	colors[ImGuiCol_TabSelected] = colors[ImGuiCol_ButtonActive];
-	colors[ImGuiCol_TabSelectedOverline] = colors[ImGuiCol_ButtonActive];
-	colors[ImGuiCol_TabHovered] = colors[ImGuiCol_ButtonHovered];
-	colors[ImGuiCol_TabDimmed] = ImLerp(colors[ImGuiCol_Tab], colors[ImGuiCol_TitleBg], 0.80f);
-	colors[ImGuiCol_TabDimmedSelected] = ImLerp(colors[ImGuiCol_TabSelected], colors[ImGuiCol_TitleBg], 0.40f);
-	colors[ImGuiCol_TabDimmedSelectedOverline] = colors[ImGuiCol_TabDimmedSelected];
-	colors[ImGuiCol_DockingPreview] = colors[ImGuiCol_Header] * ImVec4(1.0f, 1.0f, 1.0f, 0.7f);
-	colors[ImGuiCol_DockingEmptyBg] = ImVec4(0.20f, 0.20f, 0.20f, 1.00f);
-	colors[ImGuiCol_PlotLines] = ImVec4(0.862745f, 0.862745f, 0.862745f, 0.63f);
-	colors[ImGuiCol_PlotLinesHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_PlotHistogram] = ImVec4(0.862745f, 0.862745f, 0.862745f, 0.63f);
-	colors[ImGuiCol_PlotHistogramHovered] = ImVec4(0.392157f, 0.588235f, 0.941176f, 1.00f);
-	colors[ImGuiCol_TextSelectedBg] = ImVec4(0.392157f, 0.588235f, 0.941176f, 0.43f);
-}
-
 void reshade::runtime::draw_gui()
 {
 	assert(_is_initialized);
@@ -227,28 +158,39 @@ void reshade::runtime::draw_gui()
 
 	if (_input != nullptr)
 	{
-		if (_show_overlay && !_ignore_shortcuts && _input->is_key_pressed(input::key_escape) && !_imgui_context->IO.NavVisible)
-			show_overlay = false; // Close when pressing the escape button and not currently navigating with the keyboard
+		// Escape closes a drop-down of ours first and the overlay with the next press, never while text is typed
+		if (_show_overlay && !_ignore_shortcuts && _input->is_key_pressed(input::key_escape) && _imgui_context->OpenPopupStack.Size == 0)
+			show_overlay = false;
 		else if (!_ignore_shortcuts && _input->is_key_pressed(_overlay_key_data, _force_shortcut_modifiers) && _imgui_context->ActiveId == 0)
 			show_overlay = !_show_overlay;
-	}
-
-	if (_input_gamepad != nullptr)
-	{
-		if (_input_gamepad->is_button_down(input_gamepad::button_left_shoulder) &&
-			_input_gamepad->is_button_down(input_gamepad::button_right_shoulder) &&
-			_input_gamepad->is_button_pressed(input_gamepad::button_start))
-		{
-			show_overlay = !_show_overlay;
-			show_overlay_source = api::input_source::gamepad;
-		}
 	}
 
 	if (show_overlay != _show_overlay)
 		open_overlay(show_overlay, show_overlay_source);
 
-	const bool show_screenshot_message = _screenshots_saving > 0 || (!_last_screenshot_save_successful && (_last_present_time - _last_screenshot_time) < std::chrono::seconds(5));
-	const bool show_message_window = show_screenshot_message || !_settings_save_successful;
+	// The messages: the screenshot being saved (ReShade's writer, a key press waiting for its frame, the add-on's own files), then saved for
+	// two seconds; what failed, red
+	std::vector<::ultra::ui::window::Message> messages;
+	{
+		const bool is_saving = _screenshots_saving > 0 || _screenshot_files_pending > 0 || _should_save_screenshot;
+		const auto now = std::chrono::steady_clock::now();
+		const std::string file = _last_screenshot_file.filename().u8string();
+
+		if (_was_saving_screenshot && !is_saving && _last_screenshot_save_successful)
+			_screenshot_saved_time = now;
+		_was_saving_screenshot = is_saving;
+
+		if (!_settings_save_successful)
+			messages.push_back({ "Unable to save the settings to " + ultra::userSettingsPath().u8string() + ", the log says why.", ::ultra::ui::theme::colors::danger });
+		if (is_saving)
+			messages.push_back({ "Saving screenshot " + file + "...", 0 });
+		else if (!_last_screenshot_save_successful && (_last_present_time - _last_screenshot_time) < std::chrono::seconds(5))
+			messages.push_back({ _screenshot_directory_creation_successful ? std::string("Unable to save the screenshot because of an internal error (the drive may be full).")
+				: "Unable to save the screenshot because its folder could not be created: " + _screenshot_path.u8string(), ::ultra::ui::theme::colors::danger });
+		else if (_screenshot_saved_time != std::chrono::steady_clock::time_point() && now - _screenshot_saved_time < std::chrono::seconds(2))
+			messages.push_back({ "Screenshot saved " + file, 0 });
+	}
+	const bool show_message_window = !messages.empty();
 
 	_ignore_shortcuts = false;
 	_effects_expanded_state &= 2;
@@ -278,24 +220,13 @@ void reshade::runtime::draw_gui()
 	imgui_io.DisplaySize.x = static_cast<float>(_width);
 	imgui_io.DisplaySize.y = static_cast<float>(_height);
 
-	// The font scale follows the display: measured again after a resize and twice a second (window resized, moved to another monitor)
-	if (imgui_io.DisplaySize.y != _display_scale_height || _last_present_time - _display_scale_time >= std::chrono::milliseconds(500))
-	{
-		const ultra::DisplayScale measured = ultra::measureDisplayScale(get_hwnd(), imgui_io.DisplaySize.y);
-
-		if (measured.scale != _display_scale)
-			log::message(log::level::info, "Overlay scale %.2f (monitor scale %.2f, back buffer %ux%u, pixel size %.3f).", measured.scale, measured.monitorScale, _width, _height, measured.pixelSize);
-
-		_display_scale = measured.scale;
-		_display_scale_height = imgui_io.DisplaySize.y;
-		_display_scale_time = _last_present_time;
-	}
-
-	_imgui_context->Style.FontScaleMain = _display_scale * _font_scale_adjust;
+	// The look's scale follows the display, measured again at each frame; ImGui's own font (its text fields) goes with it
+	::ultra::ui::beginFrame(this);
+	::ultra::ui::window::applyStyle();
 
 	if (_input != nullptr)
 	{
-		imgui_io.MouseDrawCursor = _show_overlay;
+		imgui_io.MouseDrawCursor = false;
 
 		// Scale mouse position in case render resolution does not match the window size
 		unsigned int max_position[2];
@@ -426,45 +357,6 @@ void reshade::runtime::draw_gui()
 			imgui_io.AddInputCharacterUTF16(c);
 	}
 
-	if (_input_gamepad != nullptr)
-	{
-		if (_input_gamepad->is_connected())
-		{
-			imgui_io.BackendFlags |= ImGuiBackendFlags_HasGamepad;
-
-			constexpr std::pair<ImGuiKey, input_gamepad::button> button_mappings[] = {
-				{ ImGuiKey_GamepadStart, input_gamepad::button_start },
-				{ ImGuiKey_GamepadBack, input_gamepad::button_back },
-				{ ImGuiKey_GamepadFaceLeft, input_gamepad::button_x },
-				{ ImGuiKey_GamepadFaceRight, input_gamepad::button_b },
-				{ ImGuiKey_GamepadFaceUp, input_gamepad::button_y },
-				{ ImGuiKey_GamepadFaceDown, input_gamepad::button_a },
-				{ ImGuiKey_GamepadDpadLeft, input_gamepad::button_dpad_left },
-				{ ImGuiKey_GamepadDpadRight, input_gamepad::button_dpad_right },
-				{ ImGuiKey_GamepadDpadUp, input_gamepad::button_dpad_up },
-				{ ImGuiKey_GamepadDpadDown, input_gamepad::button_dpad_down },
-				{ ImGuiKey_GamepadL1, input_gamepad::button_left_shoulder },
-				{ ImGuiKey_GamepadR1, input_gamepad::button_right_shoulder },
-				{ ImGuiKey_GamepadL3, input_gamepad::button_left_thumb },
-				{ ImGuiKey_GamepadR3, input_gamepad::button_right_thumb },
-			};
-
-			for (const std::pair<ImGuiKey, input_gamepad::button> &mapping : button_mappings)
-				imgui_io.AddKeyEvent(mapping.first, _input_gamepad->is_button_down(mapping.second));
-
-			imgui_io.AddKeyAnalogEvent(ImGuiKey_GamepadL2, _input_gamepad->left_trigger_position() != 0.0f, _input_gamepad->left_trigger_position());
-			imgui_io.AddKeyAnalogEvent(ImGuiKey_GamepadR2, _input_gamepad->right_trigger_position() != 0.0f, _input_gamepad->right_trigger_position());
-			imgui_io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickLeft, _input_gamepad->left_thumb_axis_x() < 0.0f, -std::min(_input_gamepad->left_thumb_axis_x(), 0.0f));
-			imgui_io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickRight, _input_gamepad->left_thumb_axis_x() > 0.0f, std::max(_input_gamepad->left_thumb_axis_x(), 0.0f));
-			imgui_io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickUp, _input_gamepad->left_thumb_axis_y() > 0.0f, std::max(_input_gamepad->left_thumb_axis_y(), 0.0f));
-			imgui_io.AddKeyAnalogEvent(ImGuiKey_GamepadLStickDown, _input_gamepad->left_thumb_axis_y() < 0.0f, -std::min(_input_gamepad->left_thumb_axis_y(), 0.0f));
-		}
-		else
-		{
-			imgui_io.BackendFlags &= ~ImGuiBackendFlags_HasGamepad;
-		}
-	}
-
 	ImGui::NewFrame();
 
 	// Reset input source to mouse when the cursor is moved
@@ -473,76 +365,20 @@ void reshade::runtime::draw_gui()
 
 	ultra::drawSplash(_ultra_splash, { _device, ImGui::GetBackgroundDrawList(), imgui_io.DisplaySize.x, imgui_io.DisplaySize.y, imgui_io.DeltaTime, _effects.size(), _reload_remaining_effects.load(), is_loading(), _show_overlay });
 
-	// Create ImGui widgets and windows
-	if (show_message_window)
-	{
-		ImGui::SetNextWindowPos(_imgui_context->Style.WindowPadding);
-		ImGui::SetNextWindowSize(ImVec2(imgui_io.DisplaySize.x - 20.0f, 0.0f));
-		ImGui::Begin("Message Window", nullptr,
-			ImGuiWindowFlags_NoDecoration |
-			ImGuiWindowFlags_NoNav |
-			ImGuiWindowFlags_NoMove |
-			ImGuiWindowFlags_NoInputs |
-			ImGuiWindowFlags_NoSavedSettings |
-			ImGuiWindowFlags_NoDocking |
-			ImGuiWindowFlags_NoFocusOnAppearing);
-
-		if (!_settings_save_successful)
-		{
-			ImGui::TextColored(COLOR_RED, "Unable to save the settings to %s, the log says why.", ultra::userSettingsPath().u8string().c_str());
-		}
-		else if (show_screenshot_message)
-		{
-			if (_screenshots_saving > 0)
-				ImGui::Text("Saving screenshot %s...", _last_screenshot_file.filename().u8string().c_str());
-			else if (_screenshot_directory_creation_successful)
-				ImGui::TextColored(COLOR_RED, "Unable to save screenshot because of an internal error (the drive may be full).");
-			else
-				ImGui::TextColored(COLOR_RED, "Unable to save screenshot because path could not be created: %s", _screenshot_path.u8string().c_str());
-		}
-
-		ImGui::End();
-	}
-
 	if (_show_overlay)
-	{
-		const ImGuiViewport *const viewport = ImGui::GetMainViewport();
-
-		// Change font size if user presses the control key and moves the mouse wheel
-		if (!_no_font_scaling && imgui_io.KeyCtrl && imgui_io.MouseWheel != 0 && ImGui::IsWindowHovered(ImGuiHoveredFlags_AnyWindow))
-		{
-			// Only for this session: the scale itself always comes from the display
-			_font_scale_adjust = ImClamp(_font_scale_adjust + imgui_io.MouseWheel * 0.25f, 0.25f, 4.0f);
-			_imgui_context->Style.FontScaleMain = _display_scale * _font_scale_adjust;
-
-			_is_font_scaling = true;
-		}
-
-		if (_is_font_scaling)
-		{
-			if (!imgui_io.KeyCtrl)
-				_is_font_scaling = false;
-
-			ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
-			ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, _imgui_context->Style.WindowPadding * 2.0f);
-			ImGui::Begin("FontScaling", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoInputs | ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoSavedSettings);
-			ImGui::Text("Scaling font size (%d) with 'Ctrl' + mouse wheel", static_cast<int>(_imgui_context->Style.FontSizeBase * _imgui_context->Style.FontScaleMain));
-			ImGui::End();
-			ImGui::PopStyleVar();
-		}
-
-		// Ensure there is always a window that has navigation focus when keyboard or gamepad navigation is used (choose the overlay window created next)
-		if (_imgui_context->NavInputSource > ImGuiInputSource_Mouse && _imgui_context->NavWindowingTarget == nullptr && !ImGui::IsWindowFocused(ImGuiFocusedFlags_AnyWindow))
-			ImGui::SetNextWindowFocus();
-
 		draw_overlay_window();
-	}
+	else
+		::ultra::ui::forgetMouseOver();
 
 	invoke_addon_event<addon_event::reshade_overlay>(this);
 	invoke_addon_event<addon_event::ultra_overlay>(this);
 
 	// Disable keyboard shortcuts while typing into input boxes
 	_ignore_shortcuts |= ImGui::IsAnyItemActive();
+
+	::ultra::ui::window::drawMessages(messages);
+	if (_show_overlay)
+		::ultra::ui::window::drawCursor(this);
 
 	// Render ImGui widgets and windows
 	ImGui::Render();
@@ -582,103 +418,44 @@ void reshade::runtime::draw_gui()
 
 void reshade::runtime::draw_overlay_window()
 {
-	const ImGuiIO &imgui_io = _imgui_context->IO;
+	using Tab = ::ultra::ui::window::Tab;
 
-	if (_overlay_placed_for[0] != imgui_io.DisplaySize.x || _overlay_placed_for[1] != imgui_io.DisplaySize.y)
+	// The add-ons' overlays: the first one is ultraGame's panel, the Shaders tab comes after it, then the others
+	std::vector<addon_info::overlay_callback> overlays;
+	for (const addon_info &info : addon_loaded_info)
+		overlays.insert(overlays.end(), info.overlay_callbacks.begin(), info.overlay_callbacks.end());
+
+	std::vector<Tab> tabs;
+	const auto add_overlay = [this, &tabs](const addon_info::overlay_callback &widget) {
+		tabs.push_back({ widget.title, widget.title, [this, callback = widget.callback]() {
+			if (!ultra::hasProcessExitBegun())
+				callback(this);
+		} });
+	};
+
+	if (!overlays.empty())
+		add_overlay(overlays.front());
+	if (_has_user_shaders)
+		tabs.push_back({ "Shaders", "shaders", [this]() { draw_gui_shaders(); } });
+	for (size_t i = 1; i < overlays.size(); ++i)
+		add_overlay(overlays[i]);
+
+	::ultra::ui::window::State state;
+	std::copy_n(_overlay_position, 2, state.position);
+	std::copy_n(_overlay_size, 2, state.size);
+	state.tab = _overlay_tab;
+
+	const auto result = ::ultra::ui::window::draw(state, tabs);
+
+	std::copy_n(state.position, 2, _overlay_position);
+	std::copy_n(state.size, 2, _overlay_size);
+	if (result.isMovedOrResized || result.isTabChanged)
 	{
-		ImGui::SetNextWindowPos(ImVec2(_overlay_position[0] * imgui_io.DisplaySize.x, _overlay_position[1] * imgui_io.DisplaySize.y));
-		ImGui::SetNextWindowSize(ImVec2(_overlay_size[0] * imgui_io.DisplaySize.x, _overlay_size[1] * imgui_io.DisplaySize.y));
-		_overlay_placed_for[0] = imgui_io.DisplaySize.x;
-		_overlay_placed_for[1] = imgui_io.DisplaySize.y;
+		_overlay_tab = state.tab;
+		save_overlay_window(global_config());
 	}
-
-	// No focus so that window state is preserved between opening/closing the GUI
-	if (ImGui::Begin("###overlay", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse))
-	{
-		const ImVec2 position = ImGui::GetWindowPos();
-		const ImVec2 size = ImGui::GetWindowSize();
-		const float position_fraction[2] = { position.x / imgui_io.DisplaySize.x, position.y / imgui_io.DisplaySize.y };
-		const float size_fraction[2] = { size.x / imgui_io.DisplaySize.x, size.y / imgui_io.DisplaySize.y };
-
-		// Saved once moving or resizing ends; the pixel rounding of the placement is no move
-		const auto is_moved = [](float actual, float saved, float display) { return std::abs(actual - saved) * display > 1.5f; };
-		if (!ImGui::IsMouseDown(ImGuiMouseButton_Left) &&
-			(is_moved(position_fraction[0], _overlay_position[0], imgui_io.DisplaySize.x) || is_moved(position_fraction[1], _overlay_position[1], imgui_io.DisplaySize.y) ||
-			 is_moved(size_fraction[0], _overlay_size[0], imgui_io.DisplaySize.x) || is_moved(size_fraction[1], _overlay_size[1], imgui_io.DisplaySize.y)))
-		{
-			std::copy_n(position_fraction, 2, _overlay_position);
-			std::copy_n(size_fraction, 2, _overlay_size);
-			save_overlay_window(global_config());
-		}
-
-		if (ImGui::BeginTabBar("##overlay_tabs", ImGuiTabBarFlags_FittingPolicyScroll))
-		{
-			bool has_saved_tab = false;
-			bool is_first_tab = true;
-
-			// The saved tab is selected when the overlay first shows; from then on the selected one is saved
-			const auto begin_tab = [this, &has_saved_tab, &is_first_tab](const std::string &label, const std::string &name) {
-				const bool is_saved_tab = name == _overlay_tab;
-				const bool is_default_tab = std::exchange(is_first_tab, false);
-				has_saved_tab |= is_saved_tab;
-
-				if (!ImGui::BeginTabItem(label.c_str(), nullptr, !_is_overlay_tab_selected && is_saved_tab ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None))
-					return false;
-
-				if (!_is_overlay_tab_selected)
-				{
-					_is_overlay_tab_selected = is_saved_tab;
-				}
-				else if (!is_saved_tab && !(_overlay_tab.empty() && is_default_tab))
-				{
-					_overlay_tab = name;
-					save_overlay_window(global_config());
-				}
-
-				ImGui::BeginChild("##tab", ImVec2(0, 0), ImGuiChildFlags_NavFlattened);
-				return true;
-			};
-			const auto end_tab = []() {
-				ImGui::EndChild();
-				ImGui::EndTabItem();
-			};
-
-			// The add-ons' overlays: the first one is ultraGame's panel
-			std::vector<addon_info::overlay_callback> overlays;
-			{
-				for (const addon_info &info : addon_loaded_info)
-					overlays.insert(overlays.end(), info.overlay_callbacks.begin(), info.overlay_callbacks.end());
-			}
-
-			const auto draw_overlay = [this, &begin_tab, &end_tab](const addon_info::overlay_callback &widget) {
-				if (!begin_tab(widget.title + "###addon_" + widget.title, widget.title))
-					return;
-
-				if (!ultra::hasProcessExitBegun())
-					widget.callback(this);
-				end_tab();
-			};
-
-			if (!overlays.empty())
-				draw_overlay(overlays.front());
-
-			if (_has_user_shaders && begin_tab("Shaders###shaders", "shaders"))
-			{
-				draw_gui_shaders();
-				end_tab();
-			}
-
-			for (size_t i = 1; i < overlays.size(); ++i)
-				draw_overlay(overlays[i]);
-
-			// A saved tab that is not there (an add-on that did not load, no shaders) leaves the first one selected, which is ultraGame's panel
-			if (!has_saved_tab)
-				_is_overlay_tab_selected = true;
-
-			ImGui::EndTabBar();
-		}
-	}
-	ImGui::End();
+	if (result.isCloseWanted)
+		open_overlay(false, api::input_source::mouse);
 }
 
 void reshade::runtime::draw_gui_shaders()

@@ -77,6 +77,8 @@ namespace
 
 	constexpr Field	overlayWantedFields[] { { cells::runtime, ugPtr }, { cells::overlay_wanted::on, ugU32 } };
 
+	constexpr Field	screenshotPendingFields[] { { cells::runtime, ugPtr }, { cells::screenshot_pending::count, ugU32 } };
+
 	constexpr Field	screenshotStateFields[] {
 		{ cells::runtime, ugPtr }, { cells::screenshot_state::saving, ugU32 }, { cells::screenshot_state::file, ugText }, { cells::screenshot_state::failure, ugU32 },
 		{ cells::screenshot_state::path, ugText }, { cells::screenshot_state::failed_ms, ugU32 } };
@@ -410,6 +412,13 @@ namespace reshade::ultra
 			return 1;
 		}
 
+		static int screenshotPending ( runtime& r, UgCell* c )
+		{
+			constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( screenshotPendingFields, name ); };
+			r._screenshot_files_pending = c[ at ( cells::screenshot_pending::count ) ].u32;
+			return 1;
+		}
+
 		static int settingsState ( runtime& r, UgCell* c )
 		{
 			constexpr auto					at = [] ( std::string_view name ) consteval { return cellOf ( settingsStateFields, name ); };
@@ -561,6 +570,7 @@ namespace
 	constexpr const char*	overlayWantedName = names::overlay_wanted;
 	constexpr const char*	screenshotStateName = names::screenshot_state;
 	constexpr const char*	settingsStateName = names::settings_state;
+	constexpr const char*	screenshotPendingName = names::screenshot_pending;
 	constexpr const char*	effectsStateName = names::effects_state;
 	constexpr const char*	effectsTechniqueName = names::effects_technique;
 	constexpr const char*	effectsUniformName = names::effects_uniform;
@@ -575,6 +585,7 @@ namespace
 		{ names::overlay_tab, &call<overlayTabFields, overlayTabName, &Access::overlayTab>, overlayTabFields },
 		{ names::overlay_wanted, &call<overlayWantedFields, overlayWantedName, &Access::overlayWanted>, overlayWantedFields },
 		{ names::screenshot_state, &call<screenshotStateFields, screenshotStateName, &Access::screenshotState>, screenshotStateFields },
+		{ names::screenshot_pending, &call<screenshotPendingFields, screenshotPendingName, &Access::screenshotPending>, screenshotPendingFields },
 		{ names::settings_state, &call<settingsStateFields, settingsStateName, &Access::settingsState>, settingsStateFields },
 		{ names::effects_state, &call<effectsStateFields, effectsStateName, &Access::effectsState>, effectsStateFields },
 		{ names::effects_technique, &call<effectsTechniqueFields, effectsTechniqueName, &Access::effectsTechnique>, effectsTechniqueFields },

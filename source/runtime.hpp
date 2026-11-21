@@ -389,6 +389,7 @@ namespace reshade
 		bool _should_save_screenshot = false;
 		std::atomic<bool> _last_screenshot_save_successful = true;
 		std::atomic<int> _screenshots_saving = 0;
+		std::atomic<uint32_t> _screenshot_files_pending = 0; // The add-on's own files, told by "screenshot.pending"
 		bool _screenshot_directory_creation_successful = true;
 		std::filesystem::path _last_screenshot_file;
 		std::chrono::high_resolution_clock::time_point _last_screenshot_time;
@@ -412,7 +413,6 @@ namespace reshade
 		void save_overlay_window(class ini_file &config) const;
 		void draw_overlay_window();
 
-		void apply_overlay_style();
 
 		void draw_gui();
 
@@ -429,12 +429,8 @@ namespace reshade
 
 		bool _show_overlay = false;
 
-		bool _is_font_scaling = false;
-		bool _no_font_scaling = false;
-		float _font_scale_adjust = 1.0f; // Ctrl + mouse wheel, for this session only
-		float _display_scale = 0.0f; // From the display the window is on (ultra::measureDisplayScale), never from a config
-		float _display_scale_height = 0.0f;
-		std::chrono::high_resolution_clock::time_point _display_scale_time;
+		bool _was_saving_screenshot = false;
+		std::chrono::steady_clock::time_point _screenshot_saved_time;
 		bool _block_input_next_frame = false;
 		bool _rebuild_font_atlas = true;
 		unsigned int _overlay_key_data[4];
@@ -455,8 +451,6 @@ namespace reshade
 		float _overlay_size[2] = { 0.4f, 0.9f };
 		std::string _overlay_tab;
 		// The back buffer size the window was placed for from the fractions; a new size places it again
-		float _overlay_placed_for[2] = {};
-		bool _is_overlay_tab_selected = false;
 
 		// The window as the add-on that draws it has it, in back buffer pixels, and the back buffer size it was placed for
 		float _overlay_rect[4] = {};

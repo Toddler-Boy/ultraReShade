@@ -20,6 +20,7 @@
 #include "ultra_ui_texture.hpp"
 #include "ultra_ui_theme.hpp"
 #include "ultra_ui_widgets.hpp"
+#include "ultra_ui_window.hpp"
 
 //-----------------------------------------------------------------------------
 // ReShadeGetWidgetTable (include/reshade_ultra_ui.h): ultraReShade's widgets, look, text and images as plain C functions, each one
@@ -67,6 +68,16 @@ namespace
 	void pageDrawOf ( void* runtime, const ReShadeUiPage* page, void* frame )
 	{
 		drawPage ( static_cast<api::effect_runtime*> ( runtime ), *page, frame );
+	}
+
+	void setTabDotOf ( const char* title, uint32_t color )
+	{
+		window::setTabDot ( title != nullptr ? title : "", color );
+	}
+
+	uint32_t isTypingOf ()
+	{
+		return window::isTyping () ? 1 : 0;
 	}
 
 	uint32_t isMouseOverOf ()
@@ -318,7 +329,7 @@ namespace
 		&imageOf, &maskOf, &decode,
 		&colourSpaceOverride, &setColourSpaceOverride, &isColourSpaceShown,
 		&labelAt, &labelWidthOf, &toggleOf, &headingOf, &collapseArrowOf, &subheadingAt, &sliderOf, &valueEditOf, &colorPickerOf, &textFieldOf,
-		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf
+		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &setTabDotOf, &isTypingOf
 	};
 
 	void onPresent ( reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect* )

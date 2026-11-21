@@ -187,6 +187,29 @@ namespace ultra::ui
 		return img.texture.valid () ? &img.texture : nullptr;
 	}
 
+	const Texture* pixelsImage ( api::effect_runtime* runtime, const std::wstring& key, const std::vector<uint32_t>& rgba, int width, int height )
+	{
+		auto* const	device = runtime != nullptr ? runtime->get_device () : nullptr;
+		if ( device == nullptr || rgba.empty () )
+			return nullptr;
+
+		auto [ it, fresh ] = images.try_emplace ( Key { device, key } );
+		auto&		img = it->second;
+		const auto	look = overlayLook ( runtime );
+
+		if ( fresh )
+		{
+			img.srgb = rgba;
+			img.width = width;
+			img.height = height;
+			make ( device, img, look );
+		}
+		else if ( look != img.look )
+			make ( device, img, look );
+
+		return img.texture.valid () ? &img.texture : nullptr;
+	}
+
 	bool decodeImage ( const std::wstring& path, std::vector<uint32_t>& rgba, int& width, int& height )
 	{
 		UINT	w = 0, h = 0;

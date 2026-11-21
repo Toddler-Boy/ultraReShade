@@ -584,6 +584,11 @@ namespace ultra::ui
 		tickTextures ();
 	}
 
+	void forgetMouseOver ()
+	{
+		mouseOverOverlay.store ( false, std::memory_order_relaxed );
+	}
+
 	bool isMouseOverOverlay ()
 	{
 		return mouseOverOverlay.load ( std::memory_order_relaxed );

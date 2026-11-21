@@ -24,4 +24,7 @@ namespace ultra::ui
 
 	// The mouse was over the overlay at the last drawn page. Any thread
 	[[ nodiscard ]] bool isMouseOverOverlay ();
+
+	// The overlay is closed: the mouse is over nothing of ours
+	void forgetMouseOver ();
 }

@@ -293,8 +293,6 @@ set(RESHADE_SOURCE
   source/ultra_process_exit.cpp
   source/ultra_process_exit.hpp
   source/ultra_resource_ids.cpp
-  source/ultra_overlay.cpp
-  source/ultra_overlay.hpp
   source/ultra_pass_through.cpp
   source/ultra_pass_through.hpp
   source/ultra_splash.cpp
@@ -337,6 +335,8 @@ set(RESHADE_SOURCE
   source/ultra_ui_toggle.cpp
   source/ultra_ui_tooltip.cpp
   source/ultra_ui_value_edit.cpp
+  source/ultra_ui_window.cpp
+  source/ultra_ui_window.hpp
   source/ultra_ui_widgets.hpp
 )
 set(RESHADE_SOURCE_DIRECTX

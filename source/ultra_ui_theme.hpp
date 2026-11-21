@@ -77,6 +77,18 @@ namespace ultra::ui::theme
 		inline ImU32	infoGlyph = 0;
 		inline ImU32	keycap = 0;
 		inline ImU32	keycapEdge = 0;
+
+		inline ImU32	window = 0;			// the overlay's window: its fill and its edge
+		inline ImU32	windowEdge = 0;
+		inline ImU32	tab = 0;			// a tab's label, the selected one's, the one under the mouse, the line under the selected one
+		inline ImU32	tabActive = 0;
+		inline ImU32	tabHover = 0;
+		inline ImU32	tabLine = 0;
+		inline ImU32	scrollTrack = 0;
+		inline ImU32	scrollThumb = 0;
+		inline ImU32	scrollThumbHover = 0;
+		inline ImU32	message = 0;		// the message strip's box and its text
+		inline ImU32	messageText = 0;
 	}
 
 	namespace sizes
@@ -169,6 +181,23 @@ namespace ultra::ui::theme
 	inline constexpr float	coverGap = 16.0f;
 	inline constexpr float	chipGap = 5.0f;
 	inline constexpr float	chipEdge = 1.0f;
+
+	// The overlay's window
+	inline constexpr float	windowRounding = 10.0f;
+	inline constexpr float	windowPad = 10.0f;			// the content off the window's edges, at least the rounding
+	inline constexpr float	windowMinWidth = 360.0f;
+	inline constexpr float	windowMinHeight = 240.0f;
+	inline constexpr float	resizeEdge = 6.0f;
+	inline constexpr float	tabHeight = 34.0f;
+	inline constexpr float	tabPadX = 14.0f;
+	inline constexpr float	tabGap = 4.0f;
+	inline constexpr float	tabLine = 2.0f;
+	inline constexpr float	scrollbarWidth = 7.0f;
+	inline constexpr float	scrollbarGap = 2.0f;
+	inline constexpr float	scrollThumbMin = 24.0f;
+	inline constexpr float	closeSize = 12.0f;
+	inline constexpr float	messagePad = 8.0f;
+	inline constexpr float	dotSize = 5.0f;
 
 	// Timing
 	inline constexpr float	disabledAlpha = 0.35f;

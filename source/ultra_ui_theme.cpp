@@ -62,7 +62,10 @@ namespace ultra::ui::theme
 			{ "handle", &colors::handle }, { "switchOff", &colors::switchOff }, { "knobOff", &colors::knobOff }, { "knobOn", &colors::knobOn },
 			{ "chevron", &colors::chevron }, { "popup", &colors::popup }, { "popupBorder", &colors::popupBorder }, { "popupHover", &colors::popupHover },
 			{ "button", &colors::button }, { "buttonHover", &colors::buttonHover }, { "infoDot", &colors::infoDot }, { "infoGlyph", &colors::infoGlyph },
-			{ "keycap", &colors::keycap }, { "keycapEdge", &colors::keycapEdge } };
+			{ "keycap", &colors::keycap }, { "keycapEdge", &colors::keycapEdge },
+			{ "window", &colors::window }, { "windowEdge", &colors::windowEdge }, { "tab", &colors::tab }, { "tabActive", &colors::tabActive }, { "tabHover", &colors::tabHover },
+			{ "tabLine", &colors::tabLine }, { "scrollTrack", &colors::scrollTrack }, { "scrollThumb", &colors::scrollThumb }, { "scrollThumbHover", &colors::scrollThumbHover },
+			{ "message", &colors::message }, { "messageText", &colors::messageText } };
 
 		constexpr size_t	sizeCount = std::size ( sizeTable );
 		constexpr size_t	colorCount = std::size ( colorTable );
@@ -75,7 +78,9 @@ namespace ultra::ui::theme
 			panelInset, panelWidth, resetWidth, resetIcon, inlineToggleHeight, bipolarMinFill, dropRounding, chevronSize, menuRounding,
 			menuItemRounding, tipMaxWidth, tipGap, shadowSpread, shadowOffset, shadowAlpha, pickerSquare, pickerHueWidth, pickerGap, pickerMarker,
 			swatchEdge, infoSize, infoGap, keyEdge, keyRounding, keyGap, keycapGap, coverWidth, coverHeight, coverRounding, coverGap, chipGap,
-			chipEdge, disabledAlpha, float ( swingSeconds ), swingStretch, float ( fadeSeconds ), float ( tipDelay ), float ( doneSeconds ) };
+			chipEdge, disabledAlpha, float ( swingSeconds ), swingStretch, float ( fadeSeconds ), float ( tipDelay ), float ( doneSeconds ),
+			windowRounding, windowPad, windowMinWidth, windowMinHeight, resizeEdge, tabHeight, tabPadX, tabGap, tabLine, scrollbarWidth, scrollbarGap, scrollThumbMin, closeSize,
+			messagePad, dotSize };
 
 		static_assert ( sizeCount + std::size ( fixedSizes ) == RESHADE_UI_SIZE_COUNT );
 

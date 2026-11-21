@@ -27,6 +27,9 @@ namespace reshade::host
 		constexpr const char*	screenshot_state = "screenshot.state";
 		constexpr const char*	settings_state = "settings.state";
 
+		// The add-on's own screenshot files still being written
+		constexpr const char*	screenshot_pending = "screenshot.pending";
+
 		// The effects: what the public effect API does not say, and what it does not save
 		constexpr const char*	effects_state = "effects.state";
 		constexpr const char*	effects_technique = "effects.technique";
@@ -82,6 +85,13 @@ namespace reshade::host
 			constexpr const char*	failure = "failure";
 			constexpr const char*	path = "path";
 			constexpr const char*	failed_ms = "failedMs";
+		}
+
+		// "screenshot.pending": how many of the add-on's own files (beside the one ReShade's writer saves) are still being written; the
+		// "Saving screenshot" message stays up while there are any
+		namespace screenshot_pending
+		{
+			constexpr const char*	count = "count";
 		}
 
 		namespace settings_state
