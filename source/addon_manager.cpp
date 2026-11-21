@@ -22,6 +22,8 @@ extern void register_addon_constant_buffers();
 extern void unregister_addon_constant_buffers();
 extern void track_constant_buffers(bool is_tracking);
 extern void register_addon_resource_ids();
+extern void register_addon_ui();
+extern void unregister_addon_ui();
 extern void unregister_addon_resource_ids();
 
 extern HMODULE g_module_handle;
@@ -202,6 +204,7 @@ void reshade::load_addons()
 
 	register_addon_constant_buffers();
 	register_addon_resource_ids();
+	register_addon_ui();
 
 	// reshade.json's list is the load order and the whole truth: built-in add-ons by name, the others by file name in [ADDON] AddonPath
 	const json::value *const addons = config.curated_member("addons");
@@ -362,6 +365,7 @@ void reshade::unload_addons()
 	unregister_addon_depth();
 	unregister_addon_constant_buffers();
 	unregister_addon_resource_ids();
+	unregister_addon_ui();
 
 	ultra::stopAddonReload();
 	ultra::stopFileWatch();

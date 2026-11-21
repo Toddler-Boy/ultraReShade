@@ -7,6 +7,7 @@
 
 #include "reshade.hpp"
 #include "reshade_ultra_api.h"
+#include "reshade_ultra_ui.h"
 #include "reshade_ultra_json.hpp"
 #include "reshade_ultra_log.hpp"
 
@@ -24,6 +25,7 @@ RESHADE_API_LIBRARY_DECL bool ReShadeReloadAddon ( void* module );
 RESHADE_API_LIBRARY_DECL void ReShadeGetBuild ( const char** number, const char** built );
 RESHADE_API_LIBRARY_DECL bool ReShadeGetAddonSource ( void* module, wchar_t* path, uint32_t capacity );
 RESHADE_API_LIBRARY_DECL UgLookup ReShadeHost ( UgLookup other );
+RESHADE_API_LIBRARY_DECL const ReShadeWidgetTable* ReShadeGetWidgetTable ( uint32_t bytes );
 
 #endif
 
@@ -161,6 +163,17 @@ namespace reshade
 #else
 		static const auto	func = reinterpret_cast<UgLookup ( * ) ( UgLookup )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeHost" ) );
 		return func != nullptr ? func ( other ) : nullptr;
+#endif
+	}
+
+	// ultraReShade's widgets, look, text and images (reshade_ultra_ui.h), null on a ReShade without them or with fewer than bytes of them
+	inline const ReShadeWidgetTable* get_widget_table ( uint32_t bytes )
+	{
+#if defined(RESHADE_API_LIBRARY)
+		return ReShadeGetWidgetTable ( bytes );
+#else
+		static const auto	func = reinterpret_cast<ReShadeGetWidgetTableFn> ( GetProcAddress ( internal::get_reshade_module_handle (), RESHADE_UI_TABLE_EXPORT ) );
+		return func != nullptr ? func ( bytes ) : nullptr;
 #endif
 	}
 

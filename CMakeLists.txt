@@ -232,6 +232,7 @@ set(RESHADE_SOURCE
   res/exports.def
   res/resource.h
   res/resource.rc
+  res/ultra_ui.rc
   res/version.h
   res/version.rc2
   source/addon.cpp
@@ -300,6 +301,40 @@ set(RESHADE_SOURCE
   source/ultra_splash.hpp
   source/ultra_version.cpp
   source/ultra_version.hpp
+  source/ultra_ui_anim.cpp
+  source/ultra_ui_anim.hpp
+  source/ultra_ui_button.cpp
+  source/ultra_ui_choice.cpp
+  source/ultra_ui_collapse.cpp
+  source/ultra_ui_color_picker.cpp
+  source/ultra_ui_colourspace.cpp
+  source/ultra_ui_colourspace.hpp
+  source/ultra_ui_draw.cpp
+  source/ultra_ui_draw.hpp
+  source/ultra_ui_dropdown.cpp
+  source/ultra_ui_font.cpp
+  source/ultra_ui_font.hpp
+  source/ultra_ui_format.cpp
+  source/ultra_ui_format.hpp
+  source/ultra_ui_header.cpp
+  source/ultra_ui_hotkey.cpp
+  source/ultra_ui_hotkey.hpp
+  source/ultra_ui_image.cpp
+  source/ultra_ui_image.hpp
+  source/ultra_ui_label.cpp
+  source/ultra_ui_reset.cpp
+  source/ultra_ui_slider.cpp
+  source/ultra_ui_subheading.cpp
+  source/ultra_ui_table.cpp
+  source/ultra_ui_text_field.cpp
+  source/ultra_ui_texture.cpp
+  source/ultra_ui_texture.hpp
+  source/ultra_ui_theme.cpp
+  source/ultra_ui_theme.hpp
+  source/ultra_ui_toggle.cpp
+  source/ultra_ui_tooltip.cpp
+  source/ultra_ui_value_edit.cpp
+  source/ultra_ui_widgets.hpp
 )
 set(RESHADE_SOURCE_DIRECTX
   source/d2d1/d2d1.cpp

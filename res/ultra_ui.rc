@@ -1,0 +1,9 @@
+// The overlay's look and faces, built into the DLL (source/ultra_ui_theme.cpp, source/ultra_ui_font.cpp). The faces are Inter's four
+// weights (Latin), downloaded by cmake/ultraReShade.cmake into the build's fonts folder on the include path
+
+ULTRA_PANEL_THEME RCDATA "panel-theme.json"
+
+ULTRA_FONT_REGULAR RCDATA "latin-400-normal.ttf"
+ULTRA_FONT_MEDIUM RCDATA "latin-500-normal.ttf"
+ULTRA_FONT_SEMIBOLD RCDATA "latin-600-normal.ttf"
+ULTRA_FONT_BOLD RCDATA "latin-700-normal.ttf"
