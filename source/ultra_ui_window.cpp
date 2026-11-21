@@ -232,11 +232,12 @@ namespace ultra::ui::window
 		{
 			auto*	list = ImGui::GetWindowDrawList ();
 			draw::shadow ( list, min, max, rounding );
+			const auto	barHeight = px ( theme::tabHeight );
 			list->AddRectFilled ( min, max, theme::colors::window, rounding );
+			list->AddRectFilled ( min, ImVec2 ( max.x, min.y + barHeight ), theme::colors::titleBar, rounding, ImDrawFlags_RoundTop );
 			list->AddRect ( ImVec2 ( min.x + 0.5f, min.y + 0.5f ), ImVec2 ( max.x - 0.5f, max.y - 0.5f ), theme::colors::windowEdge, rounding, 1.0f );
 
 			// The tab bar
-			const auto	barHeight = px ( theme::tabHeight );
 			const auto	size = px ( theme::sizes::heading );
 			const auto	pad = px ( theme::windowPad );
 			auto		x = min.x + pad;
@@ -268,21 +269,25 @@ namespace ultra::ui::window
 				}
 				ImGui::PopID ();
 
+				// The selected tab in the window's colour, so it runs into its content; the others a step darker than the bar
+				list->AddRectFilled ( ImVec2 ( tabMin.x, min.y + px ( theme::resizeEdge ) ), ImVec2 ( tabMax.x, min.y + barHeight ),
+									  i == selected ? theme::colors::window : theme::colors::tabFill, rounding * 0.5f, ImDrawFlags_RoundTop );
+
 				const auto	color = i == selected ? theme::colors::tabActive : isHovered ? theme::colors::tabHover : theme::colors::tab;
-				font::draw ( list, ImVec2 ( x, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );
 				if ( dot != dots.end () )
-					list->AddCircleFilled ( ImVec2 ( x + textW + px ( 6.0f ) + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f ), px ( theme::dotSize ) * 0.5f, dot->second );
+					list->AddCircleFilled ( ImVec2 ( x + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f ), px ( theme::dotSize ) * 0.5f, dot->second );
+				font::draw ( list, ImVec2 ( x + dotRoom, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );
 				if ( i == selected )
 					selectedSpan = ImVec2 ( x, x + w );
 
 				x += w + px ( theme::tabPadX ) + px ( theme::tabGap );
 			}
 
-			// The line under the selected tab glides to it
+			// The line under the selected tab glides to it, in the window's own coordinates so a moved window carries it along
 			if ( ! tabs.empty () )
 			{
-				const auto	from = anim::swing ( ImGui::GetID ( "tabLineLeft" ), selectedSpan.x ).mid ();
-				const auto	to = anim::swing ( ImGui::GetID ( "tabLineRight" ), selectedSpan.y ).mid ();
+				const auto	from = min.x + anim::swing ( ImGui::GetID ( "tabLineLeft" ), selectedSpan.x - min.x ).mid ();
+				const auto	to = min.x + anim::swing ( ImGui::GetID ( "tabLineRight" ), selectedSpan.y - min.x ).mid ();
 				const auto	lineY = min.y + barHeight;
 				list->AddRectFilled ( ImVec2 ( from, lineY - px ( theme::tabLine ) ), ImVec2 ( to, lineY ), theme::colors::tabLine );
 			}

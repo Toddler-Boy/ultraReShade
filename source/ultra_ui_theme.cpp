@@ -65,7 +65,8 @@ namespace ultra::ui::theme
 			{ "keycap", &colors::keycap }, { "keycapEdge", &colors::keycapEdge },
 			{ "window", &colors::window }, { "windowEdge", &colors::windowEdge }, { "tab", &colors::tab }, { "tabActive", &colors::tabActive }, { "tabHover", &colors::tabHover },
 			{ "tabLine", &colors::tabLine }, { "scrollTrack", &colors::scrollTrack }, { "scrollThumb", &colors::scrollThumb }, { "scrollThumbHover", &colors::scrollThumbHover },
-			{ "message", &colors::message }, { "messageText", &colors::messageText } };
+			{ "message", &colors::message }, { "messageText", &colors::messageText },
+			{ "titleBar", &colors::titleBar }, { "tabFill", &colors::tabFill } };
 
 		constexpr size_t	sizeCount = std::size ( sizeTable );
 		constexpr size_t	colorCount = std::size ( colorTable );
