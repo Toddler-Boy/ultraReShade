@@ -490,6 +490,22 @@ bool ReShadeRunExclusive(void *module, void(*callback)(void *context), void *con
 }
 
 // module null: the add-on is the caller's module
+bool ReShadeGetAddonSource(void *module, wchar_t *path, uint32_t capacity)
+{
+	const reshade::addon_info *const info = reshade::find_addon(module != nullptr ? module : _ReturnAddress());
+	if (info == nullptr || path == nullptr)
+		return false;
+
+	const std::filesystem::path source = reshade::ultra::addonSourceOf(static_cast<HMODULE>(info->handle));
+	if (source.native().size() >= capacity)
+		return false;
+
+	source.native().copy(path, source.native().size());
+	path[source.native().size()] = L'\0';
+	return true;
+}
+
+// module null: the add-on is the caller's module
 bool ReShadeReloadAddon(void *module)
 {
 	const reshade::addon_info *const info = reshade::find_addon(module != nullptr ? module : _ReturnAddress());

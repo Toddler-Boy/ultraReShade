@@ -11,6 +11,7 @@
 #include "ultra_home.hpp"
 #include "ultra_main_log.hpp"
 #include "ultra_pass_through.hpp"
+#include "ultra_version.hpp"
 #include <Windows.h>
 #include <Psapi.h>
 #include <delayimp.h> // Delay-load helpers
@@ -99,13 +100,14 @@ BOOL APIENTRY DllMain(HMODULE hModule, DWORD fdwReason, LPVOID)
 				(void)reshade::ultra::openMainLog();
 
 			reshade::log::message(reshade::log::level::info,
-				"Initializing crosire's ReShade version '" VERSION_STRING_FILE "' "
+				"Initializing ultraReShade version '%s' "
 #ifndef _WIN64
 				"(32-bit) "
 #else
 				"(64-bit) "
 #endif
 				"loaded from '%s' into '%s' (0x%X) ...",
+				reshade::ultra::versionText().c_str(),
 				g_reshade_dll_path.u8string().c_str(),
 #ifndef NDEBUG
 				static_cast<const char *>(GetCommandLineA()),

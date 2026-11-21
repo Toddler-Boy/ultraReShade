@@ -20,6 +20,8 @@ RESHADE_API_LIBRARY_DECL void ReShadeFlushLog ();
 RESHADE_API_LIBRARY_DECL void ReShadeSetLogoAlert ( bool on );
 RESHADE_API_LIBRARY_DECL bool ReShadeRunExclusive ( void* module, void ( *callback ) ( void* context ), void* context );
 RESHADE_API_LIBRARY_DECL bool ReShadeReloadAddon ( void* module );
+RESHADE_API_LIBRARY_DECL void ReShadeGetBuild ( const char** number, const char** built );
+RESHADE_API_LIBRARY_DECL bool ReShadeGetAddonSource ( void* module, wchar_t* path, uint32_t capacity );
 
 #endif
 
@@ -111,6 +113,40 @@ namespace reshade
 #else
 		static const auto	func = reinterpret_cast<bool ( * ) ( void* )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeReloadAddon" ) );
 		return func != nullptr && func ( internal::get_current_module_handle () );
+#endif
+	}
+
+	// ultraReShade's own build: its version number (6.8.0) and the time it was built (Nov 21 2026 14:03:22), as texts that stay while it is
+	// loaded. False, nothing set, on a ReShade without this function
+	inline bool get_build ( const char** number, const char** built )
+	{
+#if defined(RESHADE_API_LIBRARY)
+		ReShadeGetBuild ( number, built );
+		return true;
+#else
+		static const auto	func = reinterpret_cast<void ( * ) ( const char**, const char** )> ( GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeGetBuild" ) );
+		if ( func == nullptr )
+			return false;
+		func ( number, built );
+		return true;
+#endif
+	}
+
+	// The file the add-on's code was loaded from (module null: this add-on): in a development build of ultraReShade, which loads add-ons
+	// from copies, the file the copy was made from. False, path empty, where the module is none of an add-on's, the path does not fit
+	// capacity (in characters) or this ReShade has no such function
+	inline bool get_addon_source ( void* module, wchar_t* path, uint32_t capacity )
+	{
+#if defined(RESHADE_API_LIBRARY)
+		return ReShadeGetAddonSource ( module, path, capacity );
+#else
+		static const auto	func = reinterpret_cast<bool ( * ) ( void*, wchar_t*, uint32_t )> (
+			GetProcAddress ( internal::get_reshade_module_handle (), "ReShadeGetAddonSource" ) );
+		if ( func != nullptr && func ( module != nullptr ? module : internal::get_current_module_handle (), path, capacity ) )
+			return true;
+		if ( path != nullptr && capacity > 0 )
+			path[ 0 ] = L'\0';
+		return false;
 #endif
 	}
 

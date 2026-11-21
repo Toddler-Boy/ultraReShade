@@ -14,7 +14,7 @@
 
 #include "dll_log.hpp"
 #include "ultra_main_log.hpp"
-#include "version.h"
+#include "ultra_version.hpp"
 
 extern HMODULE g_module_handle;
 extern std::filesystem::path g_reshade_base_path;
@@ -43,7 +43,7 @@ namespace
 
 	[[ nodiscard ]] std::string buildText ()
 	{
-		return std::string ( VERSION_STRING_FILE ) + ( ULTRARESHADE_DEVELOPMENT ? " development" : " release" ) + ( sizeof ( void* ) == 8 ? " 64-bit" : " 32-bit" );
+		return reshade::ultra::versionText () + ( ULTRARESHADE_DEVELOPMENT ? " development" : " release" ) + ( sizeof ( void* ) == 8 ? " 64-bit" : " 32-bit" );
 	}
 
 	// A call that is refused says so once per cause: a caller in a loop would fill the log

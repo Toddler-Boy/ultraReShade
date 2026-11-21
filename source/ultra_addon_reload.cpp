@@ -28,7 +28,6 @@
 
 extern HMODULE g_module_handle;
 extern std::filesystem::path g_reshade_base_path;
-extern std::filesystem::path get_module_path ( HMODULE module );
 
 bool reshade::ultra::isAddonReloadEnabled = false;
 
@@ -691,6 +690,13 @@ std::filesystem::path reshade::ultra::addonSource ( const std::filesystem::path&
 
 	log::message ( log::level::info, "Add-on '%s' loads from '%s'.", found.u8string ().c_str (), built.u8string ().c_str () );
 	return built;
+}
+//-----------------------------------------------------------------------------
+
+std::filesystem::path reshade::ultra::addonSourceOf ( HMODULE module )
+{
+	const auto	it = std::ranges::find ( watched, module, &WatchedAddon::module );
+	return it != watched.end () ? it->file : get_module_path ( module );
 }
 //-----------------------------------------------------------------------------
 

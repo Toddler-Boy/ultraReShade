@@ -11,6 +11,8 @@
 
 #include "ultra_addon_event.hpp"
 
+extern std::filesystem::path get_module_path ( HMODULE module );
+
 //-----------------------------------------------------------------------------
 
 // Reloading add-ons while the game runs, development builds only (ULTRARESHADE_DEVELOPMENT): add-ons load from a copy
@@ -27,6 +29,10 @@ namespace reshade::ultra
 	// The file an add-on found in the add-on folder loads and reloads from: the file of its name in [ADDON] AddonBuildPath
 	// (a build's output), else found itself. The add-on folder decides which add-ons load
 	[[ nodiscard ]] std::filesystem::path addonSource ( const std::filesystem::path& found );
+
+	// The file the loaded add-on's code comes from: the file addonSource named while reloading is enabled, else the module's own.
+	// The presenting thread (the add-on list is its)
+	[[ nodiscard ]] std::filesystem::path addonSourceOf ( HMODULE module );
 
 	// Where the add-on in file loads from: a fresh copy of this process's in folder (the add-on folder) while reloading is
 	// enabled, else file itself; empty when the copy can't be made (logged): file is never loaded in place then
@@ -55,6 +61,7 @@ namespace reshade::ultra
 	inline void startAddonReload ( const std::filesystem::path& ) {}
 	inline void stopAddonReload () {}
 	[[ nodiscard ]] inline std::filesystem::path addonSource ( const std::filesystem::path& found ) { return found; }
+	[[ nodiscard ]] inline std::filesystem::path addonSourceOf ( HMODULE module ) { return get_module_path ( module ); }
 	[[ nodiscard ]] inline std::filesystem::path addonLoadPath ( const std::filesystem::path& file, const std::filesystem::path& ) { return file; }
 	inline void watchAddon ( HMODULE, const std::filesystem::path& ) {}
 	inline void pollAddonReload () {}

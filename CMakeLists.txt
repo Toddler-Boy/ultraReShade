@@ -296,6 +296,8 @@ set(RESHADE_SOURCE
   source/ultra_pass_through.hpp
   source/ultra_splash.cpp
   source/ultra_splash.hpp
+  source/ultra_version.cpp
+  source/ultra_version.hpp
 )
 set(RESHADE_SOURCE_DIRECTX
   source/d2d1/d2d1.cpp

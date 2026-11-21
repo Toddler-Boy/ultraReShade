@@ -23,18 +23,14 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
   add_compile_options(-mavx)
 endif()
 
-# version.h from the latest tag (build number 0)
-find_package(Git REQUIRED)
-execute_process(
-  COMMAND ${GIT_EXECUTABLE} describe --tags
-  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  OUTPUT_VARIABLE ULTRA_DESCRIBE
-  OUTPUT_STRIP_TRAILING_WHITESPACE
-  ERROR_QUIET
-)
-if(NOT ULTRA_DESCRIBE MATCHES "v([0-9]+)\\.([0-9]+)\\.([0-9]+)")
-  message(FATAL_ERROR "No version tag found by 'git describe --tags' (got '${ULTRA_DESCRIBE}'): fetch the tags, ReShade.fxh needs the version")
+# version.h from the number in VERSION (the effects' __RESHADE__ and the DLL's version resource need it as numbers); the build time is
+# taken in by source/ultra_version.cpp, never by this file
+file(READ ${CMAKE_CURRENT_SOURCE_DIR}/VERSION ULTRA_VERSION)
+string(STRIP "${ULTRA_VERSION}" ULTRA_VERSION)
+if(NOT ULTRA_VERSION MATCHES "^([0-9]+)\\.([0-9]+)\\.([0-9]+)$")
+  message(FATAL_ERROR "VERSION holds '${ULTRA_VERSION}', not major.minor.patch")
 endif()
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/VERSION)
 set(VERSION_MAJOR ${CMAKE_MATCH_1})
 set(VERSION_MINOR ${CMAKE_MATCH_2})
 set(VERSION_REVISION ${CMAKE_MATCH_3})
@@ -93,6 +89,35 @@ function(ultra_generate_exports)
   list(JOIN kept "\n" text)
   string(REPLACE "<semicolon>" ";" text "${text}")
   file(GENERATE OUTPUT ${ULTRA_DIR}/exports.def CONTENT "${text}\n")
+endfunction()
+
+# source/ultra_version.cpp takes in VERSION and the build time. It is compiled again exactly when the DLL's other sources or VERSION changed,
+# so a DLL nothing changed in is not linked again: it includes a stamp that a custom command makes again whenever one of them is newer
+# (OBJECT_DEPENDS says the same on the makefile generators, the Visual Studio ones leave it out). libraries: static libraries the DLL links
+function(ultra_version_stamp target version_source libraries)
+  set(stamp_dir ${ULTRA_DIR}/stamp/${target})
+  set(stamp ${stamp_dir}/ultra_build_stamp.h)
+  file(MAKE_DIRECTORY ${stamp_dir})
+
+  set(dependencies ${CMAKE_CURRENT_SOURCE_DIR}/VERSION)
+  foreach(library ${target} ${libraries})
+    get_target_property(sources ${library} SOURCES)
+    foreach(source IN LISTS sources)
+      cmake_path(ABSOLUTE_PATH source BASE_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR} NORMALIZE)
+      get_source_file_property(is_generated ${source} GENERATED)
+      if(EXISTS ${source} AND NOT is_generated)
+        list(APPEND dependencies ${source})
+      endif()
+    endforeach()
+  endforeach()
+
+  add_custom_command(OUTPUT ${stamp} COMMAND ${CMAKE_COMMAND} -E touch ${stamp} DEPENDS ${dependencies} VERBATIM)
+  target_sources(${target} PRIVATE ${stamp})
+  target_include_directories(${target} PRIVATE ${stamp_dir})
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    # #embed is C23, the compile time is the point of the file
+    set_source_files_properties(${version_source} PROPERTIES COMPILE_OPTIONS "-Wno-c23-extensions;-Wno-date-time")
+  endif()
 endfunction()
 
 function(ultra_finish_targets)
@@ -167,6 +192,7 @@ function(ultra_finish_targets)
   target_link_options(ReShade PRIVATE /SUBSYSTEM:WINDOWS /DELAYLOAD:D3DCompiler_47.dll /DELAYLOAD:XInput9_1_0.dll $<$<CONFIG:Release>:/MANIFEST:NO>)
   target_link_libraries(ReShade PRIVATE delayimp.lib)
 
+  ultra_version_stamp(ReShade source/ultra_version.cpp ReShadeFX)
   ultra_add_test_app()
   ultra_add_draw_bench()
 endfunction()
@@ -191,7 +217,7 @@ function(ultra_add_test_app)
   add_dependencies(ReShadeTest ReShade)
 
   get_target_property(sources ReShade SOURCES)
-  list(FILTER sources EXCLUDE REGEX "\\.hlsl$|ultra_dll_entry\\.cpp$")
+  list(FILTER sources EXCLUDE REGEX "\\.hlsl$|ultra_dll_entry\\.cpp$|ultra_build_stamp\\.h$")
   target_sources(ReShadeTest PRIVATE ${sources} source/dll_main_test_app.cpp source/ultra_test_scene.cpp source/ultra_test_scene.hpp
     source/ultra_test_model.cpp source/ultra_test_model.hpp source/ultra_test_check.cpp source/ultra_test_check.hpp source/ultra_test_run.cpp source/ultra_test_run.hpp
     source/ultra_test_display.cpp source/ultra_test_display.hpp source/ultra_test_home.cpp source/ultra_test_home.hpp
