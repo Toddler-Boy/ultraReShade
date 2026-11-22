@@ -101,7 +101,7 @@ namespace ultra::ui
 			dl->AddRectFilled ( min, max, draw::color ( theme::colors::popup ), rounding );
 			const ImVec2	edgeMin ( std::floor ( min.x ) + 0.5f, std::floor ( min.y ) + 0.5f );
 			const ImVec2	edgeMax ( std::floor ( max.x ) - 0.5f, std::floor ( max.y ) - 0.5f );
-			dl->AddRect ( edgeMin, edgeMax, draw::color ( draw::mix ( theme::colors::popup, theme::colors::white, theme::colors::tipEdge ) ), rounding );
+			dl->AddRect ( edgeMin, edgeMax, draw::color ( draw::mix ( theme::colors::popup, theme::colors::white, theme::tipEdge ) ), rounding );
 
 			auto	y = min.y + padY;
 			for ( const auto& line : lines )

@@ -122,8 +122,8 @@ namespace ultra::ui::window
 
 		void closeCross ( ImDrawList* dl, ImVec2 centre, float half, ImU32 color )
 		{
-			dl->AddLine ( ImVec2 ( centre.x - half, centre.y - half ), ImVec2 ( centre.x + half, centre.y + half ), color, px ( 1.5f ) );
-			dl->AddLine ( ImVec2 ( centre.x - half, centre.y + half ), ImVec2 ( centre.x + half, centre.y - half ), color, px ( 1.5f ) );
+			dl->AddLine ( ImVec2 ( centre.x - half, centre.y - half ), ImVec2 ( centre.x + half, centre.y + half ), color, px ( theme::closeLine ) );
+			dl->AddLine ( ImVec2 ( centre.x - half, centre.y + half ), ImVec2 ( centre.x + half, centre.y - half ), color, px ( theme::closeLine ) );
 		}
 	}
 
@@ -239,8 +239,8 @@ namespace ultra::ui::window
 			// The tab bar: the tabs in a rounded track, the selected one an accent pill that glides to it
 			const auto	size = px ( theme::sizes::body );
 			const auto	pad = px ( theme::windowPad );
-			const auto	inset = px ( 5.0f );
-			const auto	pillInset = px ( 3.0f );
+			const auto	inset = px ( theme::tabInset );
+			const auto	pillInset = px ( theme::tabPillInset );
 			const auto	tabPad = px ( theme::tabPadX );
 			auto		selected = size_t ( 0 );
 			for ( size_t i = 0; i < tabs.size (); ++i )
@@ -255,7 +255,7 @@ namespace ultra::ui::window
 			auto				trackRight = trackMin.x + pillInset;
 			for ( const auto& tab : tabs )
 			{
-				const auto	dotRoom = dots.contains ( std::string ( tab.label ) ) ? px ( theme::dotSize ) + px ( 4.0f ) : 0.0f;
+				const auto	dotRoom = dots.contains ( std::string ( tab.label ) ) ? px ( theme::dotSize ) + px ( theme::dotGap ) : 0.0f;
 				widths.push_back ( font::width ( font::Face::medium, size, tab.label ) + dotRoom + 2.0f * tabPad );
 				trackRight += widths.back ();
 			}
@@ -281,7 +281,7 @@ namespace ultra::ui::window
 			{
 				const auto&	tab = tabs[ i ];
 				const auto	dot = dots.find ( tab.label );
-				const auto	dotRoom = dot != dots.end () ? px ( theme::dotSize ) + px ( 4.0f ) : 0.0f;
+				const auto	dotRoom = dot != dots.end () ? px ( theme::dotSize ) + px ( theme::dotGap ) : 0.0f;
 				const ImVec2	tabMin ( x, trackMin.y );
 				const ImVec2	tabMax ( x + widths[ i ], trackBottom );
 
@@ -305,7 +305,7 @@ namespace ultra::ui::window
 					// A dark ring keeps a green dot visible on the green pill
 					const ImVec2	centre ( textX + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f );
 					if ( isSelected )
-						list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + px ( 1.5f ), theme::colors::window );
+						list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + px ( theme::dotRing ), theme::colors::window );
 					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f, dot->second );
 				}
 				font::draw ( list, ImVec2 ( textX + dotRoom, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );

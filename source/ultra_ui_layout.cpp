@@ -206,7 +206,7 @@ namespace ultra::ui
 			const auto	y = std::floor ( pos.y ) + 0.5f;
 
 			ImGui::GetWindowDrawList ()->AddLine ( ImVec2 ( pos.x, y ), ImVec2 ( pos.x + width, y ), draw::color ( theme::colors::separator ) );
-			ImGui::Dummy ( ImVec2 ( width, theme::px ( 1.0f ) ) );
+			ImGui::Dummy ( ImVec2 ( width, theme::px ( theme::separatorLine ) ) );
 		}
 
 		// An edit's end: the value saved when it is finished
@@ -556,7 +556,7 @@ namespace ultra::ui
 			const auto	open = page.isCollapsed ( page.context, section.label ) == 0;
 			ImGui::SetCursorScreenPos ( ImVec2 ( arrowFrom, head.y ) );
 			const auto	isClicked = collapseArrow ( "collapse", open, std::max ( head.x + width - arrowFrom, theme::px ( theme::rowHeight ) ) );
-			if ( section.isDraggable != 0 && page.moveSection != nullptr && ImGui::IsItemActive () && ImGui::IsMouseDragging ( ImGuiMouseButton_Left, theme::px ( 3.0f ) ) )
+			if ( section.isDraggable != 0 && page.moveSection != nullptr && ImGui::IsItemActive () && ImGui::IsMouseDragging ( ImGuiMouseButton_Left, theme::px ( theme::dragThreshold ) ) )
 			{
 				drag.index = int ( index );
 				drag.isMoved = true;

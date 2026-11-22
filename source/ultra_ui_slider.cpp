@@ -130,7 +130,7 @@ namespace ultra::ui
 		// The handle grows in while hovered or dragged, a pixel past the fill on each side
 		if ( const auto f = anim::smoothstep ( anim::fade ( itemId, hovered || active ) ); f > 0.0f )
 		{
-			const auto	r = ( trackH * 0.5f + theme::px ( 1.0f ) ) * ( 0.5f + 0.5f * f );
+			const auto	r = ( trackH * 0.5f + theme::px ( theme::sliderHandleGrow ) ) * ( 0.5f + 0.5f * f );
 			const auto	edge = trackH * 0.5f;
 			const auto	cx = tMin.x + std::clamp ( trackW * t, edge, trackW - edge );
 			dl->AddCircleFilled ( ImVec2 ( cx, ( tMin.y + tMax.y ) * 0.5f ), r, draw::color ( theme::colors::handle, f ) );

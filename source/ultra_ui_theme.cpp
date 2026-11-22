@@ -5,10 +5,11 @@
 
 #include <algorithm>
 #include <array>
-#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -18,7 +19,13 @@
 #include <ShellScalingApi.h>
 #include <dwmapi.h>
 
+#include <reshade.hpp>
+#include <reshade_ultra_json.hpp>
+
 #include "dll_log.hpp"
+#include "ultra_file_watch.hpp"
+#include "ultra_home.hpp"
+#include "ultra_json.hpp"
 #include "ultra_ui_theme.hpp"
 #include <reshade_ultra_ui.h>
 
@@ -32,10 +39,14 @@ namespace ultra::ui::theme
 	{
 		float	measured = 1.0f;
 
+		// A value of the file: its name there, the variable, the least it may be (a text size or a duration of 0 breaks what is drawn)
 		struct Size
 		{
+			constexpr Size ( const char* n, float* v, float l = 0.0f ) : name ( n ), value ( v ), least ( l )	{}
+
 			const char*	name;
 			float*		value;
+			float		least;
 		};
 
 		struct Color
@@ -43,6 +54,8 @@ namespace ultra::ui::theme
 			const char*	name;
 			ImU32*		value;
 		};
+
+		constexpr float	mostSize = 100000.0f;
 
 		// The file's members, in its order, which is the roles' order (include/reshade_ultra_ui.h)
 		constexpr Size	sizeTable[] {
@@ -52,7 +65,25 @@ namespace ultra::ui::theme
 			{ "switchHeight", &switchHeight }, { "knobSize", &knobSize }, { "choicePad", &choicePad }, { "dropPadLeft", &dropPadLeft }, { "dropPadRight", &dropPadRight },
 			{ "menuPad", &menuPad }, { "menuItemPad", &menuItemPad }, { "menuGap", &menuGap }, { "tipPadX", &tipPadX }, { "tipPadY", &tipPadY },
 			{ "buttonPadX", &buttonPadX }, { "buttonGap", &buttonGap }, { "keyHeight", &keyHeight }, { "keyPadX", &keyPadX }, { "disclosureSize", &disclosureSize },
-			{ "disclosureRadius", &disclosureRadius } };
+			{ "disclosureRadius", &disclosureRadius },
+
+			{ "body", &sizes::body, 1.0f }, { "heading", &sizes::heading, 1.0f }, { "subheading", &sizes::subheading, 1.0f }, { "title", &sizes::title, 1.0f },
+			{ "choice", &sizes::choice, 1.0f }, { "value", &sizes::value, 1.0f }, { "key", &sizes::key, 1.0f }, { "tip", &sizes::tip, 1.0f }, { "info", &sizes::info, 1.0f },
+			{ "panelInset", &panelInset }, { "panelWidth", &panelWidth, 1.0f }, { "resetWidth", &resetWidth }, { "resetIcon", &resetIcon },
+			{ "inlineToggleHeight", &inlineToggleHeight }, { "bipolarMinFill", &bipolarMinFill }, { "dropRounding", &dropRounding }, { "chevronSize", &chevronSize },
+			{ "menuRounding", &menuRounding }, { "menuItemRounding", &menuItemRounding }, { "tipMaxWidth", &tipMaxWidth, 1.0f }, { "tipGap", &tipGap },
+			{ "shadowSpread", &shadowSpread }, { "shadowOffset", &shadowOffset }, { "shadowAlpha", &shadowAlpha }, { "pickerSquare", &pickerSquare },
+			{ "pickerHueWidth", &pickerHueWidth }, { "pickerGap", &pickerGap }, { "pickerMarker", &pickerMarker }, { "swatchEdge", &swatchEdge },
+			{ "infoSize", &infoSize }, { "infoGap", &infoGap }, { "keyEdge", &keyEdge }, { "keyRounding", &keyRounding }, { "keyGap", &keyGap }, { "keycapGap", &keycapGap },
+			{ "coverWidth", &coverWidth }, { "coverHeight", &coverHeight }, { "coverRounding", &coverRounding }, { "coverGap", &coverGap }, { "chipGap", &chipGap },
+			{ "chipEdge", &chipEdge }, { "disabledAlpha", &disabledAlpha }, { "swingSeconds", &swingSeconds, 0.001f }, { "swingStretch", &swingStretch },
+			{ "fadeSeconds", &fadeSeconds, 0.001f }, { "tipDelay", &tipDelay }, { "doneSeconds", &doneSeconds }, { "windowRounding", &windowRounding },
+			{ "windowPad", &windowPad }, { "windowMinWidth", &windowMinWidth }, { "windowMinHeight", &windowMinHeight }, { "resizeEdge", &resizeEdge },
+			{ "tabHeight", &tabHeight }, { "tabPadX", &tabPadX }, { "tabGap", &tabGap }, { "tabLine", &tabLine }, { "scrollbarWidth", &scrollbarWidth },
+			{ "scrollbarGap", &scrollbarGap }, { "scrollThumbMin", &scrollThumbMin }, { "closeSize", &closeSize }, { "messagePad", &messagePad }, { "dotSize", &dotSize },
+			{ "tipEdge", &tipEdge },
+			{ "tabInset", &tabInset }, { "tabPillInset", &tabPillInset }, { "dotGap", &dotGap }, { "dotRing", &dotRing }, { "closeLine", &closeLine },
+			{ "pickerLine", &pickerLine }, { "separatorLine", &separatorLine }, { "dragThreshold", &dragThreshold }, { "sliderHandleGrow", &sliderHandleGrow } };
 
 		constexpr Color	colorTable[] {
 			{ "accent", &colors::accent }, { "danger", &colors::danger }, { "warning", &colors::warning }, { "accentHover", &colors::accentHover },
@@ -71,19 +102,8 @@ namespace ultra::ui::theme
 		constexpr size_t	sizeCount = std::size ( sizeTable );
 		constexpr size_t	colorCount = std::size ( colorTable );
 
+		static_assert ( sizeCount == RESHADE_UI_SIZE_COUNT );
 		static_assert ( colorCount == RESHADE_UI_COLOR_COUNT );
-
-		// The sizes that are no file's: after the tuned ones, in the roles' order
-		constexpr float	fixedSizes[] {
-			sizes::body, sizes::heading, sizes::subheading, sizes::title, sizes::choice, sizes::value, sizes::key, sizes::tip, sizes::info,
-			panelInset, panelWidth, resetWidth, resetIcon, inlineToggleHeight, bipolarMinFill, dropRounding, chevronSize, menuRounding,
-			menuItemRounding, tipMaxWidth, tipGap, shadowSpread, shadowOffset, shadowAlpha, pickerSquare, pickerHueWidth, pickerGap, pickerMarker,
-			swatchEdge, infoSize, infoGap, keyEdge, keyRounding, keyGap, keycapGap, coverWidth, coverHeight, coverRounding, coverGap, chipGap,
-			chipEdge, disabledAlpha, float ( swingSeconds ), swingStretch, float ( fadeSeconds ), float ( tipDelay ), float ( doneSeconds ),
-			windowRounding, windowPad, windowMinWidth, windowMinHeight, resizeEdge, tabHeight, tabPadX, tabGap, tabLine, scrollbarWidth, scrollbarGap, scrollThumbMin, closeSize,
-			messagePad, dotSize };
-
-		static_assert ( sizeCount + std::size ( fixedSizes ) == RESHADE_UI_SIZE_COUNT );
 
 		struct Values
 		{
@@ -91,153 +111,120 @@ namespace ultra::ui::theme
 			std::array<ImU32, colorCount>	colors {};
 		};
 
-		// A flat object of name: value pairs in order, a text's value without its quotes
-		struct Object
+		using Problems = std::vector<std::string>;
+
+		Values						shipped;		// the built-in copy's
+		std::filesystem::path		followed;		// the checkout's file while it is followed
+		std::vector<std::string>	told;			// the problems logged, so a file read again with the same one says nothing
+
+		// A value the file holds right is taken, one it lacks or holds wrong stays what base has. Problems come as phrases that name the value
+		void readSizes ( const reshade::json::value* object, Values& v, Problems& problems )
 		{
-			struct Member
-			{
-				std::string	name;
-				std::string	value;
-				bool		isText = false;
-			};
-
-			std::vector<Member>	members;
-
-			[[ nodiscard ]] const Member* find ( const char* name ) const
-			{
-				const auto	it = std::ranges::find ( members, std::string_view ( name ), &Member::name );
-				return it != members.end () ? &*it : nullptr;
-			}
-		};
-
-		struct Reader
-		{
-			std::string_view	text;
-			size_t				at = 0;
-
-			void skip ()
-			{
-				while ( at < text.size () && std::isspace ( uint8_t ( text[ at ] ) ) )
-					++at;
-			}
-
-			[[ nodiscard ]] bool expect ( char c )
-			{
-				skip ();
-				if ( at >= text.size () || text[ at ] != c )
-					return false;
-				++at;
-				return true;
-			}
-
-			[[ nodiscard ]] bool quoted ( std::string& out )
-			{
-				if ( at >= text.size () || text[ at ] != '"' )
-					return false;
-				const auto	end = text.find ( '"', at + 1 );
-				if ( end == std::string_view::npos )
-					return false;
-				out = std::string ( text.substr ( at + 1, end - at - 1 ) );
-				at = end + 1;
-				return true;
-			}
-
-			[[ nodiscard ]] bool object ( Object& out )
-			{
-				if ( ! expect ( '{' ) )
-					return false;
-				for ( ;; )
-				{
-					skip ();
-					if ( at < text.size () && text[ at ] == '}' )
-					{
-						++at;
-						return true;
-					}
-
-					Object::Member	member;
-					if ( ! quoted ( member.name ) || ! expect ( ':' ) )
-						return false;
-					skip ();
-					if ( at < text.size () && text[ at ] == '"' )
-					{
-						member.isText = true;
-						if ( ! quoted ( member.value ) )
-							return false;
-					}
-					else
-					{
-						const auto	start = at;
-						while ( at < text.size () && text[ at ] != ',' && text[ at ] != '}' && ! std::isspace ( uint8_t ( text[ at ] ) ) )
-							++at;
-						member.value = std::string ( text.substr ( start, at - start ) );
-					}
-					out.members.push_back ( std::move ( member ) );
-					skip ();
-					if ( at < text.size () && text[ at ] == ',' )
-						++at;
-				}
-			}
-
-			// "name": { ... }
-			[[ nodiscard ]] bool member ( const char* name, Object& out )
-			{
-				skip ();
-				const auto	key = std::string ( "\"" ) + name + "\"";
-				if ( text.substr ( at, key.size () ) != key )
-					return false;
-				at += key.size ();
-				return expect ( ':' ) && object ( out );
-			}
-		};
-
-		// Every value of the tables, or why not: a file that lacks one or has one unknown is refused whole
-		[[ nodiscard ]] bool parse ( std::string_view text, Values& out, std::string& why )
-		{
-			Reader	reader { text };
-			Object	sizesObject, colorsObject;
-			if ( ! reader.expect ( '{' ) || ! reader.member ( "sizes", sizesObject ) || ! reader.expect ( ',' ) || ! reader.member ( "colors", colorsObject ) || ! reader.expect ( '}' ) )
-			{
-				why = "it is not an object with the objects \"sizes\" and \"colors\", in this order";
-				return false;
-			}
-
 			for ( size_t i = 0; i < sizeCount; ++i )
 			{
-				const auto*	m = sizesObject.find ( sizeTable[ i ].name );
-				auto		v = -1.0f;
-				if ( m == nullptr || m->isText || std::from_chars ( m->value.data (), m->value.data () + m->value.size (), v ).ec != std::errc () || v < 0.0f )
+				const auto&	entry = sizeTable[ i ];
+				const auto*	member = ReShadeJsonFind ( object, entry.name );
+				auto		number = 0.0;
+				if ( member == nullptr )
+					problems.push_back ( std::string ( "the size " ) + entry.name + " is missing" );
+				else if ( ! ReShadeJsonGetNumber ( member, &number ) )
+					problems.push_back ( std::string ( "the size " ) + entry.name + " is no number" );
+				else if ( ! ( number >= double ( entry.least ) && number <= double ( mostSize ) ) )
 				{
-					why = std::string ( "its size " ) + sizeTable[ i ].name + " is no number of 0 or more";
-					return false;
+					char	least[ 16 ] {};
+					std::snprintf ( least, sizeof least, "%g", double ( entry.least ) );
+					problems.push_back ( std::string ( "the size " ) + entry.name + " is not from " + least + " to 100000" );
 				}
-				out.sizes[ i ] = v;
+				else
+					v.sizes[ i ] = float ( number );
 			}
+
+			for ( size_t i = 0, count = ReShadeJsonGetSize ( object ); i < count; ++i )
+			{
+				const char*	key = nullptr;
+				ReShadeJsonAt ( object, i, &key );
+				if ( key != nullptr && std::ranges::none_of ( sizeTable, [ key ] ( const Size& e ) { return std::string_view ( e.name ) == key; } ) )
+					problems.push_back ( std::string ( "the size " ) + key + " is not one the overlay knows" );
+			}
+		}
+
+		void readColors ( const reshade::json::value* object, Values& v, Problems& problems )
+		{
 			for ( size_t i = 0; i < colorCount; ++i )
 			{
-				const auto*	m = colorsObject.find ( colorTable[ i ].name );
+				const auto&	entry = colorTable[ i ];
+				const auto*	member = ReShadeJsonFind ( object, entry.name );
+				const char*	text = nullptr;
+				size_t		length = 0;
 				uint32_t	rrggbb = 0;
-				if ( m == nullptr || ! m->isText || m->value.size () != 7 || m->value[ 0 ] != '#'
-					 || std::from_chars ( m->value.data () + 1, m->value.data () + 7, rrggbb, 16 ).ptr != m->value.data () + 7 )
-				{
-					why = std::string ( "its colour " ) + colorTable[ i ].name + " is no \"#RRGGBB\"";
-					return false;
-				}
-				out.colors[ i ] = rgb ( rrggbb );
+				if ( member == nullptr )
+					problems.push_back ( std::string ( "the colour " ) + entry.name + " is missing" );
+				else if ( ! ReShadeJsonGetString ( member, &text, &length ) || length != 7 || text[ 0 ] != '#'
+						  || std::from_chars ( text + 1, text + 7, rrggbb, 16 ).ptr != text + 7 )
+					problems.push_back ( std::string ( "the colour " ) + entry.name + " is no \"#RRGGBB\"" );
+				else
+					v.colors[ i ] = rgb ( rrggbb );
 			}
-			for ( const auto& m : sizesObject.members )
-				if ( std::ranges::none_of ( sizeTable, [ &m ] ( const Size& e ) { return m.name == e.name; } ) )
-				{
-					why = "it has a size " + m.name + " the overlay does not know";
-					return false;
-				}
-			for ( const auto& m : colorsObject.members )
-				if ( std::ranges::none_of ( colorTable, [ &m ] ( const Color& e ) { return m.name == e.name; } ) )
-				{
-					why = "it has a colour " + m.name + " the overlay does not know";
-					return false;
-				}
-			return true;
+
+			for ( size_t i = 0, count = ReShadeJsonGetSize ( object ); i < count; ++i )
+			{
+				const char*	key = nullptr;
+				ReShadeJsonAt ( object, i, &key );
+				if ( key != nullptr && std::ranges::none_of ( colorTable, [ key ] ( const Color& e ) { return std::string_view ( e.name ) == key; } ) )
+					problems.push_back ( std::string ( "the colour " ) + key + " is not one the overlay knows" );
+			}
+		}
+
+		// The values of a json tree on top of base; nothing for a tree that is no object
+		[[ nodiscard ]] std::optional<Values> read ( const reshade::json::value* root, const Values& base, Problems& problems )
+		{
+			if ( ReShadeJsonGetType ( root ) != reshade::json::type::object )
+			{
+				problems.push_back ( "it is no object with the objects \"sizes\" and \"colors\"" );
+				return std::nullopt;
+			}
+
+			Values		v = base;
+			const auto*	sizesObject = ReShadeJsonFind ( root, "sizes" );
+			const auto*	colorsObject = ReShadeJsonFind ( root, "colors" );
+
+			if ( ReShadeJsonGetType ( sizesObject ) == reshade::json::type::object )
+				readSizes ( sizesObject, v, problems );
+			else
+				problems.push_back ( "it has no object \"sizes\"" );
+
+			if ( ReShadeJsonGetType ( colorsObject ) == reshade::json::type::object )
+				readColors ( colorsObject, v, problems );
+			else
+				problems.push_back ( "it has no object \"colors\"" );
+
+			return v;
+		}
+
+		[[ nodiscard ]] std::optional<Values> readText ( std::string_view text, const Values& base, Problems& problems )
+		{
+			reshade::json::error	error;
+			const reshade::ultra::JsonTree	root ( ReShadeJsonParse ( text.data (), text.size (), &error ) );
+			if ( root == nullptr )
+			{
+				problems.push_back ( std::string ( "it is no json: " ) + error.message );
+				return std::nullopt;
+			}
+
+			return read ( root.get (), base, problems );
+		}
+
+		// Each problem once, until it is gone and comes again
+		void report ( const std::string& subject, const Problems& problems, reshade::log::level level, const char* outcome )
+		{
+			std::vector<std::string>	now;
+			for ( const auto& problem : problems )
+			{
+				now.push_back ( subject + ": " + problem + ". " + outcome );
+				if ( ! std::ranges::contains ( told, now.back () ) )
+					reshade::log::message ( level, "%s", now.back ().c_str () );
+			}
+			told = std::move ( now );
 		}
 
 		void apply ( const Values& v )
@@ -254,6 +241,41 @@ namespace ultra::ui::theme
 			const auto	handle = info != nullptr ? LoadResource ( g_module_handle, info ) : nullptr;
 			const auto*	bytes = handle != nullptr ? static_cast<const char*> ( LockResource ( handle ) ) : nullptr;
 			return bytes != nullptr ? std::string_view ( bytes, SizeofResource ( g_module_handle, info ) ) : std::string_view ();
+		}
+
+		// The checkout's file: ultraReShade's checkout lies beside the ultraGame one the source folder is
+		[[ nodiscard ]] std::filesystem::path checkoutFile ()
+		{
+			const auto&	source = reshade::ultra::sourceFolder ();
+			return source.empty () ? std::filesystem::path () : source.parent_path () / L"ultraReShade" / L"res" / L"panel-theme.json";
+		}
+
+		// The saved file's values, on the presenting thread before the next frame is drawn
+		void readFollowed ()
+		{
+			reshade::json::error	error;
+			const auto				root = reshade::ultra::readJsonFile ( followed, error );
+			const auto				subject = "The overlay's theme file '" + followed.u8string () + "'";
+			Problems				problems;
+
+			if ( root == nullptr )
+			{
+				report ( "The overlay's theme", { std::string ( error.message ) }, reshade::log::level::warning, "The look stays as it is." );
+				return;
+			}
+
+			if ( const auto v = read ( root.get (), shipped, problems ); v.has_value () )
+				apply ( *v );
+
+			report ( subject, problems, reshade::log::level::warning, "The built-in value stays." );
+		}
+
+		void onFileChanged ( const char*, api::file_change change, const char* )
+		{
+			if ( change == api::file_change::deleted )
+				report ( "The overlay's theme", { "its file '" + followed.u8string () + "' is gone" }, reshade::log::level::warning, "The look stays as it is." );
+			else
+				readFollowed ();
 		}
 
 		std::array<Tuned, sizeCount>		tunedSizes {};
@@ -295,20 +317,46 @@ namespace ultra::ui::theme
 
 	void load ()
 	{
-		Values		v;
-		std::string	why;
 		const auto	text = builtInText ();
 		if ( text.empty () )
-			reshade::log::message ( reshade::log::level::error, "The overlay's theme resource is missing: it has no colours and no spacing." );
-		else if ( ! parse ( text, v, why ) )
-			reshade::log::message ( reshade::log::level::error, "The overlay's built-in theme does not read, it has no colours and no spacing: %s.", why.c_str () );
+			reshade::log::message ( reshade::log::level::error, "The overlay's theme resource is missing: it has no colours and no sizes." );
 		else
-			apply ( v );
+		{
+			Problems	problems;
+			if ( const auto v = readText ( text, Values {}, problems ); v.has_value () )
+				shipped = *v;
+
+			report ( "The overlay's built-in theme", problems, reshade::log::level::error, "That value is 0." );
+		}
+
+		apply ( shipped );
 
 		for ( size_t i = 0; i < sizeCount; ++i )
-			tunedSizes[ i ] = { sizeTable[ i ].name, sizeTable[ i ].value, v.sizes[ i ] };
+			tunedSizes[ i ] = { sizeTable[ i ].name, sizeTable[ i ].value, shipped.sizes[ i ] };
 		for ( size_t i = 0; i < colorCount; ++i )
-			tunedColorTable[ i ] = { colorTable[ i ].name, colorTable[ i ].value, v.colors[ i ] };
+			tunedColorTable[ i ] = { colorTable[ i ].name, colorTable[ i ].value, shipped.colors[ i ] };
+
+		const auto	file = checkoutFile ();
+		if ( file.empty () )
+			return;
+
+		if ( std::error_code error; ! std::filesystem::is_regular_file ( file, error ) )
+		{
+			reshade::log::message ( reshade::log::level::warning, "The overlay's theme file '%s' is missing, so the built-in theme stays.", file.u8string ().c_str () );
+			return;
+		}
+
+		followed = file;
+		readFollowed ();
+		if ( ! reshade::ultra::watchFile ( followed, &onFileChanged ) )
+			reshade::log::message ( reshade::log::level::warning, "The overlay's theme file '%s' is not followed: a change of it reaches the game at its next start.", followed.u8string ().c_str () );
+	}
+
+	void unload ()
+	{
+		if ( ! followed.empty () )
+			reshade::ultra::unwatchFile ( followed, &onFileChanged );
+		followed.clear ();
 	}
 
 	std::span<const Tuned> tuned ()
@@ -328,9 +376,7 @@ namespace ultra::ui::theme
 
 	float sizeOf ( uint32_t role )
 	{
-		if ( role < sizeCount )
-			return *sizeTable[ role ].value;
-		return role - sizeCount < std::size ( fixedSizes ) ? fixedSizes[ role - sizeCount ] : 0.0f;
+		return role < sizeCount ? *sizeTable[ role ].value : 0.0f;
 	}
 
 	std::string text ()
@@ -357,11 +403,13 @@ namespace ultra::ui::theme
 
 	bool take ( std::string_view text, std::string& why )
 	{
-		Values	v;
-		if ( ! parse ( text, v, why ) )
-			return false;
-		apply ( v );
-		return true;
+		Problems	problems;
+		if ( const auto v = readText ( text, shipped, problems ); v.has_value () )
+			apply ( *v );
+
+		if ( ! problems.empty () )
+			why = problems.front ();
+
+		return problems.empty ();
 	}
 }
-

@@ -368,6 +368,7 @@ void unregister_addon_ui ()
 {
 	reshade::unregister_event<reshade::addon_event::present> ( ultra::ui::onPresent );
 	reshade::unregister_event<reshade::addon_event::destroy_device> ( ultra::ui::onDestroyDevice );
+	ultra::ui::theme::unload ();
 }
 
 #if defined(RESHADE_API_LIBRARY_EXPORT)

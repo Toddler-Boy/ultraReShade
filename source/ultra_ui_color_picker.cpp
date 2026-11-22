@@ -136,7 +136,7 @@ namespace ultra::ui
 			dl->AddRect ( hueMin, hueMax, edge );
 
 			// The point picked, ringed light over dark so it shows on any colour; the hue as a bar across the strip
-			const auto		line = theme::px ( 1.5f );
+			const auto		line = theme::px ( theme::pickerLine );
 			const auto		r = theme::px ( theme::pickerMarker );
 			const ImVec2	spot ( sqMin.x + side * hsv.s, sqMin.y + side * ( 1.0f - hsv.v ) );
 			dl->AddCircle ( spot, r + line, black, 0, line );

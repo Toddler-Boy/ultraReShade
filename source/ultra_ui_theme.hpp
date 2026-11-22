@@ -19,9 +19,8 @@ namespace ultra::ui
 }
 
 //-----------------------------------------------------------------------------
-// The overlay's look in one place: colours, sizes in unscaled pixels (times scale () when drawn), timings. The colours and the spacing
-// that set the density are res/panel-theme.json, built into the DLL; a developer tunes them live and takes a changed file in (the
-// add-on that has the checkout writes and follows it)
+// The overlay's look in one place: every colour, size and timing is a value of res/panel-theme.json, built into the DLL. Sizes are
+// unscaled pixels (times scale () when drawn). With a source folder the checkout's file is read instead and followed while the game runs
 
 namespace ultra::ui::theme
 {
@@ -68,7 +67,6 @@ namespace ultra::ui::theme
 		inline ImU32	popup = 0;		// drop-down list and tooltip
 		inline ImU32	popupBorder = 0;
 		inline ImU32	popupHover = 0;
-		inline constexpr float	tipEdge = 0.1f;			// a tooltip's outline: its background this far towards white, opaque
 
 		inline ImU32	button = 0;
 		inline ImU32	buttonHover = 0;
@@ -95,122 +93,135 @@ namespace ultra::ui::theme
 
 	namespace sizes
 	{
-		inline constexpr float	body = 13.0f;
-		inline constexpr float	heading = 15.5f;
-		inline constexpr float	subheading = 12.0f;
-		inline constexpr float	title = 24.0f;
-		inline constexpr float	choice = 12.5f;
-		inline constexpr float	value = 13.5f;
-		inline constexpr float	key = 11.5f;
-		inline constexpr float	tip = 12.5f;
-		inline constexpr float	info = 10.0f;
+		inline float	body = 0.0f;
+		inline float	heading = 0.0f;
+		inline float	subheading = 0.0f;
+		inline float	title = 0.0f;
+		inline float	choice = 0.0f;
+		inline float	value = 0.0f;
+		inline float	key = 0.0f;
+		inline float	tip = 0.0f;
+		inline float	info = 0.0f;
 	}
 
 	// Layout
-	inline constexpr float	panelInset = 10.0f;			// the whole page off the window's edges, all four
-	inline constexpr float	panelWidth = 650.0f;		// the content's, whatever the window: narrower scrolls sideways, wider stays empty
-	inline float			rowHeight = 0.0f;
-	inline float			rowGap = 0.0f;
-	inline float			columnGap = 0.0f;			// label to control, control to value
-	inline constexpr float	resetWidth = 16.0f;
-	inline constexpr float	resetIcon = 14.0f;
-	inline float			indent = 0.0f;
-	inline float			separatorAbove = 0.0f;
-	inline float			headingAbove = 0.0f;
-	inline float			headingBelow = 0.0f;
-	inline float			subheadingAbove = 0.0f;		// a group's heading inside a section, unless it comes first
-	inline float			firstRowAbove = 0.0f;		// a choice or drop-down right under its heading
-	inline float			headingGap = 0.0f;			// switch to heading text
-	inline constexpr float	inlineToggleHeight = 28.0f;
+	inline float	panelInset = 0.0f;			// the whole page off the window's edges, all four
+	inline float	panelWidth = 0.0f;			// the content's, whatever the window: narrower scrolls sideways, wider stays empty
+	inline float	rowHeight = 0.0f;
+	inline float	rowGap = 0.0f;
+	inline float	columnGap = 0.0f;			// label to control, control to value
+	inline float	resetWidth = 0.0f;
+	inline float	resetIcon = 0.0f;
+	inline float	indent = 0.0f;
+	inline float	separatorAbove = 0.0f;
+	inline float	headingAbove = 0.0f;
+	inline float	headingBelow = 0.0f;
+	inline float	subheadingAbove = 0.0f;		// a group's heading inside a section, unless it comes first
+	inline float	firstRowAbove = 0.0f;		// a choice or drop-down right under its heading
+	inline float	headingGap = 0.0f;			// switch to heading text
+	inline float	inlineToggleHeight = 0.0f;
+	inline float	separatorLine = 0.0f;		// the separator's height
+	inline float	dragThreshold = 0.0f;		// a heading moves its section after the mouse went this far
 
 	// Slider
-	inline float			sliderBack = 0.0f;
-	inline float			sliderPad = 0.0f;
-	inline constexpr float	bipolarMinFill = 4.0f;
-	inline float			valueEditPad = 0.0f;		// the value's edit box reaches this far past its text
+	inline float	sliderBack = 0.0f;
+	inline float	sliderPad = 0.0f;
+	inline float	sliderHandleGrow = 0.0f;	// the handle past the fill, on each side, while hovered
+	inline float	bipolarMinFill = 0.0f;
+	inline float	valueEditPad = 0.0f;		// the value's edit box reaches this far past its text
 
 	// Toggle
-	inline float			switchWidth = 0.0f;
-	inline float			switchHeight = 0.0f;
-	inline float			knobSize = 0.0f;
+	inline float	switchWidth = 0.0f;
+	inline float	switchHeight = 0.0f;
+	inline float	knobSize = 0.0f;
 
 	// Choice, drop-down, popups
-	inline float			choicePad = 0.0f;
-	inline constexpr float	dropRounding = 6.0f;
-	inline float			dropPadLeft = 0.0f;
-	inline float			dropPadRight = 0.0f;
-	inline constexpr float	chevronSize = 14.0f;
-	inline float			disclosureSize = 0.0f;		// a collapsible section's arrow
-	inline float			disclosureRadius = 0.0f;	// its corners' rounding
-	inline constexpr float	menuRounding = 8.0f;
-	inline constexpr float	menuItemRounding = 5.0f;
-	inline float			menuPad = 0.0f;
-	inline float			menuItemPad = 0.0f;
-	inline float			menuGap = 0.0f;
-	inline float			tipPadX = 0.0f;
-	inline float			tipPadY = 0.0f;
-	inline constexpr float	tipMaxWidth = 240.0f;
-	inline constexpr float	tipGap = 6.0f;
-	inline constexpr float	shadowSpread = 10.0f;
-	inline constexpr float	shadowOffset = 4.0f;
-	inline constexpr float	shadowAlpha = 0.55f;
+	inline float	choicePad = 0.0f;
+	inline float	dropRounding = 0.0f;
+	inline float	dropPadLeft = 0.0f;
+	inline float	dropPadRight = 0.0f;
+	inline float	chevronSize = 0.0f;
+	inline float	disclosureSize = 0.0f;		// a collapsible section's arrow
+	inline float	disclosureRadius = 0.0f;	// its corners' rounding
+	inline float	menuRounding = 0.0f;
+	inline float	menuItemRounding = 0.0f;
+	inline float	menuPad = 0.0f;
+	inline float	menuItemPad = 0.0f;
+	inline float	menuGap = 0.0f;
+	inline float	tipPadX = 0.0f;
+	inline float	tipPadY = 0.0f;
+	inline float	tipMaxWidth = 0.0f;
+	inline float	tipGap = 0.0f;
+	inline float	tipEdge = 0.0f;				// a tooltip's outline: its background this far towards white, opaque
+	inline float	shadowSpread = 0.0f;
+	inline float	shadowOffset = 0.0f;
+	inline float	shadowAlpha = 0.0f;
 
 	// Colour picker: the swatch in the control column, its popup's saturation and brightness square with the hue strip beside it
-	inline constexpr float	pickerSquare = 150.0f;
-	inline constexpr float	pickerHueWidth = 14.0f;
-	inline constexpr float	pickerGap = 8.0f;			// between the parts, and around them
-	inline constexpr float	pickerMarker = 5.0f;		// the point picked in the square, its radius
-	inline constexpr float	swatchEdge = 1.0f;
+	inline float	pickerSquare = 0.0f;
+	inline float	pickerHueWidth = 0.0f;
+	inline float	pickerGap = 0.0f;			// between the parts, and around them
+	inline float	pickerMarker = 0.0f;		// the point picked in the square, its radius
+	inline float	swatchEdge = 0.0f;
+	inline float	pickerLine = 0.0f;			// the picked point's ring and the hue bar
 
 	// Button
-	inline float			buttonPadX = 0.0f;
-	inline float			buttonGap = 0.0f;
+	inline float	buttonPadX = 0.0f;
+	inline float	buttonGap = 0.0f;
 
 	// Info dot and keycap
-	inline constexpr float	infoSize = 13.0f;
-	inline constexpr float	infoGap = 5.0f;
-	inline float			keyHeight = 0.0f;
-	inline float			keyPadX = 0.0f;
-	inline constexpr float	keyEdge = 2.0f;
-	inline constexpr float	keyRounding = 4.0f;
-	inline constexpr float	keyGap = 4.0f;				// on top of a space
-	inline constexpr float	keycapGap = 3.0f;			// between the keys of one hotkey
+	inline float	infoSize = 0.0f;
+	inline float	infoGap = 0.0f;
+	inline float	keyHeight = 0.0f;
+	inline float	keyPadX = 0.0f;
+	inline float	keyEdge = 0.0f;
+	inline float	keyRounding = 0.0f;
+	inline float	keyGap = 0.0f;				// on top of a space
+	inline float	keycapGap = 0.0f;			// between the keys of one hotkey
 
 	// Header
-	inline constexpr float	coverWidth = 84.0f;
-	inline constexpr float	coverHeight = 126.0f;
-	inline constexpr float	coverRounding = 8.0f;
-	inline constexpr float	coverGap = 16.0f;
-	inline constexpr float	chipGap = 5.0f;
-	inline constexpr float	chipEdge = 1.0f;
+	inline float	coverWidth = 0.0f;
+	inline float	coverHeight = 0.0f;
+	inline float	coverRounding = 0.0f;
+	inline float	coverGap = 0.0f;
+	inline float	chipGap = 0.0f;
+	inline float	chipEdge = 0.0f;
 
 	// The overlay's window
-	inline constexpr float	windowRounding = 10.0f;
-	inline constexpr float	windowPad = 10.0f;			// the content off the window's edges, at least the rounding
-	inline constexpr float	windowMinWidth = 360.0f;
-	inline constexpr float	windowMinHeight = 240.0f;
-	inline constexpr float	resizeEdge = 6.0f;
-	inline constexpr float	tabHeight = 44.0f;
-	inline constexpr float	tabPadX = 14.0f;
-	inline constexpr float	tabGap = 4.0f;
-	inline constexpr float	tabLine = 2.0f;
-	inline constexpr float	scrollbarWidth = 7.0f;
-	inline constexpr float	scrollbarGap = 2.0f;
-	inline constexpr float	scrollThumbMin = 24.0f;
-	inline constexpr float	closeSize = 12.0f;
-	inline constexpr float	messagePad = 8.0f;
-	inline constexpr float	dotSize = 5.0f;
+	inline float	windowRounding = 0.0f;
+	inline float	windowPad = 0.0f;			// the content off the window's edges, at least the rounding
+	inline float	windowMinWidth = 0.0f;
+	inline float	windowMinHeight = 0.0f;
+	inline float	resizeEdge = 0.0f;
+	inline float	tabHeight = 0.0f;
+	inline float	tabPadX = 0.0f;
+	inline float	tabGap = 0.0f;
+	inline float	tabLine = 0.0f;
+	inline float	scrollbarWidth = 0.0f;
+	inline float	scrollbarGap = 0.0f;
+	inline float	scrollThumbMin = 0.0f;
+	inline float	closeSize = 0.0f;
+	inline float	messagePad = 0.0f;
+	inline float	dotSize = 0.0f;
+	inline float	tabInset = 0.0f;				// the track's inset in the bar
+	inline float	tabPillInset = 0.0f;		// the selected pill's in the track
+	inline float	dotGap = 0.0f;				// a tab's dot to its label
+	inline float	dotRing = 0.0f;				// the dot's dark ring
+	inline float	closeLine = 0.0f;			// the close cross's line
 
-	// Timing
-	inline constexpr float	disabledAlpha = 0.35f;
-	inline constexpr double	swingSeconds = 0.16;
-	inline constexpr float	swingStretch = 1.0f;		// the lead edge lands this much sooner, the knob stretches meanwhile
-	inline constexpr double	fadeSeconds = 0.12;
-	inline constexpr double	tipDelay = 0.45;
-	inline constexpr double	doneSeconds = 1.2;			// a button's done label
+	// Timing, in seconds
+	inline float	disabledAlpha = 0.0f;
+	inline float	swingSeconds = 0.0f;
+	inline float	swingStretch = 0.0f;		// the lead edge lands this much sooner, the knob stretches meanwhile
+	inline float	fadeSeconds = 0.0f;
+	inline float	tipDelay = 0.0f;
+	inline float	doneSeconds = 0.0f;			// a button's done label
 
-	// The built-in theme, once at the DLL's load; a DLL without it or with one that does not read says so in its log
+	// The built-in theme, once at the DLL's load; with a source folder the checkout's file takes its place and is followed from then on
 	void load ();
+
+	// The DLL's add-ons unload: the checkout's file is no longer followed
+	void unload ();
 
 	// A value under its name, as this build shipped it
 	struct Tuned
@@ -237,6 +248,7 @@ namespace ultra::ui::theme
 	// The values now as the file's text, as a person writes it
 	[[ nodiscard ]] std::string text ();
 
-	// A file's text taken in where it reads, else why not (the values stay as they were)
+	// A file's text taken in: every value it holds right is applied, one it lacks or holds wrong stays as this build shipped it. False
+	// with the first such value named in why
 	[[ nodiscard ]] bool take ( std::string_view text, std::string& why );
 }
