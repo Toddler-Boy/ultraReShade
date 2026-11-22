@@ -42,7 +42,7 @@ namespace ultra::ui::window
 	};
 
 	// Inside the frame, once the overlay is open
-	[[ nodiscard ]] Result draw ( State& state, std::span<const Tab> tabs );
+	[[ nodiscard ]] Result draw ( api::effect_runtime* runtime, State& state, std::span<const Tab> tabs );
 
 	// A tab's name gets a dot after it in that colour (0: none)
 	void setTabDot ( std::string_view label, uint32_t color );

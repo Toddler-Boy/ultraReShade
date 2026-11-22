@@ -144,6 +144,25 @@ namespace ultra::ui
 
 			m.texture = createTexture ( device, w, h, rgba.data () );
 		}
+
+		void keepAlpha ( Mask& m, const std::vector<uint32_t>& rgba, int width, int height )
+		{
+			m.width = width;
+			m.height = height;
+			m.alpha.resize ( rgba.size () );
+			std::ranges::transform ( rgba, m.alpha.begin (), [] ( uint32_t p ) { return float ( p >> 24 ) / 255.0f; } );
+		}
+
+		[[ nodiscard ]] const Texture* shrunkMask ( api::device* device, Mask& m, int height )
+		{
+			if ( m.alpha.empty () )
+				return nullptr;
+
+			if ( m.shrunkTo != height )
+				makeMask ( device, m, height );
+
+			return m.texture.valid () ? &m.texture : nullptr;
+		}
 	}
 
 	void forgetImages ( api::device* device )
@@ -236,18 +255,22 @@ namespace ultra::ui
 			if ( ! decode ( path, rgba, fileWidth, fileHeight ) )
 				return nullptr;
 
-			m.width = int ( fileWidth );
-			m.height = int ( fileHeight );
-			m.alpha.resize ( rgba.size () );
-			std::ranges::transform ( rgba, m.alpha.begin (), [] ( uint32_t p ) { return float ( p >> 24 ) / 255.0f; } );
+			keepAlpha ( m, rgba, int ( fileWidth ), int ( fileHeight ) );
 		}
 
-		if ( m.alpha.empty () )
+		return shrunkMask ( device, m, height );
+	}
+
+	const Texture* pixelsMask ( api::effect_runtime* runtime, const std::wstring& key, const std::vector<uint32_t>& rgba, int width, int height, int shrinkTo )
+	{
+		auto* const	device = runtime != nullptr ? runtime->get_device () : nullptr;
+		if ( device == nullptr || rgba.empty () || shrinkTo <= 0 )
 			return nullptr;
 
-		if ( m.shrunkTo != height )
-			makeMask ( device, m, height );
+		auto [ it, fresh ] = masks.try_emplace ( Key { device, key } );
+		if ( fresh )
+			keepAlpha ( it->second, rgba, width, height );
 
-		return m.texture.valid () ? &m.texture : nullptr;
+		return shrunkMask ( device, it->second, shrinkTo );
 	}
 }

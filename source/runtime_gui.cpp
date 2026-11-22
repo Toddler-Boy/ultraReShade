@@ -388,7 +388,7 @@ void reshade::runtime::draw_overlay_window()
 	std::copy_n(_overlay_size, 2, state.size);
 	state.tab = _overlay_tab;
 
-	const auto result = ::ultra::ui::window::draw(state, tabs);
+	const auto result = ::ultra::ui::window::draw(this, state, tabs);
 
 	std::copy_n(state.position, 2, _overlay_position);
 	std::copy_n(state.size, 2, _overlay_size);

@@ -103,7 +103,10 @@
 		"dragThreshold": 3,
 		"sliderHandleGrow": 1,
 		"tabInsetBottom": 8,
-		"choiceRowHeight": 30
+		"choiceRowHeight": 30,
+		"logoGap": 15,
+		"logoHeight": 22,
+		"logoInset": 8
 	},
 	"colors": {
 		"accent": "#22A67C",

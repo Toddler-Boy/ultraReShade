@@ -210,6 +210,9 @@ namespace ultra::ui::theme
 	inline float	dotGap = 0.0f;				// a tab's dot to its label
 	inline float	dotRing = 0.0f;				// the dot's dark ring
 	inline float	closeLine = 0.0f;			// the close cross's line
+	inline float	logoGap = 0.0f;				// the logo left of the tab track, to the track
+	inline float	logoHeight = 0.0f;			// centred on the tab track
+	inline float	logoInset = 0.0f;			// the logo off the window's left edge, beyond windowPad
 
 	// Timing, in seconds
 	inline float	disabledAlpha = 0.0f;

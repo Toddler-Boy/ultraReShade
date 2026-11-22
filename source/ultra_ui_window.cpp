@@ -5,11 +5,15 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <map>
 #include <vector>
 
+#include <stb_image.h>
 #include <Windows.h>
 
+#include "dll_log.hpp"
+#include "dll_resources.hpp"
 #include "ultra_ui_anim.hpp"
 #include "ultra_ui_draw.hpp"
 #include "ultra_ui_font.hpp"
@@ -125,6 +129,38 @@ namespace ultra::ui::window
 			dl->AddLine ( ImVec2 ( centre.x - half, centre.y - half ), ImVec2 ( centre.x + half, centre.y + half ), color, px ( theme::closeLine ) );
 			dl->AddLine ( ImVec2 ( centre.x - half, centre.y + half ), ImVec2 ( centre.x + half, centre.y - half ), color, px ( theme::closeLine ) );
 		}
+
+		struct Artwork
+		{
+			std::vector<uint32_t>	rgba;
+			int						width = 0;
+			int						height = 0;
+		};
+
+		// The start logo's artwork, read from the DLL once; empty when it cannot be
+		[[ nodiscard ]] const Artwork& logoArtwork ()
+		{
+			static const auto	artwork = []
+			{
+				Artwork		out;
+				const auto	png = ::reshade::resources::load_data_resource ( IDB_ULTRA_LOGO );
+				auto		channels = 0;
+				const auto	pixels = png.data != nullptr ? stbi_load_from_memory ( static_cast<const stbi_uc*> ( png.data ), int ( png.data_size ), &out.width, &out.height, &channels, STBI_rgb_alpha )
+													 : nullptr;
+				if ( pixels == nullptr )
+				{
+					::reshade::log::message ( ::reshade::log::level::error, "Failed to read the ultraReShade logo for the overlay's tab bar." );
+					return out;
+				}
+
+				out.rgba.resize ( size_t ( out.width ) * size_t ( out.height ) );
+				std::memcpy ( out.rgba.data (), pixels, out.rgba.size () * 4 );
+				stbi_image_free ( pixels );
+				return out;
+			} ();
+
+			return artwork;
+		}
 	}
 
 	void setTabDot ( std::string_view label, uint32_t color )
@@ -184,7 +220,7 @@ namespace ultra::ui::window
 		c[ ImGuiCol_NavCursor ] = ImVec4 ( 0, 0, 0, 0 );
 	}
 
-	Result draw ( State& state, std::span<const Tab> tabs )
+	Result draw ( api::effect_runtime* runtime, State& state, std::span<const Tab> tabs )
 	{
 		Result		result;
 		const auto&	io = ImGui::GetIO ();
@@ -246,9 +282,22 @@ namespace ultra::ui::window
 				if ( isSame ( tabs[ i ].name, state.tab ) )
 					selected = i;
 
-			const ImVec2	trackMin ( min.x + pad, min.y + px ( theme::tabInsetTop ) );
-			const auto		trackBottom = trackMin.y + px ( theme::tabHeight );
-			const auto		trackH = trackBottom - trackMin.y;
+			// The logo left of the tabs
+			const auto	trackTop = min.y + px ( theme::tabInsetTop );
+			const auto	trackH = px ( theme::tabHeight );
+			const auto	logoH = px ( theme::logoHeight );
+			auto		trackLeft = min.x + pad;
+			const auto&	artwork = logoArtwork ();
+			if ( const auto* logo = pixelsMask ( runtime, L"ultraReShade logo", artwork.rgba, artwork.width, artwork.height, int ( std::lround ( logoH ) ) ) )
+			{
+				const ImVec2	at ( std::round ( trackLeft + px ( theme::logoInset ) ),std::round ( trackTop + ( trackH - logoH ) * 0.5f ) );
+				const auto		logoW = float ( logo->width ) * logoH / float ( logo->height );
+				list->AddImage ( logo->ref (), at, ImVec2 ( at.x + logoW, at.y + logoH ), ImVec2 ( 0.0f, 0.0f ), ImVec2 ( 1.0f, 1.0f ), draw::color ( theme::colors::bright ) );
+				trackLeft += px ( theme::logoInset ) + logoW + px ( theme::logoGap );
+			}
+
+			const ImVec2	trackMin ( trackLeft, trackTop );
+			const auto		trackBottom = trackTop + trackH;
 
 			std::vector<float>	widths;
 			auto				trackRight = trackMin.x + pillInset;

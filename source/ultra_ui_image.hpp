@@ -31,6 +31,9 @@ namespace ultra::ui
 	// average, at most the file's own height. nullptr as image ()
 	[[ nodiscard ]] const Texture* mask ( api::effect_runtime* runtime, const std::wstring& path, int height );
 
+	// The same from pixels made in memory, kept once per device and key
+	[[ nodiscard ]] const Texture* pixelsMask ( api::effect_runtime* runtime, const std::wstring& key, const std::vector<uint32_t>& rgba, int width, int height, int shrinkTo );
+
 	// The file's pixels as stored, R in the lowest byte; false when it is missing or unreadable
 	[[ nodiscard ]] bool decodeImage ( const std::wstring& path, std::vector<uint32_t>& rgba, int& width, int& height );
 }
