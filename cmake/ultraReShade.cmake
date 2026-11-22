@@ -196,7 +196,8 @@ endfunction()
 # ReShadeDrawBench64.exe / ReShadeDrawBench32.exe: a draw-heavy D3D11/D3D12 loop without ReShade built in, measuring
 # whichever ReShade DLL sits next to it as dxgi.dll (options in source/ultra_draw_bench.cpp)
 function(ultra_add_draw_bench)
-  add_executable(ReShadeDrawBench WIN32 source/ultra_draw_bench.cpp)
+  # Built only when asked for by name (Tools/test-draw-bench.sh does), never by a plain build
+  add_executable(ReShadeDrawBench WIN32 EXCLUDE_FROM_ALL source/ultra_draw_bench.cpp)
   set_target_properties(ReShadeDrawBench PROPERTIES OUTPUT_NAME ReShadeDrawBench${RESHADE_SUFFIX} CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON VS_DPI_AWARE PerMonitor)
   target_compile_definitions(ReShadeDrawBench PRIVATE _HAS_EXCEPTIONS=0)
 endfunction()
@@ -207,7 +208,8 @@ endfunction()
 # -work-dir <folder> (a shader cache seeded for that run),
 # -capture <frame> <file.png> (that frame after the effects, without the overlay); exit codes in source/ultra_test_check.hpp
 function(ultra_add_test_app)
-  add_executable(ReShadeTest WIN32)
+  # Built only when asked for by name (Tools/test-run.sh does), never by a plain build
+  add_executable(ReShadeTest WIN32 EXCLUDE_FROM_ALL)
   set_target_properties(ReShadeTest PROPERTIES OUTPUT_NAME ReShadeTest${RESHADE_SUFFIX} VS_DPI_AWARE PerMonitor)
   # Same .cso files as the DLL, compiled by its build
   add_dependencies(ReShadeTest ReShade)
