@@ -302,9 +302,10 @@ namespace ultra::ui::window
 				const auto	textX = x + tabPad;
 				if ( dot != dots.end () )
 				{
-					// A ring in the label's colour keeps a green dot visible on the green pill
+					// A dark ring keeps a green dot visible on the green pill
 					const ImVec2	centre ( textX + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f );
-					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + ( isSelected ? px ( 1.5f ) : 0.0f ), color );
+					if ( isSelected )
+						list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + px ( 1.5f ), theme::colors::window );
 					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f, dot->second );
 				}
 				font::draw ( list, ImVec2 ( textX + dotRoom, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );
