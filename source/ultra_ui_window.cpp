@@ -237,7 +237,7 @@ namespace ultra::ui::window
 			list->AddRect ( ImVec2 ( min.x + 0.5f, min.y + 0.5f ), ImVec2 ( max.x - 0.5f, max.y - 0.5f ), theme::colors::windowEdge, rounding, 1.0f );
 
 			// The tab bar: the tabs in a rounded track, the selected one an accent pill that glides to it
-			const auto	size = px ( theme::sizes::heading );
+			const auto	size = px ( theme::sizes::body );
 			const auto	pad = px ( theme::windowPad );
 			const auto	inset = px ( 5.0f );
 			const auto	pillInset = px ( 3.0f );

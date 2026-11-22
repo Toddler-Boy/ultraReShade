@@ -190,7 +190,7 @@ namespace ultra::ui::theme
 	inline constexpr float	windowMinWidth = 360.0f;
 	inline constexpr float	windowMinHeight = 240.0f;
 	inline constexpr float	resizeEdge = 6.0f;
-	inline constexpr float	tabHeight = 34.0f;
+	inline constexpr float	tabHeight = 44.0f;
 	inline constexpr float	tabPadX = 14.0f;
 	inline constexpr float	tabGap = 4.0f;
 	inline constexpr float	tabLine = 2.0f;
