@@ -255,7 +255,7 @@ namespace ultra::ui::window
 			auto				trackRight = trackMin.x + pillInset;
 			for ( const auto& tab : tabs )
 			{
-				const auto	dotRoom = dots.contains ( std::string ( tab.label ) ) ? px ( theme::dotSize ) + px ( 6.0f ) : 0.0f;
+				const auto	dotRoom = dots.contains ( std::string ( tab.label ) ) ? px ( theme::dotSize ) + px ( 4.0f ) : 0.0f;
 				widths.push_back ( font::width ( font::Face::medium, size, tab.label ) + dotRoom + 2.0f * tabPad );
 				trackRight += widths.back ();
 			}
@@ -281,7 +281,7 @@ namespace ultra::ui::window
 			{
 				const auto&	tab = tabs[ i ];
 				const auto	dot = dots.find ( tab.label );
-				const auto	dotRoom = dot != dots.end () ? px ( theme::dotSize ) + px ( 6.0f ) : 0.0f;
+				const auto	dotRoom = dot != dots.end () ? px ( theme::dotSize ) + px ( 4.0f ) : 0.0f;
 				const ImVec2	tabMin ( x, trackMin.y );
 				const ImVec2	tabMax ( x + widths[ i ], trackBottom );
 
