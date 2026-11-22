@@ -32,10 +32,9 @@ namespace ultra::ui::draw
 	// The reset arrow after a slider off its default
 	void resetIcon ( ImDrawList* drawList, ImVec2 centre, float size, ImU32 col );
 
-	// The drop-down's chevron; open turns it upside down
+	// The drop-down's chevron, pointing down; open turns it upside down
 	void chevron ( ImDrawList* drawList, ImVec2 centre, float size, ImU32 col, float open );
 
-	// A collapsible section's arrow, a filled triangle with corners rounded by radius: pointing right while closed, turned
-	// down as open goes to 1
-	void disclosure ( ImDrawList* drawList, ImVec2 centre, float size, float radius, ImU32 col, float open );
+	// A collapsible section's chevron, showing its state: pointing right while closed, turned down as open goes to 1
+	void sectionChevron ( ImDrawList* drawList, ImVec2 centre, float size, ImU32 col, float open );
 }

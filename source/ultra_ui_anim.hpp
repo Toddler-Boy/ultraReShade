@@ -25,7 +25,7 @@ namespace ultra::ui::anim
 	[[ nodiscard ]] Edges swing ( ImGuiID id, float target );
 
 	// 0 to 1 while on holds, back to 0 once it stops
-	[[ nodiscard ]] float fade ( ImGuiID id, bool on, double seconds = theme::fadeSeconds );
+	[[ nodiscard ]] float fade ( ImGuiID id, bool on, double seconds = theme::motion::transition );
 
 	[[ nodiscard ]] float smoothstep ( float x );
 }

@@ -23,14 +23,14 @@ namespace ultra::ui
 
 		[[ nodiscard ]] Text textOf ( bool isHeading, Applies applies = Applies::now )
 		{
-			return isHeading ? Text { font::Face::medium, theme::px ( theme::sizes::heading ), theme::colors::bright }
-							 : Text { font::Face::regular, theme::px ( theme::sizes::body ), labelColor ( applies ) };
+			return isHeading ? Text { font::Face::medium, theme::px ( theme::text::large ), theme::colors::text }
+							 : Text { font::Face::regular, theme::px ( theme::text::body ), labelColor ( applies ) };
 		}
 
 		// Text and its mark when it applies later, then the hotkey as keycaps a space and keyGap after it; the end x
 		float drawText ( ImDrawList* dl, ImVec2 pos, const Text& t, const char* text, const Hotkey& hotkey, bool marked = false )
 		{
-			const auto	rowH = theme::px ( theme::rowHeight );
+			const auto	rowH = theme::px ( theme::heights::row );
 			const auto	top = font::centredTop ( t.face, t.size, pos.y, rowH );
 			auto		x = pos.x + font::draw ( dl, ImVec2 ( pos.x, top ), t.face, t.size, draw::color ( t.color ), text );
 			if ( marked )
@@ -38,8 +38,8 @@ namespace ultra::ui
 
 			if ( hotkey )
 			{
-				x += font::width ( t.face, t.size, " " ) + theme::px ( theme::keyGap );
-				x += draw::keycaps ( dl, ImVec2 ( x, pos.y + ( rowH - theme::px ( theme::keyHeight ) ) * 0.5f ), hotkey );
+				x += font::width ( t.face, t.size, " " ) + theme::px ( theme::spacing::xs );
+				x += draw::keycaps ( dl, ImVec2 ( x, pos.y + ( rowH - theme::px ( theme::heights::row ) ) * 0.5f ), hotkey );
 			}
 
 			return x;
@@ -51,7 +51,7 @@ namespace ultra::ui
 			if ( marked )
 				w += font::width ( t.face, t.size, laterMark );
 			if ( hotkey )
-				w += font::width ( t.face, t.size, " " ) + theme::px ( theme::keyGap ) + draw::keycapsWidth ( hotkey );
+				w += font::width ( t.face, t.size, " " ) + theme::px ( theme::spacing::xs ) + draw::keycapsWidth ( hotkey );
 
 			return w;
 		}
@@ -60,10 +60,10 @@ namespace ultra::ui
 	Edit toggle ( const char* id, bool& on, const char* text, const ToggleLook& look )
 	{
 		const auto	t = textOf ( look.heading, look.applies );
-		const auto	switchW = theme::px ( theme::switchWidth );
-		const auto	switchH = theme::px ( theme::switchHeight );
-		const auto	gap = theme::px ( theme::headingGap );
-		const auto	rowH = theme::px ( theme::rowHeight );
+		const auto	switchW = theme::px ( theme::parts::switchWidth );
+		const auto	switchH = theme::px ( theme::heights::row );
+		const auto	gap = theme::px ( theme::spacing::m );
+		const auto	rowH = theme::px ( theme::heights::row );
 		const auto	textW = textWidth ( t, text, look.hotkey, look.applies != Applies::now );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 		const auto	itemId = ImGui::GetID ( id );
@@ -92,23 +92,23 @@ namespace ultra::ui
 		const ImVec2	sMin ( pos.x, pos.y + ( rowH - switchH ) * 0.5f );
 		const ImVec2	sMax ( sMin.x + switchW, sMin.y + switchH );
 
-		dl->AddRectFilled ( sMin, sMax, draw::color ( draw::mix ( theme::colors::switchOff, theme::colors::accent, m * m ) ), switchH * 0.5f );
+		dl->AddRectFilled ( sMin, sMax, draw::color ( draw::mix ( theme::shade ( theme::shades::edge ), theme::colors::accent, m * m ) ), switchH * 0.5f );
 
-		const auto	knob = theme::px ( theme::knobSize );
+		const auto	knob = theme::px ( theme::icons::icon );
 		const auto	inset = ( switchH - knob ) * 0.5f;
 		const auto	travel = switchW - inset * 2.0f - knob;
 		const ImVec2	kMin ( sMin.x + inset + travel * edges.lo, sMin.y + inset );
 		const ImVec2	kMax ( kMin.x + knob + travel * ( edges.hi - edges.lo ), kMin.y + knob );
 
-		dl->AddRectFilled ( kMin, kMax, draw::color ( draw::mix ( theme::colors::knobOff, theme::colors::knobOn, m ) ), knob * 0.5f );
+		dl->AddRectFilled ( kMin, kMax, draw::color ( draw::mix ( theme::shade ( theme::shades::muted ), theme::colors::text, m ) ), knob * 0.5f );
 
 		const auto	end = drawText ( dl, ImVec2 ( sMax.x + gap, pos.y ), t, text, look.hotkey, look.applies != Applies::now );
 
 		if ( look.tooltip != nullptr )
 		{
-			const auto	dot = theme::px ( theme::infoSize );
-			draw::infoDot ( dl, ImVec2 ( end + theme::px ( theme::infoGap ) + dot * 0.5f, pos.y + rowH * 0.5f ) );
-			tooltip ( itemId, ImGui::IsMouseHoveringRect ( pos, ImVec2 ( end + theme::px ( theme::infoGap ) + dot, pos.y + rowH ) ), look.tooltip );
+			const auto	dot = theme::px ( theme::icons::icon );
+			draw::infoDot ( dl, ImVec2 ( end + theme::px ( theme::spacing::xs ) + dot * 0.5f, pos.y + rowH * 0.5f ) );
+			tooltip ( itemId, ImGui::IsMouseHoveringRect ( pos, ImVec2 ( end + theme::px ( theme::spacing::xs ) + dot, pos.y + rowH ) ), look.tooltip );
 		}
 
 		return edit;
@@ -120,6 +120,6 @@ namespace ultra::ui
 		const auto	pos = ImGui::GetCursorScreenPos ();
 
 		drawText ( ImGui::GetWindowDrawList (), pos, t, text, hotkey );
-		ImGui::Dummy ( ImVec2 ( textWidth ( t, text, hotkey ), theme::px ( theme::rowHeight ) ) );
+		ImGui::Dummy ( ImVec2 ( textWidth ( t, text, hotkey ), theme::px ( theme::heights::row ) ) );
 	}
 }

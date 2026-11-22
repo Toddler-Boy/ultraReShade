@@ -13,8 +13,8 @@ namespace ultra::ui
 {
 	bool collapseArrow ( const char* id, bool open, float width )
 	{
-		const auto	h = theme::px ( theme::rowHeight );
-		const auto	size = theme::px ( theme::disclosureSize );
+		const auto	h = theme::px ( theme::heights::row );
+		const auto	size = theme::px ( theme::icons::icon );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 		const auto	clicked = ImGui::InvisibleButton ( id, ImVec2 ( width, h ) );
 		const auto	hovered = ImGui::IsItemHovered ();
@@ -22,8 +22,8 @@ namespace ultra::ui
 		if ( hovered )
 			ImGui::SetMouseCursor ( ImGuiMouseCursor_Hand );
 
-		draw::disclosure ( ImGui::GetWindowDrawList (), ImVec2 ( pos.x + width - size, pos.y + h * 0.5f ), size, theme::px ( theme::disclosureRadius ),
-						   draw::color ( hovered ? theme::colors::accentHover : theme::colors::accent ), anim::fade ( ImGui::GetItemID (), open ) );
+		draw::sectionChevron ( ImGui::GetWindowDrawList (), ImVec2 ( pos.x + width - size, pos.y + h * 0.5f ), size,
+						draw::color ( theme::shade ( hovered ? theme::shades::body : theme::shades::muted ) ), anim::fade ( ImGui::GetItemID (), open ) );
 
 		return clicked;
 	}

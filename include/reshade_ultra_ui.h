@@ -310,9 +310,7 @@ typedef struct ReShadeWidgetTable
 	void		( *pageDraw ) ( void* runtime, const ReShadeUiPage* page, void* frame );
 	uint32_t	( *isMouseOver ) ( void );
 
-	// A tab's name gets a dot after it in that colour, 0 for none (the tab by the title its overlay was registered with); text is being
-	// typed into a field of the overlay: the add-on's own keys stay silent meanwhile. Any thread
-	void		( *setTabDot ) ( const char* title, uint32_t color );
+	// Text is being typed into a field of the overlay: the add-on's own keys stay silent meanwhile. Any thread
 	uint32_t	( *isTyping ) ( void );
 
 	// The layout of the page structs the DLL was built with: an add-on whose own differs (the two built from different states of this

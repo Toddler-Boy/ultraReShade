@@ -19,7 +19,7 @@ namespace ultra::ui
 }
 
 //-----------------------------------------------------------------------------
-// The overlay's look in one place: every colour, size and timing is a value of res/panel-theme.json, built into the DLL. Sizes are
+// The overlay's look in one place: every colour, shade, size and timing is a value of res/panel-theme.json, built into the DLL. Sizes are
 // unscaled pixels (times scale () when drawn). With a source folder the checkout's file is read instead and followed while the game runs
 
 namespace ultra::ui::theme
@@ -40,199 +40,117 @@ namespace ultra::ui::theme
 
 	namespace colors
 	{
-		inline ImU32	accent = 0;
-		inline ImU32	danger = 0;		// a status that NR is off or failed
-		inline ImU32	warning = 0;	// a game tweak that is not available
-		inline ImU32	accentHover = 0;
+		inline ImU32	background = 0;		// the page's and the overlay window's fill
 		inline ImU32	text = 0;
-		inline ImU32	bright = 0;
-		inline ImU32	muted = 0;
-		inline ImU32	nextStart = 0;	// the label of a setting that takes effect at the next start
-		inline ImU32	appliesAfter = 0;// and of one that takes effect after something the player does
-		inline ImU32	white = 0;
-		inline ImU32	separator = 0;
-
-		inline ImU32	panel = 0;		// the page's own background, whatever ImGui's style
-		inline ImU32	control = 0;	// slider, choice and drop-down backgrounds
-		inline ImU32	controlHover = 0;
-		inline ImU32	track = 0;
-		inline ImU32	tick = 0;
-		inline ImU32	handle = 0;
-
-		inline ImU32	switchOff = 0;
-		inline ImU32	knobOff = 0;
-		inline ImU32	knobOn = 0;
-		inline ImU32	chevron = 0;
-
-		inline ImU32	popup = 0;		// drop-down list and tooltip
-		inline ImU32	popupBorder = 0;
-		inline ImU32	popupHover = 0;
-
-		inline ImU32	button = 0;
-		inline ImU32	buttonHover = 0;
-
-		inline ImU32	infoDot = 0;
-		inline ImU32	infoGlyph = 0;
-		inline ImU32	keycap = 0;
-		inline ImU32	keycapEdge = 0;
-
-		inline ImU32	window = 0;			// the overlay's window: its fill and its edge
-		inline ImU32	windowEdge = 0;
-		inline ImU32	titleBar = 0;		// the track the tabs sit in, the selected tab's label on its accent pill
-		inline ImU32	tabSelectedText = 0;
+		inline ImU32	accent = 0;
+		inline ImU32	danger = 0;			// a status that NR is off or failed
+		inline ImU32	warning = 0;		// a game tweak that is not available
+		inline ImU32	appliesAfter = 0;	// and of one that takes effect after something the player does
 		inline ImU32	logoSweep = 0;		// the band that sweeps across the logo in the tab bar
-		inline ImU32	closeHover = 0;		// behind the close button under the mouse
-		inline ImU32	titleBarHover = 0;	// under the tab the mouse is on, the selected one's pill covers it
-		inline ImU32	choiceHover = 0;	// under the choice the mouse is on, the selected one's pill covers it
-		inline ImU32	tab = 0;			// a tab's label, the selected one's, the one under the mouse, the line under the selected one
-		inline ImU32	tabActive = 0;
-		inline ImU32	tabHover = 0;
-		inline ImU32	tabLine = 0;
-		inline ImU32	scrollTrack = 0;
-		inline ImU32	scrollThumb = 0;
-		inline ImU32	scrollThumbHover = 0;
-		inline ImU32	message = 0;		// the message strip's box and its text
-		inline ImU32	messageText = 0;
 	}
 
-	namespace sizes
+	// Where a grey lies between background (0) and text (1)
+	namespace shades
 	{
+		inline float	surface = 0.0f;
+		inline float	raised = 0.0f;
+		inline float	edge = 0.0f;
+		inline float	hover = 0.0f;
+		inline float	strong = 0.0f;
+		inline float	muted = 0.0f;
 		inline float	body = 0.0f;
-		inline float	heading = 0.0f;
-		inline float	subheading = 0.0f;
-		inline float	title = 0.0f;
-		inline float	choice = 0.0f;
-		inline float	value = 0.0f;
-		inline float	key = 0.0f;
-		inline float	tip = 0.0f;
-		inline float	info = 0.0f;
 	}
 
-	// Layout
-	inline float	panelInset = 0.0f;			// the whole page off the window's edges, all four
-	inline float	panelWidth = 0.0f;			// the content's, whatever the window: narrower scrolls sideways, wider stays empty
-	inline float	rowHeight = 0.0f;
-	inline float	rowGap = 0.0f;
-	inline float	columnGap = 0.0f;			// label to control, control to value
-	inline float	resetWidth = 0.0f;
-	inline float	resetIcon = 0.0f;
-	inline float	indent = 0.0f;
-	inline float	separatorAbove = 0.0f;
-	inline float	headingAbove = 0.0f;
-	inline float	headingBelow = 0.0f;
-	inline float	subheadingAbove = 0.0f;		// a group's heading inside a section, unless it comes first
-	inline float	firstRowAbove = 0.0f;		// a choice or drop-down right under its heading
-	inline float	headingGap = 0.0f;			// switch to heading text
-	inline float	inlineToggleHeight = 0.0f;
-	inline float	separatorLine = 0.0f;		// the separator's height
-	inline float	dragThreshold = 0.0f;		// a heading moves its section after the mouse went this far
+	[[ nodiscard ]] ImU32 shade ( float t );
 
-	// Slider
-	inline float	sliderBack = 0.0f;
-	inline float	sliderPad = 0.0f;
-	inline float	sliderHandleGrow = 0.0f;	// the handle past the fill, on each side, while hovered
-	inline float	bipolarMinFill = 0.0f;
-	inline float	valueEditPad = 0.0f;		// the value's edit box reaches this far past its text
+	// The accent a fifth of the way to white, for what the mouse is over
+	[[ nodiscard ]] ImU32 accentHover ();
 
-	// Toggle
-	inline float	switchWidth = 0.0f;
-	inline float	switchHeight = 0.0f;
-	inline float	knobSize = 0.0f;
+	// The steps every widget shares, unscaled pixels
+	namespace spacing
+	{
+		inline float	xs = 0.0f;
+		inline float	m = 0.0f;
+		inline float	l = 0.0f;
+		inline float	xl = 0.0f;
+	}
 
-	// Choice, drop-down, popups
-	inline float	choicePad = 0.0f;
-	inline float	dropRounding = 0.0f;
-	inline float	dropPadLeft = 0.0f;
-	inline float	dropPadRight = 0.0f;
-	inline float	chevronSize = 0.0f;
-	inline float	disclosureSize = 0.0f;		// a collapsible section's arrow
-	inline float	disclosureRadius = 0.0f;	// its corners' rounding
-	inline float	menuRounding = 0.0f;
-	inline float	menuItemRounding = 0.0f;
-	inline float	menuPad = 0.0f;
-	inline float	menuItemPad = 0.0f;
-	inline float	menuGap = 0.0f;
-	inline float	tipPadX = 0.0f;
-	inline float	tipPadY = 0.0f;
-	inline float	tipMaxWidth = 0.0f;
-	inline float	tipGap = 0.0f;
-	inline float	tipEdge = 0.0f;				// a tooltip's outline: its background this far towards white, opaque
-	inline float	shadowSpread = 0.0f;
-	inline float	shadowOffset = 0.0f;
-	inline float	shadowAlpha = 0.0f;
+	namespace radius
+	{
+		inline float	little = 0.0f;
+		inline float	large = 0.0f;
+	}
 
-	// Colour picker: the swatch in the control column, its popup's saturation and brightness square with the hue strip beside it
-	inline float	pickerSquare = 0.0f;
-	inline float	pickerHueWidth = 0.0f;
-	inline float	pickerGap = 0.0f;			// between the parts, and around them
-	inline float	pickerMarker = 0.0f;		// the point picked in the square, its radius
-	inline float	swatchEdge = 0.0f;
-	inline float	pickerLine = 0.0f;			// the picked point's ring and the hue bar
+	namespace lines
+	{
+		inline float	line = 0.0f;
+	}
 
-	// Button
-	inline float	buttonPadX = 0.0f;
-	inline float	buttonGap = 0.0f;
+	namespace heights
+	{
+		inline float	row = 0.0f;
+		inline float	large = 0.0f;
+		inline float	bar = 0.0f;
+	}
 
-	// Info dot and keycap
-	inline float	infoSize = 0.0f;
-	inline float	infoGap = 0.0f;
-	inline float	keyHeight = 0.0f;
-	inline float	keyPadX = 0.0f;
-	inline float	keyEdge = 0.0f;
-	inline float	keyRounding = 0.0f;
-	inline float	keyGap = 0.0f;				// on top of a space
-	inline float	keycapGap = 0.0f;			// between the keys of one hotkey
+	namespace text
+	{
+		inline float	little = 0.0f;
+		inline float	body = 0.0f;
+		inline float	large = 0.0f;
+		inline float	title = 0.0f;
+	}
 
-	// Header
-	inline float	coverWidth = 0.0f;
-	inline float	coverHeight = 0.0f;
-	inline float	coverRounding = 0.0f;
-	inline float	coverGap = 0.0f;
-	inline float	chipGap = 0.0f;
-	inline float	chipEdge = 0.0f;
+	namespace icons
+	{
+		inline float	icon = 0.0f;
+	}
 
-	// The overlay's window
-	inline float	windowRounding = 0.0f;
-	inline float	windowPad = 0.0f;			// the content off the window's edges, at least the rounding
-	inline float	windowMinWidth = 0.0f;
-	inline float	windowMinHeight = 0.0f;
-	inline float	resizeEdge = 0.0f;
-	inline float	tabHeight = 0.0f;				// the tab track's height; the bar adds the insets above and below
-	inline float	tabPadX = 0.0f;
-	inline float	tabGap = 0.0f;
-	inline float	tabLine = 0.0f;
-	inline float	scrollbarWidth = 0.0f;
-	inline float	scrollbarGap = 0.0f;
-	inline float	scrollThumbMin = 0.0f;
-	inline float	closeSize = 0.0f;
-	inline float	messagePad = 0.0f;
-	inline float	dotSize = 0.0f;
-	inline float	tabInsetTop = 0.0f;			// the space above the tab track and below it, in the bar
-	inline float	tabInsetBottom = 0.0f;
-	inline float	choiceRowHeight = 0.0f;			// a row-style choice's height, its row's too; every other row is rowHeight
-	inline float	tabPillInset = 0.0f;		// the selected pill's in the track
-	inline float	dotGap = 0.0f;				// a tab's dot to its label
-	inline float	dotRing = 0.0f;				// the dot's dark ring
-	inline float	closeLine = 0.0f;			// the close cross's line
-	inline float	logoGap = 0.0f;				// the logo left of the tab track, to the track
-	inline float	logoHeight = 0.0f;			// centred on the tab track
-	inline float	logoInset = 0.0f;			// the logo off the window's left edge, beyond windowPad
-	inline float	barShadowHeight = 0.0f;		// the tab bar's shadow over the content, black at barShadowAlpha fading to clear
-	inline float	barShadowAlpha = 0.0f;
-	inline float	logoSweepAngle = 0.0f;		// the band's lean from vertical, in degrees
-	inline float	logoSweepWidth = 0.0f;
-	inline float	logoSweepSeconds = 0.0f;	// one pass across the logo, one pass every logoSweepPeriod seconds
-	inline float	logoSweepPeriod = 0.0f;
-	inline float	scrollThumbInset = 0.0f;	// the page's scrollbar thumb off the track's ends
-	inline float	closeRounding = 0.0f;		// the close button's hover background
+	// The size of one specific thing
+	namespace parts
+	{
+		inline float	panelWidth = 0.0f;			// the content's, whatever the window: narrower scrolls sideways, wider stays empty
+		inline float	tipMaxWidth = 0.0f;
+		inline float	pickerSquare = 0.0f;
+		inline float	pickerMarker = 0.0f;		// the point picked in the square, its radius
+		inline float	coverWidth = 0.0f;
+		inline float	coverHeight = 0.0f;
+		inline float	windowMinWidth = 0.0f;
+		inline float	windowMinHeight = 0.0f;
+		inline float	resizeEdge = 0.0f;
+		inline float	switchWidth = 0.0f;
+		inline float	scrollbarWidth = 0.0f;
+		inline float	scrollThumbMin = 0.0f;
+		inline float	bipolarMinFill = 0.0f;
+		inline float	barShadowHeight = 0.0f;		// the tab bar's shadow over the content, black at effects::shadowAlpha fading to clear
+		inline float	dragThreshold = 0.0f;		// a heading moves its section after the mouse went this far
+	}
 
 	// Timing, in seconds
-	inline float	disabledAlpha = 0.0f;
-	inline float	swingSeconds = 0.0f;
-	inline float	swingStretch = 0.0f;		// the lead edge lands this much sooner, the knob stretches meanwhile
-	inline float	fadeSeconds = 0.0f;
-	inline float	tipDelay = 0.0f;
-	inline float	doneSeconds = 0.0f;			// a button's done label
+	namespace motion
+	{
+		inline float	transition = 0.0f;
+		inline float	tipDelay = 0.0f;
+		inline float	doneSeconds = 0.0f;			// a button's done label
+	}
+
+	namespace effects
+	{
+		inline float	shadowSpread = 0.0f;
+		inline float	shadowOffset = 0.0f;
+		inline float	shadowAlpha = 0.0f;
+		inline float	disabledAlpha = 0.0f;
+		inline float	tipEdge = 0.0f;				// a tooltip's outline: its background this far towards the text colour, opaque
+		inline float	sliderHandleGrow = 0.0f;	// the handle past the fill, on each side, while hovered
+	}
+
+	namespace logo
+	{
+		inline float	sweepAngle = 0.0f;			// the band's lean from vertical, in degrees
+		inline float	sweepWidth = 0.0f;
+		inline float	sweepSeconds = 0.0f;		// one pass across the logo, one pass every sweepPeriod seconds
+		inline float	sweepPeriod = 0.0f;
+	}
 
 	// The built-in theme, once at the DLL's load; with a source folder the checkout's file takes its place and is followed from then on
 	void load ();
@@ -263,7 +181,7 @@ namespace ultra::ui::theme
 	[[ nodiscard ]] float sizeOf ( uint32_t role );
 
 	// The values now as the file's text, as a person writes it
-	[[ nodiscard ]] std::string text ();
+	[[ nodiscard ]] std::string fileText ();
 
 	// A file's text taken in: every value it holds right is applied, one it lacks or holds wrong stays as this build shipped it. False
 	// with the first such value named in why

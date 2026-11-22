@@ -116,7 +116,7 @@ namespace ultra::ui
 
 		[[ nodiscard ]] Edit editing ( const char* id, float& value, const SliderRange& range, const Format& format, float width, ImVec2 pos )
 		{
-			const auto	rowH = theme::px ( theme::rowHeight );
+			const auto	rowH = theme::px ( theme::heights::row );
 			auto*		dl = ImGui::GetWindowDrawList ();
 			Edit		edit;
 
@@ -181,12 +181,12 @@ namespace ultra::ui
 				dl->AddRectFilled ( ImVec2 ( field.x + offsetX ( field.selStart ), top ), ImVec2 ( field.x + offsetX ( field.selEnd ), top + lineH ),
 									draw::color ( theme::colors::accent, selectionAlpha ) );
 
-			font::draw ( dl, ImVec2 ( field.x, top ), font::Face::bold, field.size, draw::color ( theme::colors::bright ), field.text, true );
+			font::draw ( dl, ImVec2 ( field.x, top ), font::Face::bold, field.size, draw::color ( theme::colors::text ), field.text, true );
 
 			if ( std::fmod ( ImGui::GetTime () - field.cursorMoved, blinkPeriod ) < blinkOn )
 			{
 				const auto	x = std::floor ( field.x + offsetX ( field.cursor ) ) + 0.5f;
-				dl->AddLine ( ImVec2 ( x, top ), ImVec2 ( x, top + lineH ), draw::color ( theme::colors::bright ) );
+				dl->AddLine ( ImVec2 ( x, top ), ImVec2 ( x, top + lineH ), draw::color ( theme::colors::text ) );
 			}
 
 			return edit;
@@ -195,19 +195,19 @@ namespace ultra::ui
 
 	Edit valueEdit ( const char* id, float& value, const SliderRange& range, const Format& format, float width )
 	{
-		const auto	rowH = theme::px ( theme::rowHeight );
-		const auto	pad = theme::px ( theme::valueEditPad );
-		const auto	size = theme::px ( theme::sizes::value );
+		const auto	rowH = theme::px ( theme::heights::row );
+		const auto	pad = theme::px ( theme::spacing::xs );
+		const auto	size = theme::px ( theme::text::body );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 		const auto	itemId = ImGui::GetID ( id );
 		const ImVec2	boxMin ( pos.x - pad, pos.y );
 		const ImVec2	boxMax ( pos.x + width + pad, pos.y + rowH );
-		const auto	rounding = theme::px ( theme::dropRounding );
+		const auto	rounding = theme::px ( theme::radius::little );
 		auto*		dl = ImGui::GetWindowDrawList ();
 
 		if ( field.id == itemId )
 		{
-			dl->AddRectFilled ( boxMin, boxMax, draw::color ( theme::colors::control ), rounding );
+			dl->AddRectFilled ( boxMin, boxMax, draw::color ( theme::shade ( theme::shades::surface ) ), rounding );
 			dl->AddRect ( boxMin, boxMax, draw::color ( theme::colors::accent ), rounding );
 			field.x = pos.x;
 			field.size = size;
@@ -221,7 +221,7 @@ namespace ultra::ui
 		if ( ImGui::IsItemHovered () )
 		{
 			ImGui::SetMouseCursor ( ImGuiMouseCursor_TextInput );
-			dl->AddRectFilled ( boxMin, boxMax, draw::color ( theme::colors::control ), rounding );
+			dl->AddRectFilled ( boxMin, boxMax, draw::color ( theme::shade ( theme::shades::surface ) ), rounding );
 
 			// The number alone to edit, in the unit shown and with an ASCII minus
 			if ( ImGui::IsMouseDoubleClicked ( ImGuiMouseButton_Left ) )
@@ -237,7 +237,7 @@ namespace ultra::ui
 
 		char	text[ 32 ];
 		ui::format ( text, sizeof ( text ), value, format );
-		font::draw ( dl, ImVec2 ( pos.x, font::centredTop ( font::Face::bold, size, pos.y, rowH ) ), font::Face::bold, size, draw::color ( theme::colors::bright ), text, true );
+		font::draw ( dl, ImVec2 ( pos.x, font::centredTop ( font::Face::bold, size, pos.y, rowH ) ), font::Face::bold, size, draw::color ( theme::colors::text ), text, true );
 
 		return {};
 	}

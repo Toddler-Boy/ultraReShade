@@ -39,7 +39,7 @@ namespace ultra::ui
 
 	[[ nodiscard ]] inline ImU32 labelColor ( Applies a )
 	{
-		return a == Applies::nextStart ? theme::colors::nextStart : a == Applies::after ? theme::colors::appliesAfter : theme::colors::text;
+		return a == Applies::nextStart ? theme::colors::warning : a == Applies::after ? theme::colors::appliesAfter : theme::shade ( theme::shades::body );
 	}
 
 	// UI_Label.cpp: a row's label, with the info dot and its tooltip when it has one; not an item, it only draws
@@ -139,7 +139,7 @@ namespace ultra::ui
 		std::span<const Chip>	chips;
 		const Texture*	cover = nullptr;
 		const char*		lines[ 3 ] {};
-		ImU32			lineColors[ 3 ] { theme::colors::text, theme::colors::muted, theme::colors::muted };
+		ImU32			lineColors[ 3 ] { theme::shade ( theme::shades::body ), theme::shade ( theme::shades::muted ), theme::shade ( theme::shades::muted ) };
 	};
 
 	void header ( const HeaderInfo& info, float width );

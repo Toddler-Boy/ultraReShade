@@ -54,8 +54,8 @@ namespace ultra::ui::anim
 			s.start = now;
 		}
 
-		const auto	progress = float ( ( now - s.start ) / theme::swingSeconds );
-		s.lead = s.leadStart + ( target - s.leadStart ) * smoothstep ( progress * ( 1.0f + theme::swingStretch ) );
+		const auto	progress = float ( ( now - s.start ) / theme::motion::transition );
+		s.lead = s.leadStart + ( target - s.leadStart ) * smoothstep ( progress * 2.0f );	// the lead edge lands twice as soon, the knob stretches meanwhile
 		s.tail = s.tailStart + ( target - s.tailStart ) * smoothstep ( progress );
 
 		return { std::min ( s.lead, s.tail ), std::max ( s.lead, s.tail ) };

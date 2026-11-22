@@ -54,9 +54,9 @@ namespace ultra::ui
 
 	Edit slider ( const char* id, float& value, const SliderRange& range, float width )
 	{
-		const auto	rowH = theme::px ( theme::rowHeight );
-		const auto	backH = theme::px ( theme::sliderBack );
-		const auto	pad = theme::px ( theme::sliderPad );
+		const auto	rowH = theme::px ( theme::heights::row );
+		const auto	backH = theme::px ( theme::spacing::xl );
+		const auto	pad = theme::px ( theme::spacing::xs );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 		const auto	itemId = ImGui::GetID ( id );
 		Edit		edit;
@@ -99,8 +99,8 @@ namespace ultra::ui
 		const auto	trackH = tMax.y - tMin.y;
 		const auto	t = range.position ( value );
 
-		dl->AddRectFilled ( bMin, bMax, draw::color ( theme::colors::control ), backH * 0.5f );
-		dl->AddRectFilled ( tMin, tMax, draw::color ( theme::colors::track ), trackH * 0.5f );
+		dl->AddRectFilled ( bMin, bMax, draw::color ( theme::shade ( theme::shades::surface ) ), backH * 0.5f );
+		dl->AddRectFilled ( tMin, tMax, draw::color ( theme::shade ( theme::shades::edge ) ), trackH * 0.5f );
 
 		// Bipolar ranges fill from 0 outward, never thinner than a short rounded line at 0
 		const auto	bipolar = range.lo < 0.0f && range.hi > 0.0f;
@@ -108,7 +108,7 @@ namespace ultra::ui
 		auto		a = tMin.x + trackW * std::min ( zero, t );
 		auto		b = tMin.x + trackW * std::max ( zero, t );
 
-		if ( const auto minFill = theme::px ( theme::bipolarMinFill ); bipolar && b - a < minFill )
+		if ( const auto minFill = theme::px ( theme::parts::bipolarMinFill ); bipolar && b - a < minFill )
 		{
 			const auto	c = tMin.x + trackW * zero;
 			a = c - minFill * 0.5f;
@@ -122,7 +122,7 @@ namespace ultra::ui
 		if ( range.hasMid )
 		{
 			const auto	x = crisp ( tMin.x + trackW * range.position ( range.mid ) );
-			const auto	col = draw::color ( theme::colors::tick );
+			const auto	col = draw::color ( theme::shade ( theme::shades::strong ) );
 			dl->AddLine ( ImVec2 ( x, bMin.y ), ImVec2 ( x, tMin.y ), col );
 			dl->AddLine ( ImVec2 ( x, tMax.y ), ImVec2 ( x, bMax.y ), col );
 		}
@@ -130,10 +130,10 @@ namespace ultra::ui
 		// The handle grows in while hovered or dragged, a pixel past the fill on each side
 		if ( const auto f = anim::smoothstep ( anim::fade ( itemId, hovered || active ) ); f > 0.0f )
 		{
-			const auto	r = ( trackH * 0.5f + theme::px ( theme::sliderHandleGrow ) ) * ( 0.5f + 0.5f * f );
+			const auto	r = ( trackH * 0.5f + theme::px ( theme::effects::sliderHandleGrow ) ) * ( 0.5f + 0.5f * f );
 			const auto	edge = trackH * 0.5f;
 			const auto	cx = tMin.x + std::clamp ( trackW * t, edge, trackW - edge );
-			dl->AddCircleFilled ( ImVec2 ( cx, ( tMin.y + tMax.y ) * 0.5f ), r, draw::color ( theme::colors::handle, f ) );
+			dl->AddCircleFilled ( ImVec2 ( cx, ( tMin.y + tMax.y ) * 0.5f ), r, draw::color ( theme::colors::text, f ) );
 		}
 
 		return edit;

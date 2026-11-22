@@ -64,14 +64,14 @@ namespace ultra::ui
 			return;
 		}
 
-		if ( now - hoverSince.try_emplace ( id, now ).first->second < theme::tipDelay )
+		if ( now - hoverSince.try_emplace ( id, now ).first->second < theme::motion::tipDelay )
 			return;
 
-		const auto	size = theme::px ( theme::sizes::tip );
-		const auto	padX = theme::px ( theme::tipPadX );
-		const auto	padY = theme::px ( theme::tipPadY );
+		const auto	size = theme::px ( theme::text::body );
+		const auto	padX = theme::px ( theme::spacing::l );
+		const auto	padY = theme::px ( theme::spacing::m );
 		const auto	lineH = font::lineHeight ( font::Face::regular, size );
-		const auto	lines = wrap ( text, size, theme::px ( theme::tipMaxWidth ) - padX * 2.0f );
+		const auto	lines = wrap ( text, size, theme::px ( theme::parts::tipMaxWidth ) - padX * 2.0f );
 
 		float	textW = 0.0f;
 		for ( const auto& line : lines )
@@ -80,7 +80,7 @@ namespace ultra::ui
 		const ImVec2	box ( textW + padX * 2.0f, lineH * float ( lines.size () ) + padY * 2.0f );
 		const auto		mouse = ImGui::GetMousePos ();
 
-		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( mouse.x, mouse.y + theme::px ( theme::rowHeight ) * 0.5f + theme::px ( theme::tipGap ) ), box ) );
+		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( mouse.x, mouse.y + theme::px ( theme::heights::row ) * 0.5f + theme::px ( theme::spacing::m ) ), box ) );
 		// Full strength over a dimmed row too: it explains why that row is off
 		ImGui::PushStyleVar ( ImGuiStyleVar_Alpha, 1.0f );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( 0.0f, 0.0f ) );
@@ -93,20 +93,20 @@ namespace ultra::ui
 			auto*		dl = ImGui::GetWindowDrawList ();
 			const auto	min = ImGui::GetCursorScreenPos ();
 			const ImVec2	max ( min.x + box.x, min.y + box.y );
-			const auto	rounding = theme::px ( theme::menuRounding );
+			const auto	rounding = theme::px ( theme::radius::little );
 
 			// The outline opaque, on pixel centres: alpha blends in linear light on an HDR swap chain, where a faint white
 			// reads several times stronger and its anti-aliased edge unevenly
 			draw::shadow ( dl, min, max, rounding );
-			dl->AddRectFilled ( min, max, draw::color ( theme::colors::popup ), rounding );
+			dl->AddRectFilled ( min, max, draw::color ( theme::shade ( theme::shades::surface ) ), rounding );
 			const ImVec2	edgeMin ( std::floor ( min.x ) + 0.5f, std::floor ( min.y ) + 0.5f );
 			const ImVec2	edgeMax ( std::floor ( max.x ) - 0.5f, std::floor ( max.y ) - 0.5f );
-			dl->AddRect ( edgeMin, edgeMax, draw::color ( draw::mix ( theme::colors::popup, theme::colors::white, theme::tipEdge ) ), rounding );
+			dl->AddRect ( edgeMin, edgeMax, draw::color ( draw::mix ( theme::shade ( theme::shades::surface ), theme::colors::text, theme::effects::tipEdge ) ), rounding );
 
 			auto	y = min.y + padY;
 			for ( const auto& line : lines )
 			{
-				font::draw ( dl, ImVec2 ( min.x + padX, y ), font::Face::regular, size, draw::color ( theme::colors::text ), line );
+				font::draw ( dl, ImVec2 ( min.x + padX, y ), font::Face::regular, size, draw::color ( theme::shade ( theme::shades::body ) ), line );
 				y += lineH;
 			}
 

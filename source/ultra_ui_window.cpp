@@ -19,6 +19,7 @@
 #include "ultra_ui_draw.hpp"
 #include "ultra_ui_font.hpp"
 #include "ultra_ui_image.hpp"
+#include "ultra_ui_widgets.hpp"
 #include "ultra_ui_window.hpp"
 
 //-----------------------------------------------------------------------------
@@ -48,8 +49,6 @@ namespace ultra::ui::window
 			bool	isTyping = false;
 		} now;
 
-		std::map<std::string, uint32_t, std::less<>>	dots;
-
 		[[ nodiscard ]] float px ( float unscaled )	{ return theme::px ( unscaled ); }
 
 		void place ( const State& state, const ImVec2& display )
@@ -66,8 +65,8 @@ namespace ultra::ui::window
 		// Inside the display, at least as large as the least the content needs, never larger than the display
 		void clamp ( const ImVec2& display )
 		{
-			now.rect.w = std::clamp ( now.rect.w, std::min ( px ( theme::windowMinWidth ), display.x ), display.x );
-			now.rect.h = std::clamp ( now.rect.h, std::min ( px ( theme::windowMinHeight ), display.y ), display.y );
+			now.rect.w = std::clamp ( now.rect.w, std::min ( px ( theme::parts::windowMinWidth ), display.x ), display.x );
+			now.rect.h = std::clamp ( now.rect.h, std::min ( px ( theme::parts::windowMinHeight ), display.y ), display.y );
 			now.rect.x = std::clamp ( now.rect.x, 0.0f, display.x - now.rect.w );
 			now.rect.y = std::clamp ( now.rect.y, 0.0f, display.y - now.rect.h );
 		}
@@ -89,7 +88,7 @@ namespace ultra::ui::window
 		// The edges of the window the mouse is at, 0 inside
 		[[ nodiscard ]] int edgesAt ( const ImVec2& mouse )
 		{
-			const auto	band = px ( theme::resizeEdge );
+			const auto	band = px ( theme::parts::resizeEdge );
 			if ( mouse.x < now.rect.x || mouse.x > now.rect.x + now.rect.w || mouse.y < now.rect.y || mouse.y > now.rect.y + now.rect.h )
 				return 0;
 
@@ -103,8 +102,8 @@ namespace ultra::ui::window
 
 		void dragEdges ( const ImVec2& delta, const ImVec2& display )
 		{
-			const auto	minW = std::min ( px ( theme::windowMinWidth ), display.x );
-			const auto	minH = std::min ( px ( theme::windowMinHeight ), display.y );
+			const auto	minW = std::min ( px ( theme::parts::windowMinWidth ), display.x );
+			const auto	minH = std::min ( px ( theme::parts::windowMinHeight ), display.y );
 			auto&		r = now.rect;
 
 			if ( now.held & left )
@@ -127,8 +126,8 @@ namespace ultra::ui::window
 
 		void closeCross ( ImDrawList* dl, ImVec2 centre, float half, ImU32 color )
 		{
-			dl->AddLine ( ImVec2 ( centre.x - half, centre.y - half ), ImVec2 ( centre.x + half, centre.y + half ), color, px ( theme::closeLine ) );
-			dl->AddLine ( ImVec2 ( centre.x - half, centre.y + half ), ImVec2 ( centre.x + half, centre.y - half ), color, px ( theme::closeLine ) );
+			dl->AddLine ( ImVec2 ( centre.x - half, centre.y - half ), ImVec2 ( centre.x + half, centre.y + half ), color, px ( theme::lines::line ) );
+			dl->AddLine ( ImVec2 ( centre.x - half, centre.y + half ), ImVec2 ( centre.x + half, centre.y - half ), color, px ( theme::lines::line ) );
 		}
 
 		// The logo in its tint, a band of logoSweep leaning logoSweepAngle passing across it once every logoSweepPeriod seconds; a
@@ -138,14 +137,14 @@ namespace ultra::ui::window
 			constexpr int	columns = 64;
 			constexpr int	rows = 4;
 
-			const auto	lean = std::tan ( theme::logoSweepAngle * 3.14159265f / 180.0f );
-			const auto	half = std::max ( 1.0f, px ( theme::logoSweepWidth ) * 0.5f );
-			const auto	seconds = std::max ( 0.001f, theme::logoSweepSeconds );
-			const auto	period = std::max ( seconds, theme::logoSweepPeriod );
+			const auto	lean = std::tan ( theme::logo::sweepAngle * 3.14159265f / 180.0f );
+			const auto	half = std::max ( 1.0f, px ( theme::logo::sweepWidth ) * 0.5f );
+			const auto	seconds = std::max ( 0.001f, theme::logo::sweepSeconds );
+			const auto	period = std::max ( seconds, theme::logo::sweepPeriod );
 			const auto	phase = float ( std::fmod ( ImGui::GetTime (), double ( period ) ) ) / seconds;
 			const auto	from = -half - size.y * lean;
 			const auto	front = from + std::min ( phase, 1.0f ) * ( size.x + half - from );
-			const auto	tint = draw::color ( theme::colors::bright );
+			const auto	tint = draw::color ( theme::colors::text );
 			const auto	sweep = draw::color ( theme::colors::logoSweep );
 
 			list->PushTexture ( logo.ref () );
@@ -209,14 +208,6 @@ namespace ultra::ui::window
 		}
 	}
 
-	void setTabDot ( std::string_view label, uint32_t color )
-	{
-		if ( color == 0 )
-			dots.erase ( std::string ( label ) );
-		else
-			dots[ std::string ( label ) ] = color;
-	}
-
 	bool isTyping ()
 	{
 		return now.isTyping;
@@ -232,36 +223,36 @@ namespace ultra::ui::window
 		style.WindowBorderSize = 0.0f;
 		style.ChildRounding = 0.0f;
 		style.ChildBorderSize = 0.0f;
-		style.FrameRounding = px ( theme::dropRounding );
-		style.PopupRounding = px ( theme::menuRounding );
-		style.ScrollbarRounding = px ( theme::scrollbarWidth ) * 0.5f;
-		style.ScrollbarSize = px ( theme::scrollbarWidth + 2.0f * theme::scrollbarGap );
-		style.ScrollbarPadding = px ( theme::scrollbarGap );
+		style.FrameRounding = px ( theme::radius::little );
+		style.PopupRounding = px ( theme::radius::little );
+		style.ScrollbarRounding = px ( theme::parts::scrollbarWidth ) * 0.5f;
+		style.ScrollbarSize = px ( theme::parts::scrollbarWidth + 2.0f * theme::spacing::xs );
+		style.ScrollbarPadding = px ( theme::spacing::xs );
 		style.FontScaleMain = theme::scale ();
 
-		c[ ImGuiCol_Text ] = v4 ( theme::colors::text );
-		c[ ImGuiCol_TextDisabled ] = v4 ( theme::colors::muted );
-		c[ ImGuiCol_WindowBg ] = v4 ( theme::colors::window );
+		c[ ImGuiCol_Text ] = v4 ( theme::shade ( theme::shades::body ) );
+		c[ ImGuiCol_TextDisabled ] = v4 ( theme::shade ( theme::shades::muted ) );
+		c[ ImGuiCol_WindowBg ] = v4 ( theme::colors::background );
 		c[ ImGuiCol_ChildBg ] = ImVec4 ( 0, 0, 0, 0 );
-		c[ ImGuiCol_PopupBg ] = v4 ( theme::colors::popup );
-		c[ ImGuiCol_Border ] = v4 ( theme::colors::windowEdge );
-		c[ ImGuiCol_FrameBg ] = v4 ( theme::colors::control );
-		c[ ImGuiCol_FrameBgHovered ] = v4 ( theme::colors::controlHover );
-		c[ ImGuiCol_FrameBgActive ] = v4 ( theme::colors::controlHover );
-		c[ ImGuiCol_ScrollbarBg ] = v4 ( theme::colors::scrollTrack );
-		c[ ImGuiCol_ScrollbarGrab ] = v4 ( theme::colors::scrollThumb );
-		c[ ImGuiCol_ScrollbarGrabHovered ] = v4 ( theme::colors::scrollThumbHover );
-		c[ ImGuiCol_ScrollbarGrabActive ] = v4 ( theme::colors::scrollThumbHover );
+		c[ ImGuiCol_PopupBg ] = v4 ( theme::shade ( theme::shades::surface ) );
+		c[ ImGuiCol_Border ] = v4 ( theme::shade ( theme::shades::edge ) );
+		c[ ImGuiCol_FrameBg ] = v4 ( theme::shade ( theme::shades::surface ) );
+		c[ ImGuiCol_FrameBgHovered ] = v4 ( theme::shade ( theme::shades::raised ) );
+		c[ ImGuiCol_FrameBgActive ] = v4 ( theme::shade ( theme::shades::raised ) );
+		c[ ImGuiCol_ScrollbarBg ] = v4 ( theme::shade ( theme::shades::surface ) );
+		c[ ImGuiCol_ScrollbarGrab ] = v4 ( theme::shade ( theme::shades::hover ) );
+		c[ ImGuiCol_ScrollbarGrabHovered ] = v4 ( theme::shade ( theme::shades::strong ) );
+		c[ ImGuiCol_ScrollbarGrabActive ] = v4 ( theme::shade ( theme::shades::strong ) );
 		c[ ImGuiCol_CheckMark ] = v4 ( theme::colors::accent );
 		c[ ImGuiCol_SliderGrab ] = v4 ( theme::colors::accent );
-		c[ ImGuiCol_SliderGrabActive ] = v4 ( theme::colors::accentHover );
-		c[ ImGuiCol_Button ] = v4 ( theme::colors::button );
-		c[ ImGuiCol_ButtonHovered ] = v4 ( theme::colors::buttonHover );
-		c[ ImGuiCol_ButtonActive ] = v4 ( theme::colors::buttonHover );
-		c[ ImGuiCol_Header ] = v4 ( theme::colors::button );
-		c[ ImGuiCol_HeaderHovered ] = v4 ( theme::colors::buttonHover );
-		c[ ImGuiCol_HeaderActive ] = v4 ( theme::colors::buttonHover );
-		c[ ImGuiCol_Separator ] = v4 ( theme::colors::separator );
+		c[ ImGuiCol_SliderGrabActive ] = v4 ( theme::accentHover () );
+		c[ ImGuiCol_Button ] = v4 ( theme::shade ( theme::shades::raised ) );
+		c[ ImGuiCol_ButtonHovered ] = v4 ( theme::shade ( theme::shades::edge ) );
+		c[ ImGuiCol_ButtonActive ] = v4 ( theme::shade ( theme::shades::edge ) );
+		c[ ImGuiCol_Header ] = v4 ( theme::shade ( theme::shades::raised ) );
+		c[ ImGuiCol_HeaderHovered ] = v4 ( theme::shade ( theme::shades::edge ) );
+		c[ ImGuiCol_HeaderActive ] = v4 ( theme::shade ( theme::shades::edge ) );
+		c[ ImGuiCol_Separator ] = v4 ( theme::shade ( theme::shades::raised ) );
 		c[ ImGuiCol_TextSelectedBg ] = ImGui::ColorConvertU32ToFloat4 ( ( theme::colors::accent & 0x00FFFFFFu ) | 0x70000000u );
 		c[ ImGuiCol_NavCursor ] = ImVec4 ( 0, 0, 0, 0 );
 	}
@@ -300,7 +291,7 @@ namespace ultra::ui::window
 
 		const ImVec2	min ( std::round ( now.rect.x ), std::round ( now.rect.y ) );
 		const ImVec2	max ( min.x + std::round ( now.rect.w ), min.y + std::round ( now.rect.h ) );
-		const auto		rounding = px ( theme::windowRounding );
+		const auto		rounding = px ( theme::radius::large );
 
 		ImGui::SetNextWindowPos ( min );
 		ImGui::SetNextWindowSize ( ImVec2 ( max.x - min.x, max.y - min.y ) );
@@ -314,118 +305,59 @@ namespace ultra::ui::window
 		{
 			auto*	list = ImGui::GetWindowDrawList ();
 			draw::shadow ( list, min, max, rounding );
-			const auto	barHeight = px ( theme::tabInsetTop ) + px ( theme::tabHeight ) + px ( theme::tabInsetBottom );
-			list->AddRectFilled ( min, max, theme::colors::window, rounding );
-			list->AddRect ( ImVec2 ( min.x + 0.5f, min.y + 0.5f ), ImVec2 ( max.x - 0.5f, max.y - 0.5f ), theme::colors::windowEdge, rounding, 1.0f );
+			const auto	barHeight = px ( theme::spacing::l ) + px ( theme::heights::bar ) + px ( theme::spacing::m );
+			list->AddRectFilled ( min, max, theme::colors::background, rounding );
+			list->AddRect ( ImVec2 ( min.x + 0.5f, min.y + 0.5f ), ImVec2 ( max.x - 0.5f, max.y - 0.5f ), theme::shade ( theme::shades::edge ), rounding, 1.0f );
 
-			// The tab bar: the tabs in a rounded track, the selected one an accent pill that glides to it
-			const auto	size = px ( theme::sizes::body );
-			const auto	pad = px ( theme::windowPad );
-			const auto	pillInset = px ( theme::tabPillInset );
-			const auto	tabPad = px ( theme::tabPadX );
+			// The tab bar: the tabs as a choice slider of equal cells, beside the logo
+			const auto	pad = px ( theme::spacing::m );
 			auto		selected = size_t ( 0 );
 			for ( size_t i = 0; i < tabs.size (); ++i )
 				if ( isSame ( tabs[ i ].name, state.tab ) )
 					selected = i;
 
-			// The logo left of the tabs
-			const auto	trackTop = min.y + px ( theme::tabInsetTop );
-			const auto	trackH = px ( theme::tabHeight );
-			const auto	logoH = px ( theme::logoHeight );
+			// The logo left of the tabs; everything in the bar is centred on its whole height
+			const auto	trackTop = min.y;
+			const auto	trackH = barHeight;
+			const auto	logoH = px ( theme::heights::row );
 			auto		trackLeft = min.x + pad;
 			const auto&	artwork = logoArtwork ();
 			if ( const auto* logo = pixelsMask ( runtime, L"ultraReShade logo", artwork.rgba, artwork.width, artwork.height, int ( std::lround ( logoH ) ) ) )
 			{
-				const ImVec2	at ( std::round ( trackLeft + px ( theme::logoInset ) ),std::round ( trackTop + ( trackH - logoH ) * 0.5f ) );
+				const ImVec2	at ( std::round ( trackLeft + px ( theme::spacing::m ) ),std::round ( trackTop + ( trackH - logoH ) * 0.5f ) );
 				const auto		logoW = float ( logo->width ) * logoH / float ( logo->height );
 				drawLogo ( list, *logo, at, ImVec2 ( logoW, logoH ) );
-				trackLeft += px ( theme::logoInset ) + logoW + px ( theme::logoGap );
+				trackLeft += px ( theme::spacing::m ) + logoW + px ( theme::spacing::xl );
 			}
 
-			const ImVec2	trackMin ( trackLeft, trackTop );
-			const auto		trackBottom = trackTop + trackH;
-
-			std::vector<float>	widths;
-			auto				trackRight = trackMin.x + pillInset;
-			for ( const auto& tab : tabs )
-			{
-				const auto	dotRoom = dots.contains ( std::string ( tab.label ) ) ? px ( theme::dotSize ) + px ( theme::dotGap ) : 0.0f;
-				widths.push_back ( font::width ( font::Face::medium, size, tab.label ) + dotRoom + 2.0f * tabPad );
-				trackRight += widths.back ();
-			}
-			trackRight += pillInset;
-			auto	x = trackMin.x + pillInset;
+			const auto	trackBottom = trackTop + trackH;
+			auto		x = trackLeft;
 
 			if ( ! tabs.empty () )
 			{
-				list->AddRectFilled ( trackMin, ImVec2 ( trackRight, trackBottom ), theme::colors::titleBar, trackH * 0.5f );
-
-				auto	pillX = x;
-				for ( size_t i = 0; i < selected; ++i )
-					pillX += widths[ i ];
-
-				const auto	pillH = trackH - 2.0f * pillInset;
-				if ( ImGui::IsWindowHovered () && now.held == 0 )
+				std::vector<const char*>	names;
+				auto						widest = 0.0f;
+				for ( const auto& tab : tabs )
 				{
-					auto	hoverX = x;
-					for ( size_t i = 0; i < tabs.size (); ++i )
-					{
-						const ImVec2	pillMin ( hoverX, trackMin.y + pillInset );
-						const ImVec2	pillMax ( hoverX + widths[ i ], trackBottom - pillInset );
-						if ( ImGui::IsMouseHoveringRect ( ImVec2 ( hoverX, trackMin.y ), ImVec2 ( pillMax.x, trackBottom ) ) )
-							list->AddRectFilled ( pillMin, pillMax, theme::colors::titleBarHover, pillH * 0.5f );
-						hoverX += widths[ i ];
-					}
+					names.push_back ( tab.label.c_str () );
+					widest = std::max ( widest, font::width ( font::Face::semibold, px ( theme::text::body ), tab.label.c_str () ) );
 				}
 
-				// In the window's own coordinates, so a moved window carries the pill along
-				const auto	from = min.x + anim::swing ( ImGui::GetID ( "tabPillLeft" ), pillX - min.x ).mid ();
-				const auto	to = min.x + anim::swing ( ImGui::GetID ( "tabPillRight" ), pillX + widths[ selected ] - min.x ).mid ();
-				list->AddRectFilled ( ImVec2 ( from, trackMin.y + pillInset ), ImVec2 ( to, trackBottom - pillInset ), theme::colors::accent, pillH * 0.5f );
-			}
-
-			for ( size_t i = 0; i < tabs.size (); ++i )
-			{
-				const auto&	tab = tabs[ i ];
-				const auto	dot = dots.find ( tab.label );
-				const auto	dotRoom = dot != dots.end () ? px ( theme::dotSize ) + px ( theme::dotGap ) : 0.0f;
-				const ImVec2	tabMin ( x, trackMin.y );
-				const ImVec2	tabMax ( x + widths[ i ], trackBottom );
-
-				ImGui::SetCursorScreenPos ( tabMin );
-				ImGui::PushID ( int ( i ) );
-				ImGui::InvisibleButton ( "##tab", ImVec2 ( tabMax.x - tabMin.x, tabMax.y - tabMin.y ) );
-				const auto	isHovered = ImGui::IsItemHovered ();
-				if ( isHovered )
-					ImGui::SetMouseCursor ( ImGuiMouseCursor_Hand );
-				if ( ImGui::IsItemClicked () && i != selected )
+				const auto	width = ( widest + 2.0f * px ( theme::spacing::l ) ) * float ( tabs.size () );
+				auto		index = int ( selected );
+				ImGui::SetCursorScreenPos ( ImVec2 ( trackLeft, trackTop + ( trackH - px ( theme::heights::large ) ) * 0.5f ) );
+				if ( choice ( "tabs", index, names, 0, width ).changed )
 				{
-					state.tab = tab.name;
-					selected = i;
+					selected = size_t ( index );
+					state.tab = tabs[ selected ].name;
 					result.isTabChanged = true;
 				}
-				ImGui::PopID ();
-
-				const auto	isSelected = i == selected;
-				const auto	color = isSelected ? theme::colors::tabSelectedText : isHovered ? theme::colors::tabHover : theme::colors::tab;
-				const auto	textX = x + tabPad;
-				if ( dot != dots.end () )
-				{
-					// A dark ring keeps a green dot visible on the green pill
-					const ImVec2	centre ( textX + px ( theme::dotSize ) * 0.5f, trackMin.y + ( trackBottom - trackMin.y ) * 0.5f );
-					if ( isSelected )
-						list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + px ( theme::dotRing ), theme::colors::window );
-					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f, dot->second );
-				}
-				font::draw ( list, ImVec2 ( textX + dotRoom, font::centredTop ( font::Face::medium, size, trackMin.y, trackBottom - trackMin.y ) ), font::Face::medium, size, draw::color ( color ), tab.label );
-
-				x += widths[ i ];
+				x += width;
 			}
-			x = trackRight;
 
 			// The close button at the bar's end
-			const auto	closeBox = px ( theme::closeSize ) * 2.0f;
-			const ImVec2	closeMin ( max.x - pad - closeBox, trackMin.y + ( trackBottom - trackMin.y - closeBox ) * 0.5f );
+			const auto	closeBox = px ( theme::icons::icon ) * 2.0f;
+			const ImVec2	closeMin ( max.x - pad - closeBox, trackTop + ( trackBottom - trackTop - closeBox ) * 0.5f );
 			ImGui::SetCursorScreenPos ( closeMin );
 			ImGui::InvisibleButton ( "##close", ImVec2 ( closeBox, closeBox ) );
 			const auto	isCloseHovered = ImGui::IsItemHovered ();
@@ -435,16 +367,16 @@ namespace ultra::ui::window
 			if ( isCloseHovered )
 			{
 				ImGui::SetMouseCursor ( ImGuiMouseCursor_Hand );
-				list->AddRectFilled ( closeMin, ImVec2 ( closeMin.x + closeBox, closeMin.y + closeBox ), theme::colors::closeHover, px ( theme::closeRounding ) );
+				list->AddRectFilled ( closeMin, ImVec2 ( closeMin.x + closeBox, closeMin.y + closeBox ), theme::colors::danger, px ( theme::radius::little ) );
 			}
-			closeCross ( list, ImVec2 ( closeMin.x + closeBox * 0.5f, closeMin.y + closeBox * 0.5f ), px ( theme::closeSize ) * 0.35f, isCloseHovered ? theme::colors::white : theme::colors::tab );
+			closeCross ( list, ImVec2 ( closeMin.x + closeBox * 0.5f, closeMin.y + closeBox * 0.5f ), px ( theme::icons::icon ) * 0.35f, isCloseHovered ? theme::colors::text : theme::shade ( theme::shades::muted ) );
 
 			// The rest of the bar moves the window
 			const auto	moveFrom = std::max ( x, min.x + pad );
 			if ( closeMin.x - moveFrom > 1.0f )
 			{
-				ImGui::SetCursorScreenPos ( ImVec2 ( moveFrom, min.y + px ( theme::resizeEdge ) ) );
-				ImGui::InvisibleButton ( "##move", ImVec2 ( closeMin.x - moveFrom, barHeight - px ( theme::resizeEdge ) ) );
+				ImGui::SetCursorScreenPos ( ImVec2 ( moveFrom, min.y + px ( theme::parts::resizeEdge ) ) );
+				ImGui::InvisibleButton ( "##move", ImVec2 ( closeMin.x - moveFrom, barHeight - px ( theme::parts::resizeEdge ) ) );
 				if ( ImGui::IsItemActivated () && now.held == 0 )
 					now.held = move;
 			}
@@ -463,8 +395,8 @@ namespace ultra::ui::window
 				while ( ! last->DC.ChildWindows.empty () )
 					last = last->DC.ChildWindows.back ();
 
-				const auto	shadowH = px ( theme::barShadowHeight );
-				const auto	dark = IM_COL32 ( 0, 0, 0, int ( std::lround ( std::clamp ( theme::barShadowAlpha, 0.0f, 1.0f ) * 255.0f ) ) );
+				const auto	shadowH = px ( theme::parts::barShadowHeight );
+				const auto	dark = IM_COL32 ( 0, 0, 0, int ( std::lround ( std::clamp ( theme::effects::shadowAlpha, 0.0f, 1.0f ) * 255.0f ) ) );
 				const auto	clear = IM_COL32 ( 0, 0, 0, 0 );
 				const ImVec2	shadowMin ( min.x + 1.0f, contentMin.y );
 				const ImVec2	shadowMax ( max.x - 1.0f, contentMin.y + shadowH );
@@ -643,18 +575,18 @@ namespace ultra::ui::window
 			return;
 
 		auto*		dl = ImGui::GetForegroundDrawList ();
-		const auto	pad = px ( theme::messagePad );
-		const auto	size = px ( theme::sizes::body );
+		const auto	pad = px ( theme::spacing::m );
+		const auto	size = px ( theme::text::body );
 		auto		y = pad;
 		for ( const auto& m : messages )
 		{
 			const auto	w = font::width ( font::Face::regular, size, m.text );
-			const auto	h = px ( theme::rowHeight );
+			const auto	h = px ( theme::heights::row );
 			const ImVec2	min ( pad, y );
 			const ImVec2	max ( pad + w + pad * 2.0f, y + h );
-			draw::shadow ( dl, min, max, px ( theme::dropRounding ) );
-			dl->AddRectFilled ( min, max, theme::colors::message, px ( theme::dropRounding ) );
-			font::draw ( dl, ImVec2 ( min.x + pad, font::centredTop ( font::Face::regular, size, y, h ) ), font::Face::regular, size, m.color != 0 ? m.color : theme::colors::messageText, m.text );
+			draw::shadow ( dl, min, max, px ( theme::radius::little ) );
+			dl->AddRectFilled ( min, max, theme::shade ( theme::shades::surface ), px ( theme::radius::little ) );
+			font::draw ( dl, ImVec2 ( min.x + pad, font::centredTop ( font::Face::regular, size, y, h ) ), font::Face::regular, size, m.color != 0 ? m.color : theme::shade ( theme::shades::body ), m.text );
 			y += h + pad * 0.5f;
 		}
 	}

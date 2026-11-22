@@ -54,7 +54,7 @@ namespace ultra::ui
 		[[ nodiscard ]] ImU32 inkOn ( ImU32 c )
 		{
 			const auto	luminance = 0.2126f * channel ( c, IM_COL32_R_SHIFT ) + 0.7152f * channel ( c, IM_COL32_G_SHIFT ) + 0.0722f * channel ( c, IM_COL32_B_SHIFT );
-			return luminance > 0.5f ? IM_COL32_BLACK : theme::colors::white;
+			return luminance > 0.5f ? IM_COL32_BLACK : theme::colors::text;
 		}
 
 		// A spot of the square or the strip followed while it is dragged; true while it moves the colour
@@ -83,14 +83,14 @@ namespace ultra::ui
 			auto*		dl = ImGui::GetWindowDrawList ();
 			const auto	min = ImGui::GetCursorScreenPos ();
 			const ImVec2	max ( min.x + size.x, min.y + size.y );
-			const auto	rounding = theme::px ( theme::menuRounding );
-			const auto	gap = theme::px ( theme::pickerGap );
-			const auto	side = theme::px ( theme::pickerSquare );
-			const auto	hueW = theme::px ( theme::pickerHueWidth );
-			const auto	edge = draw::color ( theme::colors::popupBorder );
+			const auto	rounding = theme::px ( theme::radius::little );
+			const auto	gap = theme::px ( theme::spacing::m );
+			const auto	side = theme::px ( theme::parts::pickerSquare );
+			const auto	hueW = theme::px ( theme::icons::icon );
+			const auto	edge = draw::color ( theme::shade ( theme::shades::edge ) );
 
 			draw::shadow ( dl, min, max, rounding );
-			dl->AddRectFilled ( min, max, draw::color ( theme::colors::popup ), rounding );
+			dl->AddRectFilled ( min, max, draw::color ( theme::shade ( theme::shades::surface ) ), rounding );
 			dl->AddRect ( min, max, edge, rounding );
 
 			auto&			hsv = picking.hsv;
@@ -136,15 +136,15 @@ namespace ultra::ui
 			dl->AddRect ( hueMin, hueMax, edge );
 
 			// The point picked, ringed light over dark so it shows on any colour; the hue as a bar across the strip
-			const auto		line = theme::px ( theme::pickerLine );
-			const auto		r = theme::px ( theme::pickerMarker );
+			const auto		line = theme::px ( theme::lines::line );
+			const auto		r = theme::px ( theme::parts::pickerMarker );
 			const ImVec2	spot ( sqMin.x + side * hsv.s, sqMin.y + side * ( 1.0f - hsv.v ) );
 			dl->AddCircle ( spot, r + line, black, 0, line );
-			dl->AddCircle ( spot, r, draw::color ( theme::colors::white ), 0, line );
+			dl->AddCircle ( spot, r, draw::color ( theme::colors::text ), 0, line );
 
 			const auto	y = hueMin.y + side * hsv.h;
 			dl->AddRect ( ImVec2 ( hueMin.x - line, y - line * 2.0f ), ImVec2 ( hueMax.x + line, y + line * 2.0f ), black, line, line * 2.0f );
-			dl->AddRect ( ImVec2 ( hueMin.x - line, y - line * 2.0f ), ImVec2 ( hueMax.x + line, y + line * 2.0f ), draw::color ( theme::colors::white ), line, line );
+			dl->AddRect ( ImVec2 ( hueMin.x - line, y - line * 2.0f ), ImVec2 ( hueMax.x + line, y + line * 2.0f ), draw::color ( theme::colors::text ), line, line );
 
 			ImGui::SetCursorScreenPos ( min );
 			ImGui::Dummy ( size );
@@ -155,7 +155,7 @@ namespace ultra::ui
 
 	Edit colorPicker ( const char* id, ImU32& color, ImU32 def, float width )
 	{
-		const auto	rowH = theme::px ( theme::rowHeight );
+		const auto	rowH = theme::px ( theme::heights::row );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 		const auto	itemId = ImGui::GetID ( id );
 
@@ -181,22 +181,22 @@ namespace ultra::ui
 
 		auto*		dl = ImGui::GetWindowDrawList ();
 		const ImVec2	max ( pos.x + width, pos.y + rowH );
-		const auto	rounding = theme::px ( theme::dropRounding );
+		const auto	rounding = theme::px ( theme::radius::little );
 		dl->AddRectFilled ( pos, max, draw::color ( color ), rounding );
-		dl->AddRect ( pos, max, draw::color ( hovered || open ? theme::colors::white : theme::colors::popupBorder ), rounding, theme::px ( theme::swatchEdge ) );
+		dl->AddRect ( pos, max, draw::color ( hovered || open ? theme::colors::text : theme::shade ( theme::shades::edge ) ), rounding, theme::px ( theme::lines::line ) );
 
 		char	hex[ 8 ];
 		std::snprintf ( hex, sizeof hex, "#%02X%02X%02X", unsigned ( ( color >> IM_COL32_R_SHIFT ) & 0xFF ), unsigned ( ( color >> IM_COL32_G_SHIFT ) & 0xFF ),
 						unsigned ( ( color >> IM_COL32_B_SHIFT ) & 0xFF ) );
-		const auto	size = theme::px ( theme::sizes::choice );
+		const auto	size = theme::px ( theme::text::body );
 		const auto	textW = font::width ( font::Face::semibold, size, hex );
 		font::draw ( dl, ImVec2 ( pos.x + ( width - textW ) * 0.5f, font::centredTop ( font::Face::semibold, size, pos.y, rowH ) ), font::Face::semibold, size,
 					 draw::color ( inkOn ( color ) ), hex );
 
 		// The picker opens a gap under the swatch, at its left edge
-		const auto		gap = theme::px ( theme::pickerGap );
-		const ImVec2	popupSize ( gap * 3.0f + theme::px ( theme::pickerSquare ) + theme::px ( theme::pickerHueWidth ), gap * 2.0f + theme::px ( theme::pickerSquare ) );
-		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( pos.x, max.y + theme::px ( theme::menuGap ) ), popupSize ) );
+		const auto		gap = theme::px ( theme::spacing::m );
+		const ImVec2	popupSize ( gap * 3.0f + theme::px ( theme::parts::pickerSquare ) + theme::px ( theme::icons::icon ), gap * 2.0f + theme::px ( theme::parts::pickerSquare ) );
+		ImGui::SetNextWindowPos ( draw::onScreen ( ImVec2 ( pos.x, max.y + theme::px ( theme::spacing::xs ) ), popupSize ) );
 		ImGui::SetNextWindowSize ( popupSize );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( 0.0f, 0.0f ) );
 		ImGui::PushStyleVar ( ImGuiStyleVar_PopupBorderSize, 0.0f );

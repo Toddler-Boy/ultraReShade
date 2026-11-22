@@ -30,11 +30,11 @@ namespace ultra::ui
 		// The chips in a row from pos (top left), each with its tooltip; sized as the hotkeys' keycaps
 		void chips ( ImDrawList* dl, ImVec2 pos, std::span<const Chip> list )
 		{
-			const auto	size = theme::px ( theme::sizes::key );
-			const auto	h = theme::px ( theme::keyHeight );
-			const auto	padX = theme::px ( theme::keyPadX );
-			const auto	edge = theme::px ( theme::chipEdge );
-			const auto	rounding = theme::px ( theme::keyRounding );
+			const auto	size = theme::px ( theme::text::little );
+			const auto	h = theme::px ( theme::heights::row );
+			const auto	padX = theme::px ( theme::spacing::m );
+			const auto	edge = theme::px ( theme::lines::line );
+			const auto	rounding = theme::px ( theme::radius::little );
 			auto		x = pos.x;
 
 			ImGui::PushID ( "chips" );
@@ -47,18 +47,18 @@ namespace ultra::ui
 
 				// The outline opaque and on pixel centres, so it reads evenly on an HDR swap chain
 				if ( chip.filled )
-					dl->AddRectFilled ( min, max, draw::color ( theme::colors::white ), rounding );
+					dl->AddRectFilled ( min, max, draw::color ( theme::colors::text ), rounding );
 				else
 					dl->AddRect ( ImVec2 ( std::floor ( min.x ) + 0.5f, std::floor ( min.y ) + 0.5f ), ImVec2 ( std::floor ( max.x ) - 0.5f, std::floor ( max.y ) - 0.5f ),
-								  draw::color ( theme::colors::white ), rounding, edge );
+								  draw::color ( theme::colors::text ), rounding, edge );
 
 				font::draw ( dl, ImVec2 ( x + padX, font::centredTop ( font::Face::semibold, size, pos.y, h ) ), font::Face::semibold, size,
-							 draw::color ( chip.filled ? theme::colors::panel : theme::colors::white ), text );
+							 draw::color ( chip.filled ? theme::colors::background : theme::colors::text ), text );
 
 				if ( chip.tooltip != nullptr )
 					tooltip ( ImGui::GetID ( text.c_str () ), ImGui::IsMouseHoveringRect ( min, max ), chip.tooltip );
 
-				x += w + theme::px ( theme::chipGap );
+				x += w + theme::px ( theme::spacing::xs );
 			}
 			ImGui::PopID ();
 		}
@@ -66,19 +66,19 @@ namespace ultra::ui
 
 	int headerTitleHeight ()
 	{
-		return int ( std::round ( font::lineHeight ( font::Face::semibold, theme::px ( theme::sizes::title ) ) ) );
+		return int ( std::round ( font::lineHeight ( font::Face::semibold, theme::px ( theme::text::title ) ) ) );
 	}
 
 	void header ( const HeaderInfo& info, float width )
 	{
 		auto*		dl = ImGui::GetWindowDrawList ();
 		const auto	pos = ImGui::GetCursorScreenPos ();
-		const auto	titleSize = theme::px ( theme::sizes::title );
-		const auto	bodySize = theme::px ( theme::sizes::body );
+		const auto	titleSize = theme::px ( theme::text::title );
+		const auto	bodySize = theme::px ( theme::text::body );
 		const auto	titleH = float ( headerTitleHeight () );
 		const auto	lineH = font::lineHeight ( font::Face::regular, bodySize );
-		const auto	gap = theme::px ( theme::rowGap );
-		const auto	chipsH = info.chips.empty () ? 0.0f : theme::px ( theme::keyHeight ) + gap;
+		const auto	gap = theme::px ( theme::spacing::xs );
+		const auto	chipsH = info.chips.empty () ? 0.0f : theme::px ( theme::heights::row ) + gap;
 		const auto	lineCount = info.lines[ 2 ] != nullptr ? 3 : 2;
 		const auto	textH = titleH + gap + chipsH + lineH * float ( lineCount );
 		const auto	hasCover = info.cover != nullptr && info.cover->valid ();
@@ -89,11 +89,11 @@ namespace ultra::ui
 
 		if ( hasCover )
 		{
-			const auto	coverW = theme::px ( theme::coverWidth );
-			height = theme::px ( theme::coverHeight );
+			const auto	coverW = theme::px ( theme::parts::coverWidth );
+			height = theme::px ( theme::parts::coverHeight );
 			dl->AddImageRounded ( info.cover->ref (), pos, ImVec2 ( pos.x + coverW, pos.y + height ), ImVec2 ( 0.0f, 0.0f ), ImVec2 ( 1.0f, 1.0f ),
-								  draw::color ( IM_COL32_WHITE ), theme::px ( theme::coverRounding ) );
-			x += coverW + theme::px ( theme::coverGap );
+								  draw::color ( IM_COL32_WHITE ), theme::px ( theme::radius::little ) );
+			x += coverW + theme::px ( theme::spacing::xl );
 		}
 
 		// Title and status lines as one block, centred on the cover
@@ -106,10 +106,10 @@ namespace ultra::ui
 			const auto		k = titleH / float ( t.height );
 			const ImVec2	at ( std::round ( x ), std::round ( y ) );
 			dl->AddImage ( t.ref (), at, ImVec2 ( at.x + float ( t.width ) * k, at.y + titleH ), ImVec2 ( 0.0f, 0.0f ), ImVec2 ( 1.0f, 1.0f ),
-						   draw::color ( theme::colors::bright ) );
+						   draw::color ( theme::colors::text ) );
 		}
 		else if ( info.title != nullptr )
-			font::draw ( dl, ImVec2 ( x, y ), font::Face::semibold, titleSize, draw::color ( theme::colors::bright ), info.title );
+			font::draw ( dl, ImVec2 ( x, y ), font::Face::semibold, titleSize, draw::color ( theme::colors::text ), info.title );
 		y += titleH + gap;
 
 		if ( ! info.chips.empty () )

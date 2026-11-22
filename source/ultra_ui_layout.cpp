@@ -157,7 +157,7 @@ namespace ultra::ui
 			for ( const auto v : { item.range.lo, item.range.hi } )
 			{
 				format ( text, sizeof ( text ), v, f );
-				w = std::max ( w, font::width ( font::Face::bold, theme::px ( theme::sizes::value ), text, true ) );
+				w = std::max ( w, font::width ( font::Face::bold, theme::px ( theme::text::body ), text, true ) );
 			}
 
 			return w;
@@ -183,19 +183,19 @@ namespace ultra::ui
 					if ( labelled ( item.kind ) )
 						labelW = std::max ( labelW, labelWidth ( labelFor ( item, frame ), item.tooltip != nullptr || item.disabledReason != nullptr || item.applies != RESHADE_UI_APPLIES_NOW,
 																 appliesOf ( item.applies ) )
-														+ ( item.onOff.isBound != 0 ? theme::px ( theme::switchWidth + theme::headingGap ) : 0.0f ) );
+														+ ( item.onOff.isBound != 0 ? theme::px ( theme::parts::switchWidth + theme::spacing::m ) : 0.0f ) );
 					if ( item.kind == RESHADE_UI_ITEM_SLIDER )
 						valueW = std::max ( valueW, valueWidth ( item ) );
 				}
 			}
 
-			const auto	g = theme::px ( theme::columnGap );
-			const auto	resetW = theme::px ( theme::resetWidth );
-			const auto	inner = width - theme::px ( theme::indent );
+			const auto	g = theme::px ( theme::spacing::l );
+			const auto	resetW = theme::px ( theme::spacing::xl );
+			const auto	inner = width - theme::px ( theme::spacing::xl );
 			Columns		c;
 
 			c.control = std::ceil ( labelW ) + g;
-			c.controlWidth = std::max ( inner - c.control - g - valueW - g - resetW, theme::px ( theme::rowHeight ) * 2.0f );
+			c.controlWidth = std::max ( inner - c.control - g - valueW - g - resetW, theme::px ( theme::heights::row ) * 2.0f );
 			c.value = c.control + c.controlWidth + g;
 			c.valueWidth = valueW;
 			c.reset = c.value + valueW + g;
@@ -207,8 +207,8 @@ namespace ultra::ui
 			const auto	pos = ImGui::GetCursorScreenPos ();
 			const auto	y = std::floor ( pos.y ) + 0.5f;
 
-			ImGui::GetWindowDrawList ()->AddLine ( ImVec2 ( pos.x, y ), ImVec2 ( pos.x + width, y ), draw::color ( theme::colors::separator ) );
-			ImGui::Dummy ( ImVec2 ( width, theme::px ( theme::separatorLine ) ) );
+			ImGui::GetWindowDrawList ()->AddLine ( ImVec2 ( pos.x, y ), ImVec2 ( pos.x + width, y ), draw::color ( theme::shade ( theme::shades::raised ) ) );
+			ImGui::Dummy ( ImVec2 ( width, theme::px ( theme::lines::line ) ) );
 		}
 
 		// An edit's end: the value saved when it is finished
@@ -382,9 +382,9 @@ namespace ultra::ui
 		// The row's height: one line, or the lines of a wrapped text
 		float textRow ( const ReShadeUiItem& item, const char* line, ImVec2 row, float width, void* frame )
 		{
-			const auto	size = theme::px ( theme::sizes::body );
-			const auto	rowH = theme::px ( theme::rowHeight );
-			const auto	tone = has ( item, RESHADE_UI_ITEM_FLAG_HAS_TONE ) && item.tone != nullptr ? item.tone ( item.context, frame ) : theme::colors::muted;
+			const auto	size = theme::px ( theme::text::body );
+			const auto	rowH = theme::px ( theme::heights::row );
+			const auto	tone = has ( item, RESHADE_UI_ITEM_FLAG_HAS_TONE ) && item.tone != nullptr ? item.tone ( item.context, frame ) : theme::shade ( theme::shades::muted );
 			auto*		dl = ImGui::GetWindowDrawList ();
 			if ( ! has ( item, RESHADE_UI_ITEM_FLAG_WRAP ) )
 			{
@@ -393,7 +393,7 @@ namespace ultra::ui
 			}
 
 			auto	y = row.y;
-			for ( const auto& part : wrapped ( line, width - theme::px ( theme::indent ), size ) )
+			for ( const auto& part : wrapped ( line, width - theme::px ( theme::spacing::xl ), size ) )
 			{
 				font::draw ( dl, ImVec2 ( row.x, font::centredTop ( font::Face::regular, size, y, rowH ) ), font::Face::regular, size, draw::color ( tone ), part );
 				y += rowH;
@@ -419,8 +419,8 @@ namespace ultra::ui
 		// Buttons in a run, side by side from the row's start, onto the next line where the row is full; the height used
 		[[ nodiscard ]] float buttonRow ( const std::vector<const ReShadeUiItem*>& items, size_t first, size_t last, ImVec2 row, float right, void* frame )
 		{
-			const auto	rowH = theme::px ( theme::rowHeight );
-			const auto	lineStep = rowH + theme::px ( theme::rowGap );
+			const auto	rowH = theme::px ( theme::heights::row );
+			const auto	lineStep = rowH + theme::px ( theme::spacing::xs );
 			auto		x = row.x;
 			auto		y = row.y;
 
@@ -463,7 +463,7 @@ namespace ultra::ui
 				ImGui::EndDisabled ();
 				ImGui::PopID ();
 
-				x += w + theme::px ( theme::buttonGap );
+				x += w + theme::px ( theme::spacing::m );
 			}
 
 			return y - row.y + rowH;
@@ -508,9 +508,9 @@ namespace ultra::ui
 			const auto	key = section.hotkey != nullptr ? section.hotkey ( section.context ) : ReShadeUiHotkey {};
 			std::string	storage;
 
-			gap ( theme::separatorAbove );
+			gap ( theme::spacing::m );
 			separator ( width );
-			gap ( theme::headingAbove );
+			gap ( theme::spacing::m );
 
 			const auto	head = ImGui::GetCursorScreenPos ();
 			auto		on = true;
@@ -524,7 +524,7 @@ namespace ultra::ui
 				ImGui::BeginDisabled ( lockReason != nullptr || sectionReason != nullptr );
 				const auto	edit = toggle ( "on", on, title, { true, hotkeyOf ( &key ), tip, Applies::now, section.toggle.def != 0.0f } );
 				ImGui::EndDisabled ();
-				arrowFrom = ImGui::GetItemRectMax ().x + ( tip != nullptr ? theme::px ( theme::infoGap + theme::infoSize ) : 0.0f );
+				arrowFrom = ImGui::GetItemRectMax ().x + ( tip != nullptr ? theme::px ( theme::spacing::xs + theme::icons::icon ) : 0.0f );
 
 				if ( edit.changed )
 					section.toggle.set ( section.context, frame, on ? 1.0f : 0.0f );
@@ -540,16 +540,16 @@ namespace ultra::ui
 			// The file in the muted colour after the name, which the heading's dragging and collapsing take in too
 			if ( section.subtitle != nullptr && *section.subtitle != 0 && section.toggle.isBound != 0 )
 			{
-				const auto	size = theme::px ( theme::sizes::body );
-				const auto	at = arrowFrom + theme::px ( theme::headingGap );
-				font::draw ( ImGui::GetWindowDrawList (), ImVec2 ( at, font::centredTop ( font::Face::regular, size, head.y, theme::px ( theme::rowHeight ) ) ), font::Face::regular, size,
-							 draw::color ( theme::colors::muted ), section.subtitle );
+				const auto	size = theme::px ( theme::text::body );
+				const auto	at = arrowFrom + theme::px ( theme::spacing::m );
+				font::draw ( ImGui::GetWindowDrawList (), ImVec2 ( at, font::centredTop ( font::Face::regular, size, head.y, theme::px ( theme::heights::row ) ) ), font::Face::regular, size,
+							 draw::color ( theme::shade ( theme::shades::muted ) ), section.subtitle );
 				arrowFrom = at;
 			}
 
 			// Over another draggable heading while one is dragged: they change places, the dragged one follows
 			if ( section.isDraggable != 0 && page.moveSection != nullptr && drag.index >= 0 && drag.index != int ( index )
-				 && ImGui::IsMouseHoveringRect ( head, ImVec2 ( head.x + width, head.y + theme::px ( theme::rowHeight ) ) ) )
+				 && ImGui::IsMouseHoveringRect ( head, ImVec2 ( head.x + width, head.y + theme::px ( theme::heights::row ) ) ) )
 			{
 				page.moveSection ( page.context, uint32_t ( drag.index ), index );
 				drag.index = int ( index );
@@ -557,24 +557,24 @@ namespace ultra::ui
 
 			const auto	open = page.isCollapsed ( page.context, section.label ) == 0;
 			ImGui::SetCursorScreenPos ( ImVec2 ( arrowFrom, head.y ) );
-			const auto	isClicked = collapseArrow ( "collapse", open, std::max ( head.x + width - arrowFrom, theme::px ( theme::rowHeight ) ) );
-			if ( section.isDraggable != 0 && page.moveSection != nullptr && ImGui::IsItemActive () && ImGui::IsMouseDragging ( ImGuiMouseButton_Left, theme::px ( theme::dragThreshold ) ) )
+			const auto	isClicked = collapseArrow ( "collapse", open, std::max ( head.x + width - arrowFrom, theme::px ( theme::heights::row ) ) );
+			if ( section.isDraggable != 0 && page.moveSection != nullptr && ImGui::IsItemActive () && ImGui::IsMouseDragging ( ImGuiMouseButton_Left, theme::px ( theme::parts::dragThreshold ) ) )
 			{
 				drag.index = int ( index );
 				drag.isMoved = true;
 			}
 			if ( isClicked && ! drag.isMoved )
 				page.setCollapsed ( page.context, section.label, open ? 1 : 0 );
-			ImGui::SetCursorScreenPos ( ImVec2 ( head.x, head.y + theme::px ( theme::rowHeight ) ) );
+			ImGui::SetCursorScreenPos ( ImVec2 ( head.x, head.y + theme::px ( theme::heights::row ) ) );
 
-			gap ( theme::headingBelow );
+			gap ( theme::spacing::xs );
 
 			// Off, dimmed by what it depends on, or collapsed: the heading alone, its rows not built
 			if ( ! on || ! open || sectionReason != nullptr )
 				return;
 
-			const auto	rowH = theme::px ( theme::rowHeight );
-			const auto	x = ImGui::GetCursorScreenPos ().x + theme::px ( theme::indent );
+			const auto	rowH = theme::px ( theme::heights::row );
+			const auto	x = ImGui::GetCursorScreenPos ().x + theme::px ( theme::spacing::xl );
 			const auto	items = rowsOf ( section.items, section.itemCount );
 			auto		first = true;
 			auto		isAfterHeading = false;
@@ -594,9 +594,9 @@ namespace ultra::ui
 
 				// A choice or drop-down right under its heading gets a little more room above it, a group's heading after
 				// other rows more
-				gap ( theme::rowGap * 0.5f + ( first && item.kind == RESHADE_UI_ITEM_OPTIONS ? theme::firstRowAbove : 0.0f )
-					  + ( ! first && item.kind == RESHADE_UI_ITEM_SUBHEADING ? theme::subheadingAbove : 0.0f )
-					  + ( ! first && has ( item, RESHADE_UI_ITEM_FLAG_SET_APART ) && ! isAfterHeading ? theme::rowGap : 0.0f ) );
+				gap ( theme::spacing::xs * 0.5f + ( first && item.kind == RESHADE_UI_ITEM_OPTIONS ? theme::spacing::xs : 0.0f )
+					  + ( ! first && item.kind == RESHADE_UI_ITEM_SUBHEADING ? theme::spacing::m : 0.0f )
+					  + ( ! first && has ( item, RESHADE_UI_ITEM_FLAG_SET_APART ) && ! isAfterHeading ? theme::spacing::xs : 0.0f ) );
 				first = false;
 				isAfterHeading = item.kind == RESHADE_UI_ITEM_SUBHEADING;
 
@@ -620,7 +620,7 @@ namespace ultra::ui
 						break;
 					case RESHADE_UI_ITEM_OPTIONS:
 						if ( asChoiceRow ( item ) )
-							height = theme::px ( theme::choiceRowHeight );
+							height = theme::px ( theme::heights::large );
 						label ( ImVec2 ( row.x, row.y + ( height - rowH ) * 0.5f ), labelFor ( item, frame ), tip, applies );
 						indexRow ( item, row, c, frame );
 						break;
@@ -633,7 +633,7 @@ namespace ultra::ui
 					case RESHADE_UI_ITEM_BUTTON:
 						while ( next < items.size () && items[ next ]->kind == RESHADE_UI_ITEM_BUTTON )
 							++next;
-						height = buttonRow ( items, i, next, row, row.x - theme::px ( theme::indent ) + width, frame );
+						height = buttonRow ( items, i, next, row, row.x - theme::px ( theme::spacing::xl ) + width, frame );
 						break;
 					case RESHADE_UI_ITEM_REPEAT:	break;
 				}
@@ -641,9 +641,9 @@ namespace ultra::ui
 				ImGui::EndDisabled ();
 				ImGui::PopID ();
 
-				ImGui::SetCursorScreenPos ( ImVec2 ( row.x - theme::px ( theme::indent ), row.y ) );
+				ImGui::SetCursorScreenPos ( ImVec2 ( row.x - theme::px ( theme::spacing::xl ), row.y ) );
 				ImGui::Dummy ( ImVec2 ( width, height ) );
-				gap ( theme::rowGap * 0.5f );
+				gap ( theme::spacing::xs * 0.5f );
 				i = next;
 			}
 		}
@@ -651,7 +651,7 @@ namespace ultra::ui
 		void drawSections ( const ReShadeUiPage& page, void* frame, float width )
 		{
 			ImGui::PushStyleVar ( ImGuiStyleVar_ItemSpacing, ImVec2 ( 0.0f, 0.0f ) );
-			ImGui::PushStyleVar ( ImGuiStyleVar_DisabledAlpha, theme::disabledAlpha );
+			ImGui::PushStyleVar ( ImGuiStyleVar_DisabledAlpha, theme::effects::disabledAlpha );
 
 			const auto	c = columns ( page, width, frame );
 
@@ -719,8 +719,8 @@ namespace ultra::ui
 			const auto	track = ImGui::GetWindowScrollbarRect ( window, ImGuiAxis_Y );
 			auto		bb = track;
 			bb.Expand ( -std::trunc ( std::min ( style.ScrollbarPadding, std::min ( track.GetWidth (), track.GetHeight () ) * 0.5f ) ) );
-			bb.Min.y += theme::px ( theme::scrollThumbInset );
-			bb.Max.y -= theme::px ( theme::scrollThumbInset );
+			bb.Min.y += theme::px ( theme::spacing::m );
+			bb.Max.y -= theme::px ( theme::spacing::m );
 
 			const auto	length = bb.GetHeight ();
 			if ( length < 1.0f )
@@ -733,7 +733,7 @@ namespace ultra::ui
 			const auto	top = bb.Min.y + ( length - thumb ) * share;
 
 			const auto	id = ImGui::GetWindowScrollbarID ( window, ImGuiAxis_Y );
-			const auto	color = ImGui::GetActiveID () == id || ImGui::GetHoveredID () == id ? theme::colors::scrollThumbHover : theme::colors::scrollThumb;
+			const auto	color = ImGui::GetActiveID () == id || ImGui::GetHoveredID () == id ? theme::shade ( theme::shades::strong ) : theme::shade ( theme::shades::hover );
 			window->DrawList->PushClipRect ( track.Min, track.Max, false );
 			window->DrawList->AddRectFilled ( ImVec2 ( bb.Min.x, top ), ImVec2 ( bb.Max.x, top + thumb ), draw::color ( color ), style.ScrollbarRounding );
 			window->DrawList->PopClipRect ();
@@ -771,11 +771,11 @@ namespace ultra::ui
 			const auto		avail = ImGui::GetContentRegionAvail ();
 			const ImVec2	min ( at.x - style.WindowPadding.x, at.y - style.WindowPadding.y );
 			const ImVec2	max ( at.x + avail.x + style.WindowPadding.x, at.y + avail.y + style.WindowPadding.y );
-			ImGui::GetWindowDrawList ()->AddRectFilled ( min, max, theme::colors::panel, style.WindowRounding, ImDrawFlags_RoundBottom );
+			ImGui::GetWindowDrawList ()->AddRectFilled ( min, max, theme::colors::background, style.WindowRounding, ImDrawFlags_RoundBottom );
 		}
 
 		// A child filling the tab, padded on all sides; it scrolls when the page is taller or wider than the window
-		const auto	inset = theme::px ( theme::panelInset );
+		const auto	inset = theme::px ( theme::spacing::m );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( inset, inset ) );
 		ImGui::PushStyleColor ( ImGuiCol_ChildBg, IM_COL32 ( 0, 0, 0, 0 ) );
 		ImGui::PushStyleColor ( ImGuiCol_ScrollbarGrab, IM_COL32 ( 0, 0, 0, 0 ) );
@@ -787,12 +787,12 @@ namespace ultra::ui
 
 		if ( open )
 		{
-			const auto	width = theme::px ( theme::panelWidth );
+			const auto	width = theme::px ( theme::parts::panelWidth );
 			if ( page.header != nullptr )
 			{
 				ReShadeUiHeader	info {};
-				info.lineColors[ 0 ] = theme::colors::text;
-				info.lineColors[ 1 ] = info.lineColors[ 2 ] = theme::colors::muted;
+				info.lineColors[ 0 ] = theme::shade ( theme::shades::body );
+				info.lineColors[ 1 ] = info.lineColors[ 2 ] = theme::shade ( theme::shades::muted );
 				page.header ( page.context, frame, &info );
 				header ( info, width );
 			}

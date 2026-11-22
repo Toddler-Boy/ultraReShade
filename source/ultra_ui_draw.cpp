@@ -40,14 +40,14 @@ namespace ultra::ui::draw
 	{
 		// Rings from wide and faint to tight, stacking to a soft falloff; ReShade's ImGui has no shadow primitive
 		constexpr int	rings = 6;
-		const auto		spread = theme::px ( theme::shadowSpread );
-		const auto		offset = theme::px ( theme::shadowOffset );
+		const auto		spread = theme::px ( theme::effects::shadowSpread );
+		const auto		offset = theme::px ( theme::effects::shadowOffset );
 
 		drawList->PushClipRectFullScreen ();
 		for ( int i = rings; i >= 1; --i )
 		{
 			const auto	grow = spread * float ( i ) / float ( rings );
-			const auto	a = alpha * theme::shadowAlpha / float ( rings );
+			const auto	a = alpha * theme::effects::shadowAlpha / float ( rings );
 			drawList->AddRectFilled ( ImVec2 ( min.x - grow, min.y - grow + offset ), ImVec2 ( max.x + grow, max.y + grow + offset ),
 									  color ( IM_COL32_BLACK, a ), rounding + grow );
 		}
@@ -58,24 +58,24 @@ namespace ultra::ui::draw
 	{
 		[[ nodiscard ]] float keycapWidth ( const char* key )
 		{
-			return font::width ( font::Face::semibold, theme::px ( theme::sizes::key ), key ) + theme::px ( theme::keyPadX ) * 2.0f;
+			return font::width ( font::Face::semibold, theme::px ( theme::text::little ), key ) + theme::px ( theme::spacing::m ) * 2.0f;
 		}
 
 		float keycap ( ImDrawList* drawList, ImVec2 pos, const char* key )
 		{
-			const auto	size = theme::px ( theme::sizes::key );
+			const auto	size = theme::px ( theme::text::little );
 			const auto	w = keycapWidth ( key );
-			const auto	h = theme::px ( theme::keyHeight );
-			const auto	face = h - theme::px ( theme::keyEdge );
-			const auto	rounding = theme::px ( theme::keyRounding );
+			const auto	h = theme::px ( theme::heights::row );
+			const auto	face = h - theme::px ( theme::lines::line );
+			const auto	rounding = theme::px ( theme::radius::little );
 
-			drawList->AddRectFilled ( pos, ImVec2 ( pos.x + w, pos.y + h ), color ( theme::colors::keycapEdge ), rounding );
-			drawList->AddRectFilled ( pos, ImVec2 ( pos.x + w, pos.y + face ), color ( theme::colors::keycap ), rounding );
+			drawList->AddRectFilled ( pos, ImVec2 ( pos.x + w, pos.y + h ), color ( theme::shade ( theme::shades::surface ) ), rounding );
+			drawList->AddRectFilled ( pos, ImVec2 ( pos.x + w, pos.y + face ), color ( theme::shade ( theme::shades::edge ) ), rounding );
 
 			// Centred in the lighter top face, not the whole key
 			const auto	textW = font::width ( font::Face::semibold, size, key );
 			font::draw ( drawList, ImVec2 ( pos.x + ( w - textW ) * 0.5f, font::centredTop ( font::Face::semibold, size, pos.y, face ) ),
-						 font::Face::semibold, size, color ( theme::colors::white ), key );
+						 font::Face::semibold, size, color ( theme::colors::text ), key );
 			return w;
 		}
 	}
@@ -87,7 +87,7 @@ namespace ultra::ui::draw
 		float						w = 0.0f;
 
 		for ( int i = 0; i < n; ++i )
-			w += keycapWidth ( names[ size_t ( i ) ] ) + ( i > 0 ? theme::px ( theme::keycapGap ) : 0.0f );
+			w += keycapWidth ( names[ size_t ( i ) ] ) + ( i > 0 ? theme::px ( theme::spacing::xs ) : 0.0f );
 
 		return w;
 	}
@@ -101,7 +101,7 @@ namespace ultra::ui::draw
 		for ( int i = 0; i < n; ++i )
 		{
 			if ( i > 0 )
-				x += theme::px ( theme::keycapGap );
+				x += theme::px ( theme::spacing::xs );
 			x += keycap ( drawList, ImVec2 ( x, pos.y ), names[ size_t ( i ) ] );
 		}
 
@@ -110,14 +110,14 @@ namespace ultra::ui::draw
 
 	void infoDot ( ImDrawList* drawList, ImVec2 centre )
 	{
-		const auto	r = theme::px ( theme::infoSize ) * 0.5f;
-		const auto	size = theme::px ( theme::sizes::info );
+		const auto	r = theme::px ( theme::icons::icon ) * 0.5f;
+		const auto	size = theme::px ( theme::text::little );
 
-		drawList->AddCircleFilled ( centre, r, color ( theme::colors::infoDot ) );
+		drawList->AddCircleFilled ( centre, r, color ( theme::shade ( theme::shades::strong ) ) );
 
 		const auto	w = font::width ( font::Face::bold, size, "i" );
 		font::draw ( drawList, ImVec2 ( centre.x - w * 0.5f, font::centredTop ( font::Face::bold, size, centre.y - r, r * 2.0f ) ),
-					 font::Face::bold, size, color ( theme::colors::infoGlyph ), "i" );
+					 font::Face::bold, size, color ( theme::colors::background ), "i" );
 	}
 
 	void resetIcon ( ImDrawList* drawList, ImVec2 centre, float size, ImU32 col )
@@ -144,20 +144,16 @@ namespace ultra::ui::draw
 		drawList->AddPolyline ( points, 3, col, size * 0.1f );
 	}
 
-	void disclosure ( ImDrawList* drawList, ImVec2 centre, float size, float radius, ImU32 col, float open )
+	void sectionChevron ( ImDrawList* drawList, ImVec2 centre, float size, ImU32 col, float open )
 	{
-		const auto	angle = open * std::numbers::pi_v<float> * 0.5f;
+		const auto	angle = ( 1.0f - open ) * std::numbers::pi_v<float> * -0.5f;
 		const auto	c = std::cos ( angle );
-		const auto	sn = std::sin ( angle );
-		const auto	at = [ & ] ( float x, float y ) { return ImVec2 ( centre.x + x * c - y * sn, centre.y + x * sn + y * c ); };
-		const auto	r = size * 0.5f - radius;
-		const ImVec2	points[] { at ( r * 0.6f, 0.0f ), at ( -r * 0.4f, -r * 0.6f ), at ( -r * 0.4f, r * 0.6f ) };
+		const auto	s = std::sin ( angle );
+		const auto	at = [ & ] ( float x, float y ) { return ImVec2 ( centre.x + x * c - y * s, centre.y + x * s + y * c ); };
+		const auto	w = size * 0.32f;
+		const auto	h = size * 0.17f;
+		const ImVec2	points[] = { at ( -w, -h ), at ( 0.0f, h ), at ( w, -h ) };
 
-		drawList->AddTriangleFilled ( points[ 0 ], points[ 1 ], points[ 2 ], col );
-		if ( radius <= 0.0f )
-			return;
-		drawList->AddPolyline ( points, 3, col, radius * 2.0f, ImDrawFlags_Closed );
-		for ( const auto& p : points )
-			drawList->AddCircleFilled ( p, radius, col );
+		drawList->AddPolyline ( points, 3, col, size * 0.1f );
 	}
 }

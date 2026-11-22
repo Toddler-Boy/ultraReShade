@@ -47,11 +47,11 @@ namespace ultra::ui
 
 	Edit textField ( const char* id, std::string& text, float width )
 	{
-		const auto	rowH = theme::px ( theme::rowHeight );
-		const auto	pad = theme::px ( theme::valueEditPad );
-		const auto	size = theme::px ( theme::sizes::body );
+		const auto	rowH = theme::px ( theme::heights::row );
+		const auto	pad = theme::px ( theme::spacing::xs );
+		const auto	size = theme::px ( theme::text::body );
 		const auto	pos = ImGui::GetCursorScreenPos ();
-		const auto	rounding = theme::px ( theme::dropRounding );
+		const auto	rounding = theme::px ( theme::radius::little );
 		auto*		dl = ImGui::GetWindowDrawList ();
 
 		char	buffer[ maxChars + 1 ] {};
@@ -82,9 +82,9 @@ namespace ultra::ui
 
 		const ImVec2	boxMin ( pos.x, pos.y );
 		const ImVec2	boxMax ( pos.x + width, pos.y + rowH );
-		dl->AddRectFilled ( boxMin, boxMax, draw::color ( theme::colors::control ), rounding );
+		dl->AddRectFilled ( boxMin, boxMax, draw::color ( theme::shade ( theme::shades::surface ) ), rounding );
 		if ( active || hovered )
-			dl->AddRect ( boxMin, boxMax, draw::color ( active ? theme::colors::accent : theme::colors::track ), rounding );
+			dl->AddRect ( boxMin, boxMax, draw::color ( active ? theme::colors::accent : theme::shade ( theme::shades::edge ) ), rounding );
 		if ( hovered )
 			ImGui::SetMouseCursor ( ImGuiMouseCursor_TextInput );
 
@@ -97,11 +97,11 @@ namespace ultra::ui
 		if ( active && typing.selEnd > typing.selStart )
 			dl->AddRectFilled ( ImVec2 ( x + offsetX ( typing.selStart ), top ), ImVec2 ( x + offsetX ( typing.selEnd ), top + lineH ),
 								draw::color ( theme::colors::accent, selectionAlpha ) );
-		font::draw ( dl, ImVec2 ( x, top ), font::Face::regular, size, draw::color ( theme::colors::bright ), text );
+		font::draw ( dl, ImVec2 ( x, top ), font::Face::regular, size, draw::color ( theme::colors::text ), text );
 		if ( active && std::fmod ( ImGui::GetTime () - typing.cursorMoved, blinkPeriod ) < blinkOn )
 		{
 			const auto	caret = std::floor ( x + offsetX ( typing.cursor ) ) + 0.5f;
-			dl->AddLine ( ImVec2 ( caret, top ), ImVec2 ( caret, top + lineH ), draw::color ( theme::colors::bright ) );
+			dl->AddLine ( ImVec2 ( caret, top ), ImVec2 ( caret, top + lineH ), draw::color ( theme::colors::text ) );
 		}
 		return edit;
 	}

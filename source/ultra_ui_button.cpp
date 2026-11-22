@@ -29,19 +29,19 @@ namespace ultra::ui
 
 		[[ nodiscard ]] float keysWidth ( const Hotkey& hotkey )
 		{
-			return hotkey ? theme::px ( theme::keyGap ) + draw::keycapsWidth ( hotkey ) : 0.0f;
+			return hotkey ? theme::px ( theme::spacing::xs ) + draw::keycapsWidth ( hotkey ) : 0.0f;
 		}
 	}
 
 	float buttonWidth ( const void* key, const char* text, const char* done, const Hotkey& hotkey )
 	{
-		const auto	size = theme::px ( theme::sizes::choice );
+		const auto	size = theme::px ( theme::text::body );
 		auto		w = font::width ( font::Face::semibold, size, text );
 		if ( done != nullptr )
 			w = std::max ( w, font::width ( font::Face::semibold, size, done ) );
 
 		auto&	state = states[ key ];
-		state.width = std::max ( state.width, w + keysWidth ( hotkey ) + theme::px ( theme::buttonPadX ) * 2.0f );
+		state.width = std::max ( state.width, w + keysWidth ( hotkey ) + theme::px ( theme::spacing::l ) * 2.0f );
 		return state.width;
 	}
 
@@ -53,7 +53,7 @@ namespace ultra::ui
 	bool button ( const void* key, const char* text, bool primary, const char* done, const Hotkey& hotkey, float progress )
 	{
 		const auto	w = buttonWidth ( key, text, done, hotkey );
-		const auto	h = theme::px ( theme::rowHeight );
+		const auto	h = theme::px ( theme::heights::row );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 
 		ImGui::PushID ( key );
@@ -77,31 +77,31 @@ namespace ultra::ui
 		// Running, the plain button fills with the accent as far as the action got
 		if ( running )
 		{
-			dl->AddRectFilled ( min, max, draw::color ( theme::colors::button ), rounding );
+			dl->AddRectFilled ( min, max, draw::color ( theme::shade ( theme::shades::raised ) ), rounding );
 			dl->PushClipRect ( min, ImVec2 ( min.x + ( max.x - min.x ) * std::min ( progress, 1.0f ), max.y ), true );
 			dl->AddRectFilled ( min, max, draw::color ( theme::colors::accent ), rounding );
 			dl->PopClipRect ();
 		}
 		else
 		{
-			const auto	back = primary ? ( hovered ? theme::colors::accentHover : theme::colors::accent ) : ( hovered ? theme::colors::buttonHover : theme::colors::button );
+			const auto	back = primary ? ( hovered ? theme::accentHover () : theme::colors::accent ) : ( hovered ? theme::shade ( theme::shades::edge ) : theme::shade ( theme::shades::raised ) );
 			dl->AddRectFilled ( min, max, draw::color ( back ), rounding );
 		}
 
 		// Label and keycaps centred as one in the button
-		const auto	showDone = done != nullptr && ImGui::GetTime () - states[ key ].doneAt < theme::doneSeconds;
+		const auto	showDone = done != nullptr && ImGui::GetTime () - states[ key ].doneAt < theme::motion::doneSeconds;
 		const auto*	shown = showDone ? done : text;
-		const auto	size = theme::px ( theme::sizes::choice ) * k;
-		const auto	inner = ( w - theme::px ( theme::buttonPadX ) * 2.0f ) * k;
+		const auto	size = theme::px ( theme::text::body ) * k;
+		const auto	inner = ( w - theme::px ( theme::spacing::l ) * 2.0f ) * k;
 		const auto	keysW = keysWidth ( hotkey ) * k;
 		const auto	textW = font::width ( font::Face::semibold, size, shown );
 		const auto	left = c.x - inner * 0.5f;
 
 		font::draw ( dl, ImVec2 ( left + ( inner - keysW - textW ) * 0.5f, font::centredTop ( font::Face::semibold, size, min.y, max.y - min.y ) ), font::Face::semibold, size,
-					 draw::color ( primary || running ? theme::colors::white : theme::colors::text ), shown );
+					 draw::color ( primary || running ? theme::colors::text : theme::shade ( theme::shades::body ) ), shown );
 
 		if ( hotkey )
-			draw::keycaps ( dl, ImVec2 ( left + inner - keysW + theme::px ( theme::keyGap ) * k, c.y - theme::px ( theme::keyHeight ) * 0.5f ), hotkey );
+			draw::keycaps ( dl, ImVec2 ( left + inner - keysW + theme::px ( theme::spacing::xs ) * k, c.y - theme::px ( theme::heights::row ) * 0.5f ), hotkey );
 
 		return clicked;
 	}

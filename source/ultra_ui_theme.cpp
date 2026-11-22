@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <filesystem>
 #include <optional>
+#include <span>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -56,62 +57,66 @@ namespace ultra::ui::theme
 			ImU32*		value;
 		};
 
-		constexpr float	mostSize = 100000.0f;
+		constexpr double	mostSize = 100000.0;
+		constexpr double	mostShade = 1.0;
 
-		// The file's members, in its order, which is the roles' order (include/reshade_ultra_ui.h)
-		constexpr Size	sizeTable[] {
-			{ "rowHeight", &rowHeight }, { "rowGap", &rowGap }, { "columnGap", &columnGap }, { "indent", &indent }, { "separatorAbove", &separatorAbove },
-			{ "headingAbove", &headingAbove }, { "headingBelow", &headingBelow }, { "subheadingAbove", &subheadingAbove }, { "firstRowAbove", &firstRowAbove },
-			{ "headingGap", &headingGap }, { "sliderBack", &sliderBack }, { "sliderPad", &sliderPad }, { "valueEditPad", &valueEditPad }, { "switchWidth", &switchWidth },
-			{ "switchHeight", &switchHeight }, { "knobSize", &knobSize }, { "choicePad", &choicePad }, { "dropPadLeft", &dropPadLeft }, { "dropPadRight", &dropPadRight },
-			{ "menuPad", &menuPad }, { "menuItemPad", &menuItemPad }, { "menuGap", &menuGap }, { "tipPadX", &tipPadX }, { "tipPadY", &tipPadY },
-			{ "buttonPadX", &buttonPadX }, { "buttonGap", &buttonGap }, { "keyHeight", &keyHeight }, { "keyPadX", &keyPadX }, { "disclosureSize", &disclosureSize },
-			{ "disclosureRadius", &disclosureRadius },
+		// A json object of the file: its name and how many values it holds, taken from numberTable in turn
+		struct Section
+		{
+			const char*	name;
+			size_t		count;
+			double		most;
+		};
 
-			{ "body", &sizes::body, 1.0f }, { "heading", &sizes::heading, 1.0f }, { "subheading", &sizes::subheading, 1.0f }, { "title", &sizes::title, 1.0f },
-			{ "choice", &sizes::choice, 1.0f }, { "value", &sizes::value, 1.0f }, { "key", &sizes::key, 1.0f }, { "tip", &sizes::tip, 1.0f }, { "info", &sizes::info, 1.0f },
-			{ "panelInset", &panelInset }, { "panelWidth", &panelWidth, 1.0f }, { "resetWidth", &resetWidth }, { "resetIcon", &resetIcon },
-			{ "inlineToggleHeight", &inlineToggleHeight }, { "bipolarMinFill", &bipolarMinFill }, { "dropRounding", &dropRounding }, { "chevronSize", &chevronSize },
-			{ "menuRounding", &menuRounding }, { "menuItemRounding", &menuItemRounding }, { "tipMaxWidth", &tipMaxWidth, 1.0f }, { "tipGap", &tipGap },
-			{ "shadowSpread", &shadowSpread }, { "shadowOffset", &shadowOffset }, { "shadowAlpha", &shadowAlpha }, { "pickerSquare", &pickerSquare },
-			{ "pickerHueWidth", &pickerHueWidth }, { "pickerGap", &pickerGap }, { "pickerMarker", &pickerMarker }, { "swatchEdge", &swatchEdge },
-			{ "infoSize", &infoSize }, { "infoGap", &infoGap }, { "keyEdge", &keyEdge }, { "keyRounding", &keyRounding }, { "keyGap", &keyGap }, { "keycapGap", &keycapGap },
-			{ "coverWidth", &coverWidth }, { "coverHeight", &coverHeight }, { "coverRounding", &coverRounding }, { "coverGap", &coverGap }, { "chipGap", &chipGap },
-			{ "chipEdge", &chipEdge }, { "disabledAlpha", &disabledAlpha }, { "swingSeconds", &swingSeconds, 0.001f }, { "swingStretch", &swingStretch },
-			{ "fadeSeconds", &fadeSeconds, 0.001f }, { "tipDelay", &tipDelay }, { "doneSeconds", &doneSeconds }, { "windowRounding", &windowRounding },
-			{ "windowPad", &windowPad }, { "windowMinWidth", &windowMinWidth }, { "windowMinHeight", &windowMinHeight }, { "resizeEdge", &resizeEdge },
-			{ "tabHeight", &tabHeight }, { "tabPadX", &tabPadX }, { "tabGap", &tabGap }, { "tabLine", &tabLine }, { "scrollbarWidth", &scrollbarWidth },
-			{ "scrollbarGap", &scrollbarGap }, { "scrollThumbMin", &scrollThumbMin }, { "closeSize", &closeSize }, { "messagePad", &messagePad }, { "dotSize", &dotSize },
-			{ "tipEdge", &tipEdge },
-			{ "tabInsetTop", &tabInsetTop }, { "tabPillInset", &tabPillInset }, { "dotGap", &dotGap }, { "dotRing", &dotRing }, { "closeLine", &closeLine },
-			{ "pickerLine", &pickerLine }, { "separatorLine", &separatorLine }, { "dragThreshold", &dragThreshold }, { "sliderHandleGrow", &sliderHandleGrow },
-			{ "tabInsetBottom", &tabInsetBottom }, { "choiceRowHeight", &choiceRowHeight }, { "logoGap", &logoGap }, { "logoHeight", &logoHeight }, { "logoInset", &logoInset }, { "barShadowHeight", &barShadowHeight }, { "barShadowAlpha", &barShadowAlpha },
-			{ "logoSweepAngle", &logoSweepAngle }, { "logoSweepWidth", &logoSweepWidth }, { "logoSweepSeconds", &logoSweepSeconds }, { "logoSweepPeriod", &logoSweepPeriod },
-			{ "scrollThumbInset", &scrollThumbInset }, { "closeRounding", &closeRounding } };
+		// The file's numbers in its order, sections one after the other; the shades last. Everything before them is the roles' order (include/reshade_ultra_ui_theme.h)
+		constexpr Size	numberTable[] {
+			{ "xs", &spacing::xs }, { "m", &spacing::m }, { "l", &spacing::l }, { "xl", &spacing::xl },
+			{ "small", &radius::little }, { "large", &radius::large },
+			{ "line", &lines::line },
+			{ "row", &heights::row }, { "large", &heights::large }, { "bar", &heights::bar },
+			{ "small", &text::little, 1.0f }, { "body", &text::body, 1.0f }, { "large", &text::large, 1.0f }, { "title", &text::title, 1.0f },
+			{ "icon", &icons::icon },
+			{ "panelWidth", &parts::panelWidth, 1.0f }, { "tipMaxWidth", &parts::tipMaxWidth, 1.0f }, { "pickerSquare", &parts::pickerSquare },
+			{ "pickerMarker", &parts::pickerMarker }, { "coverWidth", &parts::coverWidth }, { "coverHeight", &parts::coverHeight },
+			{ "windowMinWidth", &parts::windowMinWidth }, { "windowMinHeight", &parts::windowMinHeight }, { "resizeEdge", &parts::resizeEdge },
+			{ "switchWidth", &parts::switchWidth }, { "scrollbarWidth", &parts::scrollbarWidth }, { "scrollThumbMin", &parts::scrollThumbMin },
+			{ "bipolarMinFill", &parts::bipolarMinFill }, { "barShadowHeight", &parts::barShadowHeight },
+			{ "dragThreshold", &parts::dragThreshold },
+			{ "transition", &motion::transition, 0.001f }, { "tipDelay", &motion::tipDelay }, { "doneSeconds", &motion::doneSeconds },
+			{ "shadowSpread", &effects::shadowSpread }, { "shadowOffset", &effects::shadowOffset }, { "shadowAlpha", &effects::shadowAlpha },
+			{ "disabledAlpha", &effects::disabledAlpha }, { "tipEdge", &effects::tipEdge }, { "sliderHandleGrow", &effects::sliderHandleGrow },
+			{ "sweepAngle", &logo::sweepAngle }, { "sweepWidth", &logo::sweepWidth }, { "sweepSeconds", &logo::sweepSeconds }, { "sweepPeriod", &logo::sweepPeriod },
+			{ "surface", &shades::surface }, { "raised", &shades::raised }, { "edge", &shades::edge }, { "hover", &shades::hover }, { "strong", &shades::strong },
+			{ "muted", &shades::muted }, { "body", &shades::body } };
+
+		constexpr Section	sectionTable[] {
+			{ "spacing", 4, mostSize }, { "radius", 2, mostSize }, { "lines", 1, mostSize }, { "heights", 3, mostSize }, { "text", 4, mostSize }, { "icons", 1, mostSize },
+			{ "parts", 15, mostSize }, { "motion", 3, mostSize }, { "effects", 6, mostSize }, { "logo", 4, mostSize }, { "shades", 7, mostShade } };
 
 		constexpr Color	colorTable[] {
-			{ "accent", &colors::accent }, { "danger", &colors::danger }, { "warning", &colors::warning }, { "accentHover", &colors::accentHover },
-			{ "text", &colors::text }, { "bright", &colors::bright }, { "muted", &colors::muted }, { "nextStart", &colors::nextStart },
-			{ "appliesAfter", &colors::appliesAfter }, { "white", &colors::white }, { "separator", &colors::separator }, { "panel", &colors::panel },
-			{ "control", &colors::control }, { "controlHover", &colors::controlHover }, { "track", &colors::track }, { "tick", &colors::tick },
-			{ "handle", &colors::handle }, { "switchOff", &colors::switchOff }, { "knobOff", &colors::knobOff }, { "knobOn", &colors::knobOn },
-			{ "chevron", &colors::chevron }, { "popup", &colors::popup }, { "popupBorder", &colors::popupBorder }, { "popupHover", &colors::popupHover },
-			{ "button", &colors::button }, { "buttonHover", &colors::buttonHover }, { "infoDot", &colors::infoDot }, { "infoGlyph", &colors::infoGlyph },
-			{ "keycap", &colors::keycap }, { "keycapEdge", &colors::keycapEdge },
-			{ "window", &colors::window }, { "windowEdge", &colors::windowEdge }, { "tab", &colors::tab }, { "tabActive", &colors::tabActive }, { "tabHover", &colors::tabHover },
-			{ "tabLine", &colors::tabLine }, { "scrollTrack", &colors::scrollTrack }, { "scrollThumb", &colors::scrollThumb }, { "scrollThumbHover", &colors::scrollThumbHover },
-			{ "message", &colors::message }, { "messageText", &colors::messageText },
-			{ "titleBar", &colors::titleBar }, { "tabSelectedText", &colors::tabSelectedText }, { "logoSweep", &colors::logoSweep }, { "closeHover", &colors::closeHover }, { "titleBarHover", &colors::titleBarHover }, { "choiceHover", &colors::choiceHover } };
+			{ "background", &colors::background }, { "text", &colors::text }, { "accent", &colors::accent },
+			{ "danger", &colors::danger }, { "warning", &colors::warning }, { "appliesAfter", &colors::appliesAfter }, { "logoSweep", &colors::logoSweep } };
 
-		constexpr size_t	sizeCount = std::size ( sizeTable );
+		constexpr size_t	numberCount = std::size ( numberTable );
 		constexpr size_t	colorCount = std::size ( colorTable );
+		constexpr size_t	shadeCount = sectionTable[ std::size ( sectionTable ) - 1 ].count;
+		constexpr size_t	sizeCount = numberCount - shadeCount;
 
+		constexpr size_t sectionsTotal ()
+		{
+			auto	total = size_t ( 0 );
+			for ( const auto& section : sectionTable )
+				total += section.count;
+			return total;
+		}
+
+		static_assert ( sectionsTotal () == numberCount );
 		static_assert ( sizeCount == RESHADE_UI_SIZE_COUNT );
-		static_assert ( colorCount == RESHADE_UI_COLOR_COUNT );
+		static_assert ( colorCount + shadeCount == RESHADE_UI_COLOR_COUNT );
 
 		struct Values
 		{
-			std::array<float, sizeCount>	sizes {};
+			std::array<float, numberCount>	numbers {};
 			std::array<ImU32, colorCount>	colors {};
 		};
 
@@ -122,33 +127,35 @@ namespace ultra::ui::theme
 		std::vector<std::string>	told;			// the problems logged, so a file read again with the same one says nothing
 
 		// A value the file holds right is taken, one it lacks or holds wrong stays what base has. Problems come as phrases that name the value
-		void readSizes ( const reshade::json::value* object, Values& v, Problems& problems )
+		void readNumbers ( const reshade::json::value* object, std::span<const Size> table, float* out, const char* kind, double most, Problems& problems )
 		{
-			for ( size_t i = 0; i < sizeCount; ++i )
+			for ( size_t i = 0; i < table.size (); ++i )
 			{
-				const auto&	entry = sizeTable[ i ];
+				const auto&	entry = table[ i ];
 				const auto*	member = ReShadeJsonFind ( object, entry.name );
 				auto		number = 0.0;
 				if ( member == nullptr )
-					problems.push_back ( std::string ( "the size " ) + entry.name + " is missing" );
+					problems.push_back ( std::string ( "the " ) + kind + " " + entry.name + " is missing" );
 				else if ( ! ReShadeJsonGetNumber ( member, &number ) )
-					problems.push_back ( std::string ( "the size " ) + entry.name + " is no number" );
-				else if ( ! ( number >= double ( entry.least ) && number <= double ( mostSize ) ) )
+					problems.push_back ( std::string ( "the " ) + kind + " " + entry.name + " is no number" );
+				else if ( ! ( number >= double ( entry.least ) && number <= most ) )
 				{
 					char	least[ 16 ] {};
+					char	greatest[ 16 ] {};
 					std::snprintf ( least, sizeof least, "%g", double ( entry.least ) );
-					problems.push_back ( std::string ( "the size " ) + entry.name + " is not from " + least + " to 100000" );
+					std::snprintf ( greatest, sizeof greatest, "%g", most );
+					problems.push_back ( std::string ( "the " ) + kind + " " + entry.name + " is not from " + least + " to " + greatest );
 				}
 				else
-					v.sizes[ i ] = float ( number );
+					out[ i ] = float ( number );
 			}
 
 			for ( size_t i = 0, count = ReShadeJsonGetSize ( object ); i < count; ++i )
 			{
 				const char*	key = nullptr;
 				ReShadeJsonAt ( object, i, &key );
-				if ( key != nullptr && std::ranges::none_of ( sizeTable, [ key ] ( const Size& e ) { return std::string_view ( e.name ) == key; } ) )
-					problems.push_back ( std::string ( "the size " ) + key + " is not one the overlay knows" );
+				if ( key != nullptr && std::ranges::none_of ( table, [ key ] ( const Size& e ) { return std::string_view ( e.name ) == key; } ) )
+					problems.push_back ( std::string ( "the " ) + kind + " " + key + " is not one the overlay knows" );
 			}
 		}
 
@@ -184,19 +191,23 @@ namespace ultra::ui::theme
 		{
 			if ( ReShadeJsonGetType ( root ) != reshade::json::type::object )
 			{
-				problems.push_back ( "it is no object with the objects \"sizes\" and \"colors\"" );
+				problems.push_back ( "it is no json object" );
 				return std::nullopt;
 			}
 
-			Values		v = base;
-			const auto*	sizesObject = ReShadeJsonFind ( root, "sizes" );
+			Values	v = base;
+			auto	first = size_t ( 0 );
+			for ( const auto& section : sectionTable )
+			{
+				const auto*	object = ReShadeJsonFind ( root, section.name );
+				if ( ReShadeJsonGetType ( object ) == reshade::json::type::object )
+					readNumbers ( object, std::span<const Size> ( numberTable ).subspan ( first, section.count ), v.numbers.data () + first, section.name, section.most, problems );
+				else
+					problems.push_back ( std::string ( "it has no object \"" ) + section.name + "\"" );
+				first += section.count;
+			}
+
 			const auto*	colorsObject = ReShadeJsonFind ( root, "colors" );
-
-			if ( ReShadeJsonGetType ( sizesObject ) == reshade::json::type::object )
-				readSizes ( sizesObject, v, problems );
-			else
-				problems.push_back ( "it has no object \"sizes\"" );
-
 			if ( ReShadeJsonGetType ( colorsObject ) == reshade::json::type::object )
 				readColors ( colorsObject, v, problems );
 			else
@@ -233,8 +244,8 @@ namespace ultra::ui::theme
 
 		void apply ( const Values& v )
 		{
-			for ( size_t i = 0; i < sizeCount; ++i )
-				*sizeTable[ i ].value = v.sizes[ i ];
+			for ( size_t i = 0; i < numberCount; ++i )
+				*numberTable[ i ].value = v.numbers[ i ];
 			for ( size_t i = 0; i < colorCount; ++i )
 				*colorTable[ i ].value = v.colors[ i ];
 		}
@@ -282,7 +293,8 @@ namespace ultra::ui::theme
 				readFollowed ();
 		}
 
-		std::array<Tuned, sizeCount>		tunedSizes {};
+		std::array<std::string, numberCount>	tunedNames {};
+		std::array<Tuned, numberCount>		tunedSizes {};
 		std::array<TunedColor, colorCount>	tunedColorTable {};
 	}
 
@@ -335,8 +347,13 @@ namespace ultra::ui::theme
 
 		apply ( shipped );
 
-		for ( size_t i = 0; i < sizeCount; ++i )
-			tunedSizes[ i ] = { sizeTable[ i ].name, sizeTable[ i ].value, shipped.sizes[ i ] };
+		auto	index = size_t ( 0 );
+		for ( const auto& section : sectionTable )
+			for ( size_t i = 0; i < section.count; ++i, ++index )
+			{
+				tunedNames[ index ] = std::string ( section.name ) + " " + numberTable[ index ].name;
+				tunedSizes[ index ] = { tunedNames[ index ].c_str (), numberTable[ index ].value, shipped.numbers[ index ] };
+			}
 		for ( size_t i = 0; i < colorCount; ++i )
 			tunedColorTable[ i ] = { colorTable[ i ].name, colorTable[ i ].value, shipped.colors[ i ] };
 
@@ -373,36 +390,74 @@ namespace ultra::ui::theme
 		return tunedColorTable;
 	}
 
+	ImU32 shade ( float t )
+	{
+		const auto	u = std::clamp ( t, 0.0f, 1.0f );
+		const auto	channel = [ & ] ( int shift )
+		{
+			const auto	from = float ( ( colors::background >> shift ) & 0xFF );
+			const auto	to = float ( ( colors::text >> shift ) & 0xFF );
+			return ImU32 ( from + ( to - from ) * u + 0.5f ) << shift;
+		};
+		return channel ( IM_COL32_R_SHIFT ) | channel ( IM_COL32_G_SHIFT ) | channel ( IM_COL32_B_SHIFT ) | IM_COL32_A_MASK;
+	}
+
+	ImU32 accentHover ()
+	{
+		constexpr auto	towardWhite = 0.2f;
+		const auto	channel = [] ( int shift )
+		{
+			const auto	from = float ( ( colors::accent >> shift ) & 0xFF );
+			return ImU32 ( from + ( 255.0f - from ) * towardWhite + 0.5f ) << shift;
+		};
+		return channel ( IM_COL32_R_SHIFT ) | channel ( IM_COL32_G_SHIFT ) | channel ( IM_COL32_B_SHIFT ) | IM_COL32_A_MASK;
+	}
+
 	ImU32 colorOf ( uint32_t role )
 	{
-		return role < colorCount ? *colorTable[ role ].value : 0;
+		return role < colorCount ? *colorTable[ role ].value : role < colorCount + shadeCount ? shade ( *numberTable[ sizeCount + role - colorCount ].value ) : 0;
 	}
 
 	float sizeOf ( uint32_t role )
 	{
-		return role < sizeCount ? *sizeTable[ role ].value : 0.0f;
+		return role < sizeCount ? *numberTable[ role ].value : 0.0f;
 	}
 
-	std::string text ()
+	std::string fileText ()
 	{
-		std::string	s = "{\n\t\"sizes\": {";
-		for ( size_t i = 0; i < sizeCount; ++i )
+		const auto	number = [] ( size_t i )
 		{
-			char	number[ 32 ] {};
-			std::snprintf ( number, sizeof number, "%g", std::round ( double ( *sizeTable[ i ].value ) * 1000.0 ) / 1000.0 );
-			s += std::string ( i == 0 ? "\n" : ",\n" ) + "\t\t\"" + sizeTable[ i ].name + "\": " + number;
-		}
-		s += "\n\t},\n\t\"colors\": {";
-		for ( size_t i = 0; i < colorCount; ++i )
+			char	text[ 32 ] {};
+			std::snprintf ( text, sizeof text, "%g", std::round ( double ( *numberTable[ i ].value ) * 1000.0 ) / 1000.0 );
+			return std::string ( "\t\t\"" ) + numberTable[ i ].name + "\": " + text;
+		};
+		const auto	colorLines = [] ()
 		{
-			const auto	c = *colorTable[ i ].value;
-			char		hex[ 16 ] {};
-			std::snprintf ( hex, sizeof hex, "#%02X%02X%02X", unsigned ( ( c >> IM_COL32_R_SHIFT ) & 0xFF ), unsigned ( ( c >> IM_COL32_G_SHIFT ) & 0xFF ),
-							unsigned ( ( c >> IM_COL32_B_SHIFT ) & 0xFF ) );
-			s += std::string ( i == 0 ? "\n" : ",\n" ) + "\t\t\"" + colorTable[ i ].name + "\": \"" + hex + "\"";
+			std::string	s = "\t\"colors\": {";
+			for ( size_t i = 0; i < colorCount; ++i )
+			{
+				const auto	c = *colorTable[ i ].value;
+				char		hex[ 16 ] {};
+				std::snprintf ( hex, sizeof hex, "#%02X%02X%02X", unsigned ( ( c >> IM_COL32_R_SHIFT ) & 0xFF ), unsigned ( ( c >> IM_COL32_G_SHIFT ) & 0xFF ),
+								unsigned ( ( c >> IM_COL32_B_SHIFT ) & 0xFF ) );
+				s += std::string ( i == 0 ? "\n" : ",\n" ) + "\t\t\"" + colorTable[ i ].name + "\": \"" + hex + "\"";
+			}
+			return s + "\n\t}";
+		};
+
+		std::string	s = "{\n";
+		auto		first = size_t ( 0 );
+		for ( size_t k = 0; k < std::size ( sectionTable ); ++k )
+		{
+			if ( k + 1 == std::size ( sectionTable ) )
+				s += colorLines () + ",\n";
+			s += std::string ( "\t\"" ) + sectionTable[ k ].name + "\": {";
+			for ( size_t i = 0; i < sectionTable[ k ].count; ++i )
+				s += std::string ( i == 0 ? "\n" : ",\n" ) + number ( first + i );
+			s += k + 1 == std::size ( sectionTable ) ? "\n\t}\n" : "\n\t},\n";
+			first += sectionTable[ k ].count;
 		}
-		s += "\n\t}\n}\n";
-		return s;
+		return s + "}\n";
 	}
 
 	bool take ( std::string_view text, std::string& why )

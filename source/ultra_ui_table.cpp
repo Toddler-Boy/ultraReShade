@@ -70,11 +70,6 @@ namespace
 		drawPage ( static_cast<api::effect_runtime*> ( runtime ), *page, frame );
 	}
 
-	void setTabDotOf ( const char* title, uint32_t color )
-	{
-		window::setTabDot ( title != nullptr ? title : "", color );
-	}
-
 	uint32_t isTypingOf ()
 	{
 		return window::isTyping () ? 1 : 0;
@@ -122,7 +117,7 @@ namespace
 
 	uint32_t themeText ( char* out, uint32_t capacity )
 	{
-		const auto	text = theme::text ();
+		const auto	text = theme::fileText ();
 		copyOut ( text, out, capacity );
 		return uint32_t ( text.size () );
 	}
@@ -339,7 +334,7 @@ namespace
 		&imageOf, &maskOf, &decode,
 		&colourSpaceOverride, &setColourSpaceOverride, &isColourSpaceShown,
 		&labelAt, &labelWidthOf, &toggleOf, &headingOf, &collapseArrowOf, &subheadingAt, &sliderOf, &valueEditOf, &colorPickerOf, &textFieldOf,
-		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &setTabDotOf, &isTypingOf, &specLayoutOf, &statusTextOf
+		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &isTypingOf, &specLayoutOf, &statusTextOf
 	};
 
 	void onPresent ( reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect* )
