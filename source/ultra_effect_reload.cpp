@@ -255,8 +255,7 @@ void reshade::runtime::ultra_reload_changed_effects ()
 	auto				isAll = false;
 	std::error_code		error;
 
-	// A changed .fx recompiles its own effect; any other change all of them, since every effect's cache key covers the
-	// .fxh files of all search paths
+	// A changed .fx recompiles its own effect; any other change all of them, since an effect may include any .fxh of the search paths
 	for ( const auto& file : changed )
 	{
 		const auto	it = std::ranges::find_if ( _effects, [ &file ] ( const effect& effect ) { return isSamePath ( effect.source_file, file ); } );

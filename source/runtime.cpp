@@ -7,6 +7,7 @@
 #include "runtime_internal.hpp"
 #include "effect_parser.hpp"
 #include "effect_codegen.hpp"
+#include "effect_front.hpp"
 #include "effect_preprocessor.hpp"
 #include "version.h"
 #include "dll_log.hpp"
@@ -17,6 +18,7 @@
 #include "reshade_api_object_impl.hpp"
 #include "runtime_manager.hpp"
 #include "ultra_addon_reload.hpp"
+#include "ultra_effect_cache.hpp"
 #include "ultra_effect_reload.hpp"
 #include "ultra_file_watch.hpp"
 #include "ultra_home.hpp"
@@ -925,24 +927,12 @@ void reshade::runtime::load_config()
 	config_get("INPUT", "KeyReload", _reload_key_data);
 
 	config_get("GENERAL", "NoDebugInfo", _no_debug_info);
-	config_get("GENERAL", "NoEffectCache", _no_effect_cache);
 	config_get("GENERAL", "NoReloadOnInit", _no_reload_on_init);
 
 	config_get("GENERAL", "EffectSearchPaths", _effect_search_paths);
 	config_get("GENERAL", "PerformanceMode", _performance_mode);
 	config_get("GENERAL", "PreprocessorDefinitions", _global_preprocessor_definitions);
 	config_get("GENERAL", "TextureSearchPaths", _texture_search_paths);
-	config_get("GENERAL", "IntermediateCachePath", _effect_cache_path);
-
-	// The cache is in the game folder, which ultraGame makes at install: a missing one is made again, never another
-	std::error_code ec;
-	_has_effect_cache = false;
-	if (_effect_cache_path.empty() || !_effect_cache_path.is_absolute())
-		log::message(log::level::error, "[GENERAL] IntermediateCachePath is not an absolute path ('%s'), so effects are compiled without a cache!", _effect_cache_path.u8string().c_str());
-	else if (!std::filesystem::create_directories(_effect_cache_path, ec) && ec)
-		log::message(log::level::error, "Failed to create effect cache directory '%s' with error code %d, so effects are compiled without a cache!", _effect_cache_path.u8string().c_str(), ec.value());
-	else
-		_has_effect_cache = true;
 
 	_screenshot_path_problem.clear();
 	_screenshot_path = screenshot_folder(config, _screenshot_path_problem);
@@ -956,13 +946,11 @@ void reshade::runtime::save_config() const
 	ini_file &config = global_config();
 
 	config.set("GENERAL", "NoDebugInfo", _no_debug_info);
-	config.set("GENERAL", "NoEffectCache", _no_effect_cache);
 	config.set("GENERAL", "NoReloadOnInit", _no_reload_on_init);
 
 	config.set("GENERAL", "EffectSearchPaths", _effect_search_paths);
 	config.set("GENERAL", "PerformanceMode", _performance_mode);
 	config.set("GENERAL", "TextureSearchPaths", _texture_search_paths);
-	config.set("GENERAL", "IntermediateCachePath", _effect_cache_path);
 
 #if RESHADE_GUI
 	save_config_gui(config);
@@ -1209,21 +1197,9 @@ void reshade::runtime::save_effect_settings()
 	_effect_settings.user.effects = std::move(effects);
 }
 
-bool reshade::runtime::load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool preprocess_required)
+bool reshade::runtime::load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index)
 {
 	const std::chrono::high_resolution_clock::time_point time_load_started = std::chrono::high_resolution_clock::now();
-
-	// Generate a unique string identifying this effect
-	std::string attributes;
-	attributes += "app=" + g_target_executable_path.stem().u8string() + ';';
-	attributes += "width=" + std::to_string(_effect_permutations[permutation_index].width) + ';';
-	attributes += "height=" + std::to_string(_effect_permutations[permutation_index].height) + ';';
-	attributes += "color_space=" + std::to_string(static_cast<uint32_t>(_effect_permutations[permutation_index].color_space)) + ';';
-	attributes += "color_format=" + std::to_string(static_cast<uint32_t>(_effect_permutations[permutation_index].color_format)) + ';';
-	attributes += "version=" + std::to_string(VERSION_MAJOR * 10000 + VERSION_MINOR * 100 + VERSION_REVISION) + ';';
-	attributes += "performance_mode=" + std::string(_performance_mode ? "1" : "0") + ';';
-	attributes += "vendor=" + std::to_string(_vendor_id) + ';';
-	attributes += "device=" + std::to_string(_device_id) + ';';
 
 	const std::string effect_name = source_file.filename().u8string();
 
@@ -1257,9 +1233,6 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		preprocessor_definitions.emplace_back(addon_definition, "1");
 	}
 
-	for (const std::pair<std::string, std::string> &definition : preprocessor_definitions)
-		attributes += definition.first + '=' + definition.second + ';';
-
 	std::error_code ec;
 	std::set<std::filesystem::path> include_paths;
 	if (source_file.is_absolute())
@@ -1283,30 +1256,9 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		}
 	}
 
-	attributes += effect_name;
-	attributes += '?';
-	attributes += std::to_string(std::filesystem::last_write_time(source_file, ec).time_since_epoch().count());
-	attributes += ';';
-
-	// The actual included files are not known at this point, so detect changes to any ".fxh" files in the search paths
-	for (const std::filesystem::path &include_path : include_paths)
-	{
-		for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(include_path, std::filesystem::directory_options::skip_permission_denied, ec))
-		{
-			if (entry.path().extension() == L".fxh")
-			{
-				attributes += entry.path().filename().u8string();
-				attributes += '?';
-				attributes += std::to_string(entry.last_write_time(ec).time_since_epoch().count());
-				attributes += ';';
-			}
-		}
-	}
-
 	effect &effect = _effects[effect_index];
 
-	const size_t source_hash = std::hash<std::string>()(attributes);
-	if (permutation_index == 0 && (source_file != effect.source_file || source_hash != effect.source_hash))
+	if (permutation_index == 0)
 	{
 		if (effect.created)
 		{
@@ -1315,10 +1267,9 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 			return false; // Cannot reset an effect that has not been destroyed
 		}
 
-		// Source hash has changed, reset effect and load from scratch, rather than updating
+		// The front end runs on every load, so the effect starts from scratch
 		effect = {
 			source_file,
-			source_hash,
 			source_file.extension() == L".addonfx"
 		};
 
@@ -1331,30 +1282,19 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 	assert(permutation_index < effect.permutations.size());
 	effect::permutation &permutation = effect.permutations[permutation_index];
 
-	bool preprocessed = effect.preprocessed && permutation_index == 0;
-	bool compiled = effect.compiled && permutation_index == 0;
-	bool source_cached = false;
+	bool preprocessed = false;
+	bool compiled = false;
 	std::string source;
 	std::string errors;
 
-	if (!preprocessed && (preprocess_required || (source_cached = load_effect_cache(source_file.stem().u8string() + '-' + std::to_string(_renderer_id) + '-' + std::to_string(source_hash), "i", source)) == false))
 	{
 		reshadefx::preprocessor pp;
-		pp.add_macro_definition("__RESHADE__", std::to_string(VERSION_MAJOR * 10000 + VERSION_MINOR * 100 + VERSION_REVISION));
-		pp.add_macro_definition("__RESHADE_PERMUTATION__", permutation_index != 0 ? "1" : "0");
-		pp.add_macro_definition("__RESHADE_PERFORMANCE_MODE__", _performance_mode ? "1" : "0");
-		pp.add_macro_definition("__VENDOR__", std::to_string(_vendor_id));
-		pp.add_macro_definition("__DEVICE__", std::to_string(_device_id));
-		pp.add_macro_definition("__RENDERER__", std::to_string(_renderer_id));
-		pp.add_macro_definition("__APPLICATION__", std::to_string( // Truncate hash to 32-bit, since lexer currently only supports 32-bit numbers anyway
-			std::hash<std::string>()(g_target_executable_path.stem().u8string()) & 0xFFFFFFFF));
-		pp.add_macro_definition("BUFFER_WIDTH", std::to_string(_effect_permutations[permutation_index].width));
-		pp.add_macro_definition("BUFFER_HEIGHT", std::to_string(_effect_permutations[permutation_index].height));
-		pp.add_macro_definition("BUFFER_RCP_WIDTH", "(1.0 / BUFFER_WIDTH)");
-		pp.add_macro_definition("BUFFER_RCP_HEIGHT", "(1.0 / BUFFER_HEIGHT)");
-		pp.add_macro_definition("BUFFER_COLOR_SPACE", std::to_string(static_cast<uint32_t>(_effect_permutations[permutation_index].color_space)));
-		pp.add_macro_definition("BUFFER_COLOR_FORMAT", std::to_string(static_cast<uint32_t>(_effect_permutations[permutation_index].color_format)));
-		pp.add_macro_definition("BUFFER_COLOR_BIT_DEPTH", std::to_string(api::format_bit_depth(_effect_permutations[permutation_index].color_format)));
+		const effect_permutation &target = _effect_permutations[permutation_index];
+		reshadefx::add_builtin_macros(pp, {
+			_vendor_id, _device_id, _renderer_id,
+			static_cast<uint32_t>(std::hash<std::string>()(g_target_executable_path.stem().u8string()) & 0xFFFFFFFF), // Truncated to 32-bit, since the lexer only supports 32-bit numbers
+			permutation_index != 0, _performance_mode,
+			target.width, target.height, static_cast<uint32_t>(target.color_space), static_cast<uint32_t>(target.color_format), api::format_bit_depth(target.color_format) });
 
 		for (const std::pair<std::string, std::string> &definition : preprocessor_definitions)
 		{
@@ -1368,16 +1308,7 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		for (const std::filesystem::path &include_path : include_paths)
 			pp.add_include_path(include_path);
 
-		// Add some conversion macros for compatibility with older versions of ReShade
-		pp.append_string(
-			"#define tex2Doffset(s, coords, offset) tex2D(s, coords, offset)\n"
-			"#define tex2Dlodoffset(s, coords, offset) tex2Dlod(s, coords, offset)\n"
-			"#define tex2Dgather(s, t, c) tex2Dgather##c(s, t)\n"
-			"#define tex2Dgatheroffset(s, t, o, c) tex2Dgather##c(s, t, o)\n"
-			"#define tex2Dgather0 tex2DgatherR\n"
-			"#define tex2Dgather1 tex2DgatherG\n"
-			"#define tex2Dgather2 tex2DgatherB\n"
-			"#define tex2Dgather3 tex2DgatherA\n");
+		reshadefx::add_conversion_macros(pp);
 
 		// Load and preprocess the source file
 		preprocessed = pp.append_file(source_file);
@@ -1400,51 +1331,19 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 					continue;
 
 				preprocessor_definitions.emplace_back(definition.first, trim(definition.second));
-
-				// Write used preprocessor definitions to the cached source
-				source = "// " + definition.first + '=' + definition.second + '\n' + source;
 			}
-
-			source_cached = save_effect_cache(source_file.stem().u8string() + '-' + std::to_string(_renderer_id) + '-' + std::to_string(source_hash), "i", source);
 		}
 
 		if (permutation_index == 0)
 		{
 			effect.definitions = std::move(preprocessor_definitions);
 			std::sort(effect.definitions.begin(), effect.definitions.end());
-
-			effect.preprocessed = preprocessed;
-		}
-	}
-	else
-	{
-		if (permutation_index == 0 && !source.empty())
-		{
-			effect.definitions.clear();
-
-			// Read used preprocessor definitions from the cached source
-			for (size_t offset = 0, next; source.compare(offset, 3, "// ") == 0; offset = next + 1)
-			{
-				offset += 3;
-				next = source.find('\n', offset);
-				if (next == std::string::npos)
-					break;
-
-				if (const size_t equals_index = source.find('=', offset);
-					equals_index != std::string::npos)
-				{
-					effect.definitions.emplace_back(
-						source.substr(offset, equals_index - offset),
-						source.substr(equals_index + 1, next - (equals_index + 1)));
-				}
-			}
-
-			std::sort(effect.definitions.begin(), effect.definitions.end());
 		}
 	}
 
 	std::unique_ptr<reshadefx::codegen> codegen;
-	size_t spec_constants_hash = 0;
+	std::shared_ptr<const reshadefx::binary_pack> prebuilt;
+	struct { unsigned int prebuilt = 0, cached = 0; } binary_sources;
 	if (!compiled && !source.empty())
 	{
 		unsigned shader_model;
@@ -1454,10 +1353,8 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 			shader_model = 40; // D3D10 (including feature level 9)
 		else if (_renderer_id < 0xb000 || _device->get_api() == api::device_api::d3d10)
 			shader_model = 41; // D3D10.1
-		else if (_renderer_id < 0xc000 || _device->get_api() == api::device_api::d3d11)
-			shader_model = 50; // D3D11
 		else
-			shader_model = 51; // D3D12
+			shader_model = 50; // D3D11 and D3D12: nothing generated needs 5.1
 
 		if ((_renderer_id & 0xF0000) == 0)
 			codegen.reset(reshadefx::create_codegen_dxbc(shader_model, !_no_debug_info, _performance_mode, _performance_mode ? 3 : 1));
@@ -1465,6 +1362,23 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 			codegen.reset(reshadefx::create_codegen_glsl(false, !_no_debug_info, _performance_mode, false, true));
 		else // Vulkan uses SPIR-V input
 			codegen.reset(reshadefx::create_codegen_spirv(true, !_no_debug_info, _performance_mode, false, false));
+
+		// The binaries come from the set built with the effect, then from the cache all games share; the compiler is asked for the rest
+		prebuilt = ultra::prebuiltBinaries(source_file);
+		codegen->load_binary = [&binary_sources, set = prebuilt.get()](const std::string &key, std::string &binary) {
+			if (set != nullptr && set->find(key, binary))
+			{
+				++binary_sources.prebuilt;
+				return true;
+			}
+			if (ultra::loadCachedBinary(key, binary))
+			{
+				++binary_sources.cached;
+				return true;
+			}
+			return false;
+		};
+		codegen->save_binary = [](const std::string &key, const std::string &binary) { ultra::saveCachedBinary(key, binary); };
 
 		reshadefx::parser parser;
 
@@ -1476,6 +1390,7 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 
 		// Write result to effect module
 		permutation.module = codegen->module();
+		permutation.module.resolve_screen_sizes(_width, _height);
 
 		if (compiled)
 		{
@@ -1523,6 +1438,8 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 						variable.special = special_uniform::overlay_hovered;
 					else if (special == "screenshot")
 						variable.special = special_uniform::screenshot;
+					else if (special == "screensize") // an int2: the swap chain's width and height
+						variable.special = special_uniform::screen_size;
 					else
 						variable.special = special_uniform::unknown;
 
@@ -1629,7 +1546,6 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 			// Fill all specialization constants with the values of the home's files
 			if (_performance_mode)
 			{
-				std::string spec_constant_attributes;
 				const ultra::EffectFileSettings *const settings = _effect_settings.fileSettings(effect_name);
 
 				for (reshadefx::uniform &spec_constant : permutation.module.spec_constants)
@@ -1655,27 +1571,15 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 							break;
 						}
 					}
-
-					spec_constant_attributes += spec_constant.name;
-					for (uint32_t i = 0; i < spec_constant.size / 4; ++i)
-						spec_constant_attributes += std::to_string(spec_constant.initializer_value.as_uint[i]);
 				}
-
-				spec_constants_hash = std::hash<std::string>()(spec_constant_attributes);
 
 				// Update specialization constant values for when code is generated below in 'assemble_code_for_entry_point'
 				codegen->module().spec_constants = permutation.module.spec_constants;
 			}
 		}
-		else if (!preprocessed)
-		{
-			assert(!preprocess_required);
-
-			return load_effect(source_file, effect_index, permutation_index, true);
-		}
 	}
 
-	if ((preprocessed || source_cached) && compiled)
+	if (preprocessed && compiled)
 	{
 		if (permutation.cso.empty())
 		{
@@ -1691,23 +1595,10 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 
 				std::string &cso = permutation.cso[entry_point.first];
 
-				const std::string cache_id = source_file.stem().u8string() + '-' + std::to_string(_renderer_id) + '-' + std::to_string(source_hash) + '-' + std::to_string(spec_constants_hash) + '-' + entry_point.first;
-
-				if (load_effect_cache(cache_id, "cso", cso))
+				if (!codegen->assemble_code_for_entry_point(entry_point.first, cso, errors))
 				{
-					continue;
-				}
-				else
-				{
-					cso.clear();
-
-					if (!codegen->assemble_code_for_entry_point(entry_point.first, cso, errors))
-					{
-						compiled = false;
-						break;
-					}
-
-					save_effect_cache(cache_id, "cso", cso);
+					compiled = false;
+					break;
 				}
 			}
 		}
@@ -1868,12 +1759,15 @@ bool reshade::runtime::load_effect(const std::filesystem::path &source_file, siz
 		_reload_remaining_effects--;
 	}
 
-	if (compiled && (preprocessed || source_cached))
+	if (compiled && preprocessed)
 	{
+		const unsigned int compile_count = codegen != nullptr ? codegen->compile_count : 0;
+		const float seconds = std::chrono::duration_cast<std::chrono::milliseconds>(time_load_finished - time_load_started).count() * 1e-3f;
+
 		if (effect.errors.empty())
-			log::message(log::level::info, "Successfully compiled '%s'%s in %f s.", source_file.u8string().c_str(), permutation_index == 0 ? "" : " permutation", std::chrono::duration_cast<std::chrono::milliseconds>(time_load_finished - time_load_started).count() * 1e-3f);
+			log::message(log::level::info, "Successfully compiled '%s'%s in %f s (%u binaries from its prebuilt set, %u from the shared cache, %u compiled).", source_file.u8string().c_str(), permutation_index == 0 ? "" : " permutation", seconds, binary_sources.prebuilt, binary_sources.cached, compile_count);
 		else
-			log::message(log::level::warning, "Successfully compiled '%s'%s in %f s with warnings:\n%s", source_file.u8string().c_str(), permutation_index == 0 ? "" : " permutation", std::chrono::duration_cast<std::chrono::milliseconds>(time_load_finished - time_load_started).count() * 1e-3f, effect.errors.c_str());
+			log::message(log::level::warning, "Successfully compiled '%s'%s in %f s (%u binaries from its prebuilt set, %u from the shared cache, %u compiled) with warnings:\n%s", source_file.u8string().c_str(), permutation_index == 0 ? "" : " permutation", seconds, binary_sources.prebuilt, binary_sources.cached, compile_count, effect.errors.c_str());
 		return true;
 	}
 	else
@@ -3660,7 +3554,7 @@ bool reshade::runtime::reload_effect(size_t effect_index)
 	// Make sure 'is_loading' is true while loading the effect
 	_reload_remaining_effects = 1;
 
-	return load_effect(source_file, effect_index, 0, true);
+	return load_effect(source_file, effect_index, 0);
 }
 void reshade::runtime::reload_effects()
 {
@@ -3713,68 +3607,6 @@ void reshade::runtime::destroy_effects()
 	// Textures and techniques should have been cleaned up by the calls to 'destroy_effect' above
 	assert(_textures.empty());
 	assert(_techniques.empty() && _technique_sorting.empty());
-}
-
-bool reshade::runtime::load_effect_cache(const std::string &id, const std::string &type, std::string &data) const
-{
-	if (!wants_effect_cache())
-		return false;
-
-	std::filesystem::path path = _effect_cache_path;
-	path /= std::filesystem::u8path("reshade-" + id + '.' + type);
-
-	FILE *const file = _wfsopen(path.c_str(), L"rb", SH_DENYNO);
-	if (file == nullptr)
-		return false;
-
-	fseek(file, 0, SEEK_END);
-	const size_t file_size = ftell(file);
-	fseek(file, 0, SEEK_SET);
-
-	data.resize(file_size, '\0');
-	const size_t file_size_read = fread(data.data(), 1, data.size(), file);
-	fclose(file);
-	return file_size_read == data.size();
-}
-bool reshade::runtime::save_effect_cache(const std::string &id, const std::string &type, const std::string &data) const
-{
-	if (!wants_effect_cache())
-		return false;
-
-	std::filesystem::path path = _effect_cache_path;
-	path /= std::filesystem::u8path("reshade-" + id + '.' + type);
-
-	FILE *const file = _wfsopen(path.c_str(), L"wb", SH_DENYNO);
-	if (file == nullptr)
-		return false;
-
-	const size_t file_size_written = fwrite(data.data(), 1, data.size(), file);
-	fclose(file);
-	return file_size_written == data.size();
-}
-void reshade::runtime::clear_effect_cache()
-{
-	std::error_code ec;
-
-	// Find all cached effect files and delete them
-	if (!_has_effect_cache)
-		return;
-
-	for (const std::filesystem::directory_entry &entry : std::filesystem::directory_iterator(_effect_cache_path, std::filesystem::directory_options::skip_permission_denied, ec))
-	{
-		if (entry.is_directory(ec))
-			continue;
-
-		const std::filesystem::path filename = entry.path().filename();
-		const std::filesystem::path extension = entry.path().extension();
-		if (filename.wstring().compare(0, 8, L"reshade-") != 0 || (extension != L".i" && extension != L".cso"))
-			continue;
-
-		std::filesystem::remove(entry, ec);
-	}
-
-	if (ec)
-		log::message(log::level::error, "Failed to clear effect cache directory with error code %d!", ec.value());
 }
 
 auto reshade::runtime::add_effect_permutation(uint32_t width, uint32_t height, api::format color_format, api::format stencil_format, api::color_space color_space) -> size_t
@@ -4119,6 +3951,12 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 			case special_uniform::screenshot:
 				set_uniform_value(variable, _should_save_screenshot);
 				break;
+			case special_uniform::screen_size:
+				{
+					const int value[2] = { static_cast<int>(_width), static_cast<int>(_height) };
+					set_uniform_value(variable, value, 2);
+				}
+				break;
 			}
 		}
 	}
@@ -4145,7 +3983,7 @@ void reshade::runtime::render_effects(api::command_list *cmd_list, api::resource
 
 		// Ensure dimensions and format of the effect color resource matches that of the input back buffer resource (so that the copy to the effect color resource succeeds)
 		// Changing dimensions or format can cause effects to be reloaded, in which case need to wait for that to finish before rendering
-		permutation_index = add_effect_permutation(back_buffer_desc.texture.width, back_buffer_desc.texture.height, color_format, _effect_permutations[0].stencil_format, api::color_space::unknown);
+		permutation_index = add_effect_permutation(back_buffer_desc.texture.width, back_buffer_desc.texture.height, color_format, _effect_permutations[0].stencil_format, _target_color_space);
 		if (permutation_index == std::numeric_limits<size_t>::max())
 			return;
 	}

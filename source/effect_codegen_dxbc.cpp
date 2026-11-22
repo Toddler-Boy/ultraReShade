@@ -6,10 +6,27 @@
 #define RESHADEFX_CODEGEN_HLSL_INLINE
 
 #include "effect_codegen_hlsl.cpp"
+#include "effect_front.hpp"
 #include "com_ptr.hpp"
 #include <d3dcompiler.h>
+#include <delayimp.h>
 
 using namespace reshadefx;
+
+std::string reshadefx::d3d_compiler_stamp()
+{
+	static const std::string stamp = []() {
+		__HrLoadAllImportsForDll("D3DCompiler_47.dll");
+
+		const auto module = reinterpret_cast<const BYTE *>(GetModuleHandleW(L"D3DCompiler_47.dll"));
+		if (module == nullptr)
+			return std::string();
+
+		const auto nt_headers = reinterpret_cast<const IMAGE_NT_HEADERS *>(module + reinterpret_cast<const IMAGE_DOS_HEADER *>(module)->e_lfanew);
+		return std::to_string(nt_headers->FileHeader.TimeDateStamp) + '-' + std::to_string(nt_headers->OptionalHeader.SizeOfImage);
+	}();
+	return stamp;
+}
 
 class codegen_dxbc final : public codegen_hlsl
 {
@@ -56,6 +73,13 @@ public:
 		compile_flags |= D3DCOMPILE_DEBUG;
 #endif
 
+		const std::string key = binary_key(entry_point_name, profile, compile_flags, hlsl);
+
+		if (load_binary && load_binary(key, cso))
+			return true;
+
+		++compile_count;
+
 		com_ptr<ID3DBlob> d3d_errors;
 		com_ptr<ID3DBlob> d3d_compiled;
 
@@ -97,6 +121,9 @@ public:
 
 		if (d3d_compiled != nullptr)
 			cso.assign(static_cast<const char *>(d3d_compiled->GetBufferPointer()), d3d_compiled->GetBufferSize());
+
+		if (SUCCEEDED(hr) && save_binary)
+			save_binary(key, cso);
 
 		return SUCCEEDED(hr);
 	}

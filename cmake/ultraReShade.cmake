@@ -189,8 +189,25 @@ function(ultra_finish_targets)
   target_link_libraries(ReShade PRIVATE delayimp.lib)
 
   ultra_version_stamp(ReShade source/ultra_version.cpp ReShadeFX)
+  ultra_add_effect_compiler()
   ultra_add_test_app()
   ultra_add_draw_bench()
+endfunction()
+
+# ultra_effect_compile.exe (64-bit, 32-bit binaries are the same): ultraGame's build runs it on its effects, so the binaries they need are
+# built once, with the front end this DLL runs (options in source/ultra_effect_compile.cpp). Built when asked for by name, like the test app
+function(ultra_add_effect_compiler)
+  if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
+    return()
+  endif()
+  add_executable(ultra_effect_compile EXCLUDE_FROM_ALL source/ultra_effect_compile.cpp)
+  set_target_properties(ultra_effect_compile PROPERTIES CXX_STANDARD 23 CXX_STANDARD_REQUIRED ON)
+  target_compile_definitions(ultra_effect_compile PRIVATE $<$<CONFIG:Release>:_HAS_EXCEPTIONS=0>)
+  target_compile_options(ultra_effect_compile PRIVATE /utf-8 /Zc:char8_t-)
+  target_link_libraries(ultra_effect_compile PRIVATE ReShadeFX Windows delayimp.lib)
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
+    target_link_options(ultra_effect_compile PRIVATE /ignore:importeddllmain)
+  endif()
 endfunction()
 
 # ReShadeDrawBench64.exe / ReShadeDrawBench32.exe: a draw-heavy D3D11/D3D12 loop without ReShade built in, measuring

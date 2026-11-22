@@ -28,6 +28,7 @@ namespace reshade
 		overlay_active,
 		overlay_hovered,
 		screenshot,
+		screen_size,
 		unknown
 	};
 
@@ -192,7 +193,6 @@ namespace reshade
 	struct effect
 	{
 		std::filesystem::path source_file;
-		size_t source_hash = 0;
 		bool addon = false;
 
 		unsigned int rendering = 0;
@@ -200,7 +200,6 @@ namespace reshade
 		bool is_route = false;
 		bool created = false;
 		bool compiled = false;
-		bool preprocessed = false;
 		std::string errors;
 
 		std::vector<std::pair<std::string, std::string>> definitions;

@@ -85,12 +85,23 @@ namespace reshadefx
 	};
 
 	/// <summary>
+	/// A size as a fraction of the screen's: screen * mul / div, rounded down, at least 1. No mul: not screen-relative.
+	/// </summary>
+	struct screen_ratio
+	{
+		uint32_t mul = 0;
+		uint32_t div = 1;
+	};
+
+	/// <summary>
 	/// Describes the properties of a <see cref="texture"/> object.
 	/// </summary>
 	struct texture_desc
 	{
 		uint32_t width = 1;
 		uint32_t height = 1;
+		screen_ratio screen_width;
+		screen_ratio screen_height;
 		uint16_t depth = 1;
 		uint16_t levels = 1;
 		texture_type type = texture_type::texture_2d;
@@ -385,6 +396,11 @@ namespace reshadefx
 		uint32_t viewport_width = 0;
 		uint32_t viewport_height = 0;
 		uint32_t viewport_dispatch_z = 1;
+		// A compute pass's group counts as the threads needed for a fraction of the screen; 'viewport_width/height' hold them once resolved
+		screen_ratio dispatch_screen_x;
+		screen_ratio dispatch_screen_y;
+		uint32_t dispatch_threads_x = 1;
+		uint32_t dispatch_threads_y = 1;
 
 		// Bindings specific for the code generation target (in case of combined texture and sampler, 'texture_bindings' and 'sampler_bindings' will be the same size and point to the same bindings, otherwise they are independent)
 		std::vector<texture_binding> texture_bindings;
@@ -417,5 +433,10 @@ namespace reshadefx
 
 		std::vector<technique> techniques;
 		std::vector<std::pair<std::string, shader_type>> entry_points;
+
+		/// <summary>
+		/// Resolves the sizes given relative to the screen: the textures', the render passes' viewports and the compute passes' group counts.
+		/// </summary>
+		void resolve_screen_sizes(uint32_t screen_width, uint32_t screen_height);
 	};
 }

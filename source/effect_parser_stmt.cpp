@@ -1817,6 +1817,15 @@ bool reshadefx::parser::parse_variable(type type, std::string name, bool global)
 							texture_info.width = value > 0 ? value : 1;
 						else if (type.texture_dimension() >= 2 && property_name == "Height")
 							texture_info.height = value > 0 ? value : 1;
+						// Screen-relative size, resolved when the effect loads: ScreenWidth/ScreenHeight the numerator, ScreenWidthDiv/ScreenHeightDiv the divisor (screen * numerator / divisor)
+						else if (property_name == "ScreenWidth")
+							texture_info.screen_width.mul = value > 0 ? value : 1;
+						else if (property_name == "ScreenWidthDiv")
+							texture_info.screen_width.div = value > 0 ? value : 1, texture_info.screen_width.mul = std::max(texture_info.screen_width.mul, 1u);
+						else if (type.texture_dimension() >= 2 && property_name == "ScreenHeight")
+							texture_info.screen_height.mul = value > 0 ? value : 1;
+						else if (type.texture_dimension() >= 2 && property_name == "ScreenHeightDiv")
+							texture_info.screen_height.div = value > 0 ? value : 1, texture_info.screen_height.mul = std::max(texture_info.screen_height.mul, 1u);
 						else if (type.texture_dimension() >= 3 && property_name == "Depth")
 							texture_info.depth = value > 0 && value <= std::numeric_limits<uint16_t>::max() ? static_cast<uint16_t>(value) : 1;
 						else if (property_name == "MipLevels")
@@ -2487,6 +2496,15 @@ bool reshadefx::parser::parse_technique_pass(pass &info)
 				info.viewport_height = value;
 			else if (state_name == "DispatchSizeZ")
 				info.viewport_dispatch_z = value;
+			// Group counts for a fraction of the screen, resolved when the effect loads: DispatchScreenX/Y the numerator, DispatchScreenXDiv/YDiv the divisor
+			else if (state_name == "DispatchScreenX")
+				info.dispatch_screen_x.mul = value > 0 ? value : 1;
+			else if (state_name == "DispatchScreenXDiv")
+				info.dispatch_screen_x.div = value > 0 ? value : 1, info.dispatch_screen_x.mul = std::max(info.dispatch_screen_x.mul, 1u);
+			else if (state_name == "DispatchScreenY")
+				info.dispatch_screen_y.mul = value > 0 ? value : 1;
+			else if (state_name == "DispatchScreenYDiv")
+				info.dispatch_screen_y.div = value > 0 ? value : 1, info.dispatch_screen_y.mul = std::max(info.dispatch_screen_y.mul, 1u);
 			else
 				error(state_location, 3004, "unrecognized pass state '" + state_name + '\'');
 
@@ -2504,6 +2522,14 @@ bool reshadefx::parser::parse_technique_pass(pass &info)
 	{
 		if (!info.cs_entry_point.empty())
 		{
+			info.dispatch_threads_x = static_cast<uint32_t>(cs_info.num_threads[0]);
+			info.dispatch_threads_y = static_cast<uint32_t>(cs_info.num_threads[1]);
+
+			if (info.dispatch_screen_x.mul != 0)
+				info.viewport_width = 1;
+			if (info.dispatch_screen_y.mul != 0)
+				info.viewport_height = 1;
+
 			if (info.viewport_width == 0 || info.viewport_height == 0)
 			{
 				parse_success = false;
@@ -2760,6 +2786,55 @@ void reshadefx::codegen::optimize_bindings()
 				u.index = &storage - _module.storages.data();
 				u.entry_point_binding = binding;
 				pass.storage_bindings.push_back(u);
+			}
+		}
+	}
+}
+
+void reshadefx::effect_module::resolve_screen_sizes(uint32_t screen_width, uint32_t screen_height)
+{
+	const auto scaled = [](uint32_t screen, const screen_ratio &ratio) {
+		return std::max(static_cast<uint32_t>(static_cast<uint64_t>(screen) * ratio.mul / ratio.div), 1u);
+	};
+
+	for (texture &tex : textures)
+	{
+		if (tex.screen_width.mul != 0)
+			tex.width = scaled(screen_width, tex.screen_width);
+		if (tex.screen_height.mul != 0)
+			tex.height = scaled(screen_height, tex.screen_height);
+	}
+
+	for (technique &tech : techniques)
+	{
+		for (pass &pass : tech.passes)
+		{
+			if (!pass.cs_entry_point.empty())
+			{
+				const uint32_t threads_x = std::max(pass.dispatch_threads_x, 1u);
+				const uint32_t threads_y = std::max(pass.dispatch_threads_y, 1u);
+
+				if (pass.dispatch_screen_x.mul != 0)
+					pass.viewport_width = (scaled(screen_width, pass.dispatch_screen_x) + threads_x - 1) / threads_x;
+				if (pass.dispatch_screen_y.mul != 0)
+					pass.viewport_height = (scaled(screen_height, pass.dispatch_screen_y) + threads_y - 1) / threads_y;
+				continue;
+			}
+
+			// All render targets of a pass have the same size
+			for (const std::string &target_name : pass.render_target_names)
+			{
+				if (target_name.empty())
+					continue;
+
+				const auto target = std::find_if(textures.begin(), textures.end(),
+					[&target_name](const texture &tex) { return tex.unique_name == target_name; });
+				if (target != textures.end() && (target->screen_width.mul != 0 || target->screen_height.mul != 0))
+				{
+					pass.viewport_width = target->width;
+					pass.viewport_height = target->height;
+				}
+				break;
 			}
 		}
 	}

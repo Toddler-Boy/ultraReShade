@@ -28,7 +28,7 @@ namespace reshade::opengl
 
 		bool check_color_space_support(api::color_space color_space) const final { return color_space == api::color_space::srgb; }
 
-		api::color_space get_color_space() const final { return api::color_space::unknown; }
+		api::color_space get_color_space() const final { return api::color_space::srgb; }
 
 	protected:
 		device_impl *const _device;

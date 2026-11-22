@@ -6,6 +6,7 @@
 #pragma once
 
 #include "effect_module.hpp"
+#include <functional> // std::function
 #include <memory> // std::unique_ptr
 #include <algorithm> // std::find_if
 
@@ -40,6 +41,17 @@ namespace reshadefx
 		/// <param name="binary">Output binary code.</param>
 		/// <param name="errors">Output list of error messages.</param>
 		virtual bool assemble_code_for_entry_point(const std::string &entry_point_name, std::string &binary, std::string &errors) const = 0;
+
+		/// <summary>
+		/// Where assembled binaries are kept, set by the caller; only the back-end that compiles (DXBC) uses it. The key (see 'binary_key') names everything its compiler is given.
+		/// </summary>
+		std::function<bool(const std::string &key, std::string &binary)> load_binary;
+		std::function<void(const std::string &key, const std::string &binary)> save_binary;
+
+		/// <summary>
+		/// How many binaries the back-end's compiler was asked for, because the caller had none of them.
+		/// </summary>
+		mutable unsigned int compile_count = 0;
 
 	protected:
 		/// <summary>
@@ -408,6 +420,10 @@ namespace reshadefx
 	/// <param name="uniforms_to_spec_constants">Whether to convert uniform variables to specialization constants.</param>
 	codegen *create_codegen_hlsl(unsigned int shader_model, bool debug_info, bool uniforms_to_spec_constants);
 	codegen *create_codegen_dxbc(unsigned int shader_model, bool debug_info, bool uniforms_to_spec_constants, int optimization_level);
+	/// <summary>
+	/// The loaded D3D compiler's build, as text: a binary it made is only valid for its own build's output, so a cache of them names it. Loads the compiler.
+	/// </summary>
+	std::string d3d_compiler_stamp();
 	codegen *create_codegen_dxil(unsigned int shader_model, bool debug_info, bool uniforms_to_spec_constants, int optimization_level);
 	/// <summary>
 	/// Creates a back-end implementation for SPIR-V code generation.

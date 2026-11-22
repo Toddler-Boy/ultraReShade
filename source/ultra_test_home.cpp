@@ -11,6 +11,7 @@
 #include <Windows.h>
 #include <shellapi.h>
 
+#include "ultra_effect_cache.hpp"
 #include "ultra_home.hpp"
 #include "ultra_test_home.hpp"
 
@@ -242,8 +243,7 @@ std::filesystem::path reshade::ultra::seedTestHome ( const std::filesystem::path
 		"{\n\t\"schema\": 1,\n\t\"config\": {\n" + addonSection + ",\n"
 		"\t\t\"GENERAL\": {\n"
 		"\t\t\t\"EffectSearchPaths\": " + pathList ( shaders / L"**" ) + ",\n"
-		"\t\t\t\"TextureSearchPaths\": " + pathList ( shaders / L"**" ) + ",\n"
-		"\t\t\t\"IntermediateCachePath\": " + quotedPath ( options.work / L"cache" ) + "\n\t\t}" + input + "\n\t},\n"
+		"\t\t\t\"TextureSearchPaths\": " + pathList ( shaders / L"**" ) + "\n\t\t}" + input + "\n\t},\n"
 		"\t\"addons\": " + stringList ( addons ) + ",\n"
 		"\t\"definitions\": {\n\t\t\"RESHADE_DEPTH_INPUT_IS_REVERSED\": \"0\"\n\t},\n"
 		"\t\"effects\": [\n" + ( options.hasNoEffects ? std::string () : effectEntries ( shaders ) ) + "\n\t],\n"
@@ -269,5 +269,6 @@ std::filesystem::path reshade::ultra::seedTestHome ( const std::filesystem::path
 		return {};
 
 	SetEnvironmentVariableW ( indexVariable, ( user / L"installed.json" ).c_str () );
+	SetEnvironmentVariableW ( shaderCacheVariable, ( options.work / L"cache" ).c_str () );
 	return options.work;
 }

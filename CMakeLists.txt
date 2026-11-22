@@ -265,6 +265,8 @@ set(RESHADE_SOURCE
   source/ultra_addon_reload.cpp
   source/ultra_addon_reload.hpp
   source/ultra_constant_buffers.cpp
+  source/ultra_effect_cache.cpp
+  source/ultra_effect_cache.hpp
   source/ultra_effect_reload.cpp
   source/ultra_effect_reload.hpp
   source/ultra_effect_settings.cpp
@@ -591,8 +593,10 @@ target_sources(
     FILES
       source/effect_codegen.hpp
       source/effect_expression.hpp
+      source/effect_front.hpp
       source/effect_lexer.hpp
       source/effect_module.hpp
+      source/effect_pack.hpp
       source/effect_parser.hpp
       source/effect_preprocessor.hpp
       source/effect_symbol_table.hpp
@@ -602,7 +606,9 @@ target_sources(
     source/effect_codegen_hlsl.cpp
     source/effect_codegen_spirv.cpp
     source/effect_expression.cpp
+    source/effect_front.cpp
     source/effect_lexer.cpp
+    source/effect_pack.cpp
     source/effect_parser_exp.cpp
     source/effect_parser_stmt.cpp
     source/effect_preprocessor.cpp
@@ -623,6 +629,7 @@ target_compile_definitions(
   PRIVATE
     _UNICODE
 )
+target_include_directories(ReShadeFX PRIVATE ${ULTRA_DIR}/res)
 
 if(MSVC)
   target_compile_options(

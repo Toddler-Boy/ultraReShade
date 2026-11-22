@@ -34,7 +34,7 @@ extern std::filesystem::path get_system_path();
 // Set during OpenGL presentation, to avoid hooking internal D3D devices and layered DXGI swapchain
 extern thread_local bool g_in_dxgi_runtime;
 
-class wgl_device : public reshade::opengl::device_impl, public reshade::opengl::device_context_impl
+class wgl_device final : public reshade::opengl::device_impl, public reshade::opengl::device_context_impl
 {
 	friend class wgl_swapchain;
 
@@ -109,7 +109,7 @@ public:
 private:
 	reshade::api::pipeline_layout _global_pipeline_layout = {};
 };
-class wgl_device_context : public reshade::opengl::device_context_impl
+class wgl_device_context final : public reshade::opengl::device_context_impl
 {
 public:
 	wgl_device_context(wgl_device *device, HGLRC hglrc) :
@@ -125,7 +125,7 @@ public:
 	}
 };
 
-class wgl_swapchain : public reshade::opengl::swapchain_impl
+class wgl_swapchain final : public reshade::opengl::swapchain_impl
 {
 public:
 	static constexpr reshade::api::resource default_rt = reshade::opengl::make_resource_handle(GL_FRAMEBUFFER_DEFAULT, GL_BACK);

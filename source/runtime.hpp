@@ -35,7 +35,7 @@ namespace reshade
 	/// <summary>
 	/// The main ReShade post-processing effect runtime.
 	/// </summary>
-	class __declspec(uuid("77FF8202-5BEC-42AD-8CE0-397F3E84EAA6")) runtime : public api::effect_runtime
+	class __declspec(uuid("77FF8202-5BEC-42AD-8CE0-397F3E84EAA6")) runtime final : public api::effect_runtime
 	{
 	public:
 		runtime(api::swapchain *swapchain, api::command_queue *graphics_queue);
@@ -191,7 +191,7 @@ namespace reshade
 		// The user's effects into reshade-user.json, after each change
 		void save_effect_settings();
 
-		bool load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index, bool preprocess_required = false);
+		bool load_effect(const std::filesystem::path &source_file, size_t effect_index, size_t permutation_index);
 		void destroy_effect(size_t effect_index, bool unload = true);
 
 		// While the effect files compile, their effects, textures and techniques are being added to on the worker threads
@@ -230,11 +230,6 @@ namespace reshade
 		bool reload_effect(size_t effect_index);
 		void reload_effects();
 		void destroy_effects();
-
-		[[nodiscard]] bool wants_effect_cache() const { return !_no_effect_cache && _has_effect_cache; }
-		bool load_effect_cache(const std::string &id, const std::string &type, std::string &data) const;
-		bool save_effect_cache(const std::string &id, const std::string &type, const std::string &data) const;
-		void clear_effect_cache();
 
 		auto add_effect_permutation(uint32_t width, uint32_t height, api::format color_format, api::format stencil_format, api::color_space color_space) -> size_t;
 
@@ -280,6 +275,8 @@ namespace reshade
 		uint16_t _back_buffer_samples = 1;
 		api::format _back_buffer_format = api::format::unknown;
 		api::color_space _back_buffer_color_space = api::color_space::unknown;
+		// The encoding the add-on states for the targets other than the back buffer it renders effects onto ("effects.target"); BUFFER_COLOR_SPACE of their permutations
+		std::atomic<api::color_space> _target_color_space = api::color_space::unknown;
 
 		bool _is_in_present_call = false;
 
@@ -308,9 +305,6 @@ namespace reshade
 
 		#pragma region Effect Loading
 		bool _no_debug_info = true;
-		bool _no_effect_cache = false;
-		// [GENERAL] IntermediateCachePath is an absolute folder that exists or could be made
-		bool _has_effect_cache = false;
 		bool _no_reload_on_init = false;
 		bool _performance_mode = false;
 		unsigned int _reload_key_data[4] = {};
@@ -322,7 +316,6 @@ namespace reshade
 		std::unordered_map<std::string, ultra::Definitions> _runtime_preprocessor_definitions;
 		std::vector<std::pair<size_t, size_t>> _reload_required_effects;
 
-		std::filesystem::path _effect_cache_path;
 		std::vector<std::filesystem::path> _effect_search_paths;
 		std::vector<std::filesystem::path> _texture_search_paths;
 

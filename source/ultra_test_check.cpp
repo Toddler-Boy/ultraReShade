@@ -393,9 +393,9 @@ namespace
 			failHostApi ( names::screenshot_pending, "a cell is not found by its name and type" );
 
 		// Called with a runtime, these answer without changing anything but what they are for
-		constexpr const char*	harmless[] { names::screenshot_pending };
+		constexpr const char*	harmless[] { names::screenshot_pending, names::effects_target };
 
-		for ( const auto name : { names::screenshot_pending } )
+		for ( const auto name : { names::screenshot_pending, names::effects_target } )
 		{
 			const auto	call = reinterpret_cast<UgCall> ( lookup ( name ) );
 			const auto	count = start ( name, nullptr, 0 );

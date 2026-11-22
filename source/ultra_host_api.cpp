@@ -59,6 +59,7 @@ namespace
 	}
 
 	constexpr Field	screenshotPendingFields[] { { cells::runtime, ugPtr }, { cells::screenshot_pending::count, ugU32 } };
+	constexpr Field	effectsTargetFields[] { { cells::runtime, ugPtr }, { cells::effects_target::space, ugU32 } };
 
 	std::mutex					toldLock;
 	std::set<std::string>		told;
@@ -116,6 +117,21 @@ namespace reshade::ultra
 			r._screenshot_files_pending = c[ at ( cells::screenshot_pending::count ) ].u32;
 			return 1;
 		}
+
+		static int effectsTarget ( runtime& r, UgCell* c )
+		{
+			constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( effectsTargetFields, name ); };
+			const auto		space = c[ at ( cells::effects_target::space ) ].u32;
+
+			if ( space > uint32_t ( api::color_space::hdr10_hlg ) )
+			{
+				tell ( "range " + std::string ( names::effects_target ), std::string ( names::effects_target ) + " called with colour space " + std::to_string ( space ) + ", which is none: refused" );
+				return 0;
+			}
+
+			r._target_color_space = static_cast<api::color_space> ( space );
+			return 1;
+		}
 	};
 }
 
@@ -137,9 +153,11 @@ namespace
 	}
 
 	constexpr const char*	screenshotPendingName = names::screenshot_pending;
+	constexpr const char*	effectsTargetName = names::effects_target;
 
 	constexpr Answer	answers[] {
 		{ names::screenshot_pending, &call<screenshotPendingFields, screenshotPendingName, &Access::screenshotPending>, screenshotPendingFields },
+		{ names::effects_target, &call<effectsTargetFields, effectsTargetName, &Access::effectsTarget>, effectsTargetFields },
 	};
 
 	[[ nodiscard ]] const Answer* answerOf ( const char* name )
