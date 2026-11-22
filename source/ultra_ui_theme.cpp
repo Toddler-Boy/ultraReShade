@@ -23,6 +23,7 @@
 #include <reshade_ultra_json.hpp>
 
 #include "dll_log.hpp"
+#include "reshade_ultra_ui_theme.h"
 #include "ultra_file_watch.hpp"
 #include "ultra_home.hpp"
 #include "ultra_json.hpp"
