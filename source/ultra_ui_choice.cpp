@@ -47,6 +47,14 @@ namespace ultra::ui
 
 		dl->AddRectFilled ( pos, max, draw::color ( theme::colors::control ), rowH * 0.5f );
 
+		// Under the selection's pill, which covers it once it has glided there
+		if ( ImGui::IsItemHovered () && count > 0 )
+		{
+			const auto	hovered = std::clamp ( int ( std::floor ( ( ImGui::GetMousePos ().x - pos.x ) / cell ) ), 0, count - 1 );
+			dl->AddRectFilled ( ImVec2 ( pos.x + float ( hovered ) * cell + pad, pos.y + pad ), ImVec2 ( pos.x + float ( hovered + 1 ) * cell - pad, max.y - pad ),
+								draw::color ( theme::colors::choiceHover ), ( rowH - pad * 2.0f ) * 0.5f );
+		}
+
 		const auto	edges = anim::swing ( itemId, float ( index ) );
 		dl->AddRectFilled ( ImVec2 ( pos.x + edges.lo * cell + pad, pos.y + pad ), ImVec2 ( pos.x + ( edges.hi + 1.0f ) * cell - pad, max.y - pad ),
 							draw::color ( theme::colors::accent ), ( rowH - pad * 2.0f ) * 0.5f );

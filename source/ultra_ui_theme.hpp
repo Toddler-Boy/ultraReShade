@@ -81,6 +81,9 @@ namespace ultra::ui::theme
 		inline ImU32	titleBar = 0;		// the track the tabs sit in, the selected tab's label on its accent pill
 		inline ImU32	tabSelectedText = 0;
 		inline ImU32	logoSweep = 0;		// the band that sweeps across the logo in the tab bar
+		inline ImU32	closeHover = 0;		// behind the close button under the mouse
+		inline ImU32	titleBarHover = 0;	// under the tab the mouse is on, the selected one's pill covers it
+		inline ImU32	choiceHover = 0;	// under the choice the mouse is on, the selected one's pill covers it
 		inline ImU32	tab = 0;			// a tab's label, the selected one's, the one under the mouse, the line under the selected one
 		inline ImU32	tabActive = 0;
 		inline ImU32	tabHover = 0;
@@ -221,6 +224,7 @@ namespace ultra::ui::theme
 	inline float	logoSweepSeconds = 0.0f;	// one pass across the logo, one pass every logoSweepPeriod seconds
 	inline float	logoSweepPeriod = 0.0f;
 	inline float	scrollThumbInset = 0.0f;	// the page's scrollbar thumb off the track's ends
+	inline float	closeRounding = 0.0f;		// the close button's hover background
 
 	// Timing, in seconds
 	inline float	disabledAlpha = 0.0f;

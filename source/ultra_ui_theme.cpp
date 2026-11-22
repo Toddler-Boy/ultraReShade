@@ -87,7 +87,7 @@ namespace ultra::ui::theme
 			{ "pickerLine", &pickerLine }, { "separatorLine", &separatorLine }, { "dragThreshold", &dragThreshold }, { "sliderHandleGrow", &sliderHandleGrow },
 			{ "tabInsetBottom", &tabInsetBottom }, { "choiceRowHeight", &choiceRowHeight }, { "logoGap", &logoGap }, { "logoHeight", &logoHeight }, { "logoInset", &logoInset }, { "barShadowHeight", &barShadowHeight }, { "barShadowAlpha", &barShadowAlpha },
 			{ "logoSweepAngle", &logoSweepAngle }, { "logoSweepWidth", &logoSweepWidth }, { "logoSweepSeconds", &logoSweepSeconds }, { "logoSweepPeriod", &logoSweepPeriod },
-			{ "scrollThumbInset", &scrollThumbInset } };
+			{ "scrollThumbInset", &scrollThumbInset }, { "closeRounding", &closeRounding } };
 
 		constexpr Color	colorTable[] {
 			{ "accent", &colors::accent }, { "danger", &colors::danger }, { "warning", &colors::warning }, { "accentHover", &colors::accentHover },
@@ -101,7 +101,7 @@ namespace ultra::ui::theme
 			{ "window", &colors::window }, { "windowEdge", &colors::windowEdge }, { "tab", &colors::tab }, { "tabActive", &colors::tabActive }, { "tabHover", &colors::tabHover },
 			{ "tabLine", &colors::tabLine }, { "scrollTrack", &colors::scrollTrack }, { "scrollThumb", &colors::scrollThumb }, { "scrollThumbHover", &colors::scrollThumbHover },
 			{ "message", &colors::message }, { "messageText", &colors::messageText },
-			{ "titleBar", &colors::titleBar }, { "tabSelectedText", &colors::tabSelectedText }, { "logoSweep", &colors::logoSweep } };
+			{ "titleBar", &colors::titleBar }, { "tabSelectedText", &colors::tabSelectedText }, { "logoSweep", &colors::logoSweep }, { "closeHover", &colors::closeHover }, { "titleBarHover", &colors::titleBarHover }, { "choiceHover", &colors::choiceHover } };
 
 		constexpr size_t	sizeCount = std::size ( sizeTable );
 		constexpr size_t	colorCount = std::size ( colorTable );

@@ -113,7 +113,8 @@
 		"logoSweepWidth": 35,
 		"logoSweepSeconds": 0.45,
 		"logoSweepPeriod": 4,
-		"scrollThumbInset": 8
+		"scrollThumbInset": 8,
+		"closeRounding": 6
 	},
 	"colors": {
 		"accent": "#22A67C",
@@ -159,6 +160,9 @@
 		"messageText": "#D9DDE2",
 		"titleBar": "#24282E",
 		"tabSelectedText": "#FFFFFF",
-		"logoSweep": "#FF1493"
+		"logoSweep": "#FF1493",
+		"closeHover": "#E81123",
+		"titleBarHover": "#3C4148",
+		"choiceHover": "#3E4349"
 	}
 }

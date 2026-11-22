@@ -364,10 +364,23 @@ namespace ultra::ui::window
 				for ( size_t i = 0; i < selected; ++i )
 					pillX += widths[ i ];
 
+				const auto	pillH = trackH - 2.0f * pillInset;
+				if ( ImGui::IsWindowHovered () && now.held == 0 )
+				{
+					auto	hoverX = x;
+					for ( size_t i = 0; i < tabs.size (); ++i )
+					{
+						const ImVec2	pillMin ( hoverX, trackMin.y + pillInset );
+						const ImVec2	pillMax ( hoverX + widths[ i ], trackBottom - pillInset );
+						if ( ImGui::IsMouseHoveringRect ( ImVec2 ( hoverX, trackMin.y ), ImVec2 ( pillMax.x, trackBottom ) ) )
+							list->AddRectFilled ( pillMin, pillMax, theme::colors::titleBarHover, pillH * 0.5f );
+						hoverX += widths[ i ];
+					}
+				}
+
 				// In the window's own coordinates, so a moved window carries the pill along
 				const auto	from = min.x + anim::swing ( ImGui::GetID ( "tabPillLeft" ), pillX - min.x ).mid ();
 				const auto	to = min.x + anim::swing ( ImGui::GetID ( "tabPillRight" ), pillX + widths[ selected ] - min.x ).mid ();
-				const auto	pillH = trackH - 2.0f * pillInset;
 				list->AddRectFilled ( ImVec2 ( from, trackMin.y + pillInset ), ImVec2 ( to, trackBottom - pillInset ), theme::colors::accent, pillH * 0.5f );
 			}
 
@@ -383,6 +396,8 @@ namespace ultra::ui::window
 				ImGui::PushID ( int ( i ) );
 				ImGui::InvisibleButton ( "##tab", ImVec2 ( tabMax.x - tabMin.x, tabMax.y - tabMin.y ) );
 				const auto	isHovered = ImGui::IsItemHovered ();
+				if ( isHovered )
+					ImGui::SetMouseCursor ( ImGuiMouseCursor_Hand );
 				if ( ImGui::IsItemClicked () && i != selected )
 				{
 					state.tab = tab.name;
@@ -417,7 +432,12 @@ namespace ultra::ui::window
 			// On release, so no item stays held in the frames that do not run while the overlay is closed
 			if ( ImGui::IsItemDeactivated () && isCloseHovered )
 				result.isCloseWanted = true;
-			closeCross ( list, ImVec2 ( closeMin.x + closeBox * 0.5f, closeMin.y + closeBox * 0.5f ), px ( theme::closeSize ) * 0.35f, isCloseHovered ? theme::colors::tabActive : theme::colors::tab );
+			if ( isCloseHovered )
+			{
+				ImGui::SetMouseCursor ( ImGuiMouseCursor_Hand );
+				list->AddRectFilled ( closeMin, ImVec2 ( closeMin.x + closeBox, closeMin.y + closeBox ), theme::colors::closeHover, px ( theme::closeRounding ) );
+			}
+			closeCross ( list, ImVec2 ( closeMin.x + closeBox * 0.5f, closeMin.y + closeBox * 0.5f ), px ( theme::closeSize ) * 0.35f, isCloseHovered ? theme::colors::white : theme::colors::tab );
 
 			// The rest of the bar moves the window
 			const auto	moveFrom = std::max ( x, min.x + pad );
