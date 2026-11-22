@@ -477,6 +477,7 @@ EXPORTS
 	ClipCursor = HookClipCursor PRIVATE
 	GetCursorPos = HookGetCursorPosition PRIVATE
 	SetCursorPos = HookSetCursorPosition PRIVATE
+	SetCursor = HookSetCursor PRIVATE
 	GetAsyncKeyState = HookGetAsyncKeyState PRIVATE
 	GetKeyState = HookGetKeyState PRIVATE
 	GetKeyboardState = HookGetKeyboardState PRIVATE

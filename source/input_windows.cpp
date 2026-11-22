@@ -28,6 +28,47 @@ static std::atomic<bool> s_block_cursor_warping = false;
 extern "C" BOOL WINAPI HookClipCursor(const RECT *lpRect);
 extern "C" auto WINAPI HookGetKeyState(int vKey) -> SHORT;
 extern "C" auto WINAPI HookGetAsyncKeyState(int vKey) -> SHORT;
+extern "C" HCURSOR WINAPI HookSetCursor(HCURSOR hCursor);
+extern "C" HHOOK WINAPI HookSetWindowsHookExW(int idHook, HOOKPROC lpfn, HINSTANCE hmod, DWORD dwThreadId);
+
+// While the overlay has the mouse, Windows' cursor is hidden: it would sit frozen beside the overlay's own. The game's
+// last SetCursor is kept, and set again once the overlay lets go
+static std::atomic<HCURSOR> s_game_cursor = nullptr;
+static std::atomic<bool> s_is_game_cursor_known = false;
+static std::atomic<bool> s_is_cursor_restore_due = false;
+static std::unordered_map<DWORD, HHOOK> s_cursor_hooks; // per window thread, guarded by s_windows_mutex
+
+static HCURSOR set_cursor(HCURSOR cursor)
+{
+	static const auto trampoline = reshade::hooks::is_hooked(SetCursor) ? reshade::hooks::call(HookSetCursor, SetCursor) : SetCursor;
+	return trampoline(cursor);
+}
+
+// After the window has handled WM_SETCURSOR, as DefWindowProc sets the class cursor without going through SetCursor
+static LRESULT CALLBACK hide_cursor_after_set(int code, WPARAM wparam, LPARAM lparam)
+{
+	if (code == HC_ACTION && reinterpret_cast<const CWPRETSTRUCT *>(lparam)->message == WM_SETCURSOR)
+	{
+		if (s_block_mouse.load())
+			set_cursor(nullptr);
+		else if (s_is_cursor_restore_due.exchange(false) && s_is_game_cursor_known.load())
+			set_cursor(s_game_cursor.load());
+	}
+
+	return CallNextHookEx(nullptr, code, wparam, lparam);
+}
+
+static void hide_cursor_on_thread(DWORD thread_id)
+{
+	if (s_cursor_hooks.contains(thread_id))
+		return;
+
+	static const auto set_hook = reshade::hooks::is_hooked(SetWindowsHookExW) ? reshade::hooks::call(HookSetWindowsHookExW, SetWindowsHookExW) : SetWindowsHookExW;
+	const HHOOK hook = set_hook(WH_CALLWNDPROCRET, &hide_cursor_after_set, nullptr, thread_id);
+	if (hook == nullptr)
+		reshade::log::message(reshade::log::level::warning, "Failed to watch the cursor on thread %lu (error %lu): Windows' cursor stays visible while the overlay is open.", thread_id, GetLastError());
+	s_cursor_hooks.emplace(thread_id, hook);
+}
 
 static_assert(
 	reshade::input::key_button_left == VK_LBUTTON &&
@@ -80,7 +121,7 @@ std::shared_ptr<reshade::input> reshade::input::register_window(window_handle wi
 	assert(window != nullptr);
 
 	DWORD process_id = 0;
-	GetWindowThreadProcessId(static_cast<HWND>(window), &process_id);
+	const DWORD thread_id = GetWindowThreadProcessId(static_cast<HWND>(window), &process_id);
 	if (process_id != GetCurrentProcessId())
 	{
 		reshade::log::message(reshade::log::level::warning, "Cannot capture input for window %p created by a different process (%lu).", window, process_id);
@@ -88,6 +129,8 @@ std::shared_ptr<reshade::input> reshade::input::register_window(window_handle wi
 	}
 
 	const std::unique_lock<std::shared_mutex> lock(s_windows_mutex);
+
+	hide_cursor_on_thread(thread_id);
 
 	const auto insert = s_windows.emplace(static_cast<HWND>(window), std::weak_ptr<input>());
 
@@ -361,10 +404,18 @@ void reshade::input::next_frame()
 	// Run through all forms of input blocking for all windows and establish whether any of them are blocking input
 	const std::shared_lock<std::shared_mutex> lock(s_windows_mutex);
 
-	s_block_mouse.store(std::any_of(s_windows.cbegin(), s_windows.cend(),
+	const bool block_mouse = std::any_of(s_windows.cbegin(), s_windows.cend(),
 		[](const std::pair<HWND, std::weak_ptr<reshade::input>> &input_window) {
 			return !input_window.second.expired() && input_window.second.lock()->is_blocking_mouse_input();
-		}));
+		});
+
+	// The cursor changes at once, not at the next mouse move: each window is asked to set its cursor again
+	if (s_block_mouse.exchange(block_mouse) != block_mouse)
+	{
+		s_is_cursor_restore_due = !block_mouse;
+		for (const std::pair<const HWND, std::weak_ptr<reshade::input>> &input_window : s_windows)
+			PostMessageW(input_window.first, WM_SETCURSOR, reinterpret_cast<WPARAM>(input_window.first), MAKELPARAM(HTCLIENT, WM_MOUSEMOVE));
+	}
 	s_block_keyboard.store(std::any_of(s_windows.cbegin(), s_windows.cend(),
 		[](const std::pair<HWND, std::weak_ptr<reshade::input>> &input_window) {
 			return !input_window.second.expired() && input_window.second.lock()->is_blocking_keyboard_input();
@@ -588,6 +639,21 @@ extern "C" BOOL WINAPI HookPostMessageW(HWND hWnd, UINT Msg, WPARAM wParam, LPAR
 
 	static const auto trampoline = reshade::hooks::call(HookPostMessageW);
 	return trampoline(hWnd, Msg, wParam, lParam);
+}
+
+extern "C" HCURSOR WINAPI HookSetCursor(HCURSOR hCursor)
+{
+	static const auto trampoline = reshade::hooks::call(HookSetCursor);
+
+	const HCURSOR previous = s_game_cursor.exchange(hCursor);
+	s_is_game_cursor_known = true;
+	if (s_block_mouse.load())
+	{
+		trampoline(nullptr);
+		return previous;
+	}
+
+	return trampoline(hCursor);
 }
 
 extern "C" BOOL WINAPI HookRegisterRawInputDevices(PCRAWINPUTDEVICE pRawInputDevices, UINT uiNumDevices, UINT cbSize)
