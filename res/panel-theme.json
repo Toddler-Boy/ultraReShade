@@ -82,7 +82,7 @@
 		"windowMinWidth": 360,
 		"windowMinHeight": 240,
 		"resizeEdge": 6,
-		"tabHeight": 44,
+		"tabHeight": 34,
 		"tabPadX": 14,
 		"tabGap": 4,
 		"tabLine": 2,
@@ -91,17 +91,18 @@
 		"scrollThumbMin": 24,
 		"closeSize": 12,
 		"messagePad": 8,
-		"dotSize": 5,
+		"dotSize": 6.5,
 		"tipEdge": 0.1,
-		"tabInset": 5,
+		"tabInsetTop": 12,
 		"tabPillInset": 3,
-		"dotGap": 4,
+		"dotGap": 6,
 		"dotRing": 1.5,
 		"closeLine": 1.5,
 		"pickerLine": 1.5,
 		"separatorLine": 1,
 		"dragThreshold": 3,
-		"sliderHandleGrow": 1
+		"sliderHandleGrow": 1,
+		"tabInsetBottom": 8
 	},
 	"colors": {
 		"accent": "#22A67C",
@@ -136,8 +137,6 @@
 		"keycapEdge": "#24282C",
 		"window": "#17191C",
 		"windowEdge": "#30353B",
-		"titleBar": "#24282E",
-		"tabSelectedText": "#FFFFFF",
 		"tab": "#8A929B",
 		"tabActive": "#F1F4F7",
 		"tabHover": "#D9DDE2",
@@ -146,6 +145,8 @@
 		"scrollThumb": "#3A4047",
 		"scrollThumbHover": "#4A5058",
 		"message": "#202327",
-		"messageText": "#D9DDE2"
+		"messageText": "#D9DDE2",
+		"titleBar": "#24282E",
+		"tabSelectedText": "#FFFFFF"
 	}
 }

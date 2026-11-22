@@ -232,14 +232,13 @@ namespace ultra::ui::window
 		{
 			auto*	list = ImGui::GetWindowDrawList ();
 			draw::shadow ( list, min, max, rounding );
-			const auto	barHeight = px ( theme::tabHeight );
+			const auto	barHeight = px ( theme::tabInsetTop ) + px ( theme::tabHeight ) + px ( theme::tabInsetBottom );
 			list->AddRectFilled ( min, max, theme::colors::window, rounding );
 			list->AddRect ( ImVec2 ( min.x + 0.5f, min.y + 0.5f ), ImVec2 ( max.x - 0.5f, max.y - 0.5f ), theme::colors::windowEdge, rounding, 1.0f );
 
 			// The tab bar: the tabs in a rounded track, the selected one an accent pill that glides to it
 			const auto	size = px ( theme::sizes::body );
 			const auto	pad = px ( theme::windowPad );
-			const auto	inset = px ( theme::tabInset );
 			const auto	pillInset = px ( theme::tabPillInset );
 			const auto	tabPad = px ( theme::tabPadX );
 			auto		selected = size_t ( 0 );
@@ -247,8 +246,8 @@ namespace ultra::ui::window
 				if ( isSame ( tabs[ i ].name, state.tab ) )
 					selected = i;
 
-			const ImVec2	trackMin ( min.x + pad, min.y + inset );
-			const auto		trackBottom = min.y + barHeight - inset;
+			const ImVec2	trackMin ( min.x + pad, min.y + px ( theme::tabInsetTop ) );
+			const auto		trackBottom = trackMin.y + px ( theme::tabHeight );
 			const auto		trackH = trackBottom - trackMin.y;
 
 			std::vector<float>	widths;
@@ -303,12 +302,12 @@ namespace ultra::ui::window
 				if ( dot != dots.end () )
 				{
 					// A dark ring keeps a green dot visible on the green pill
-					const ImVec2	centre ( textX + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f );
+					const ImVec2	centre ( textX + px ( theme::dotSize ) * 0.5f, trackMin.y + ( trackBottom - trackMin.y ) * 0.5f );
 					if ( isSelected )
 						list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + px ( theme::dotRing ), theme::colors::window );
 					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f, dot->second );
 				}
-				font::draw ( list, ImVec2 ( textX + dotRoom, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );
+				font::draw ( list, ImVec2 ( textX + dotRoom, font::centredTop ( font::Face::medium, size, trackMin.y, trackBottom - trackMin.y ) ), font::Face::medium, size, draw::color ( color ), tab.label );
 
 				x += widths[ i ];
 			}
@@ -316,7 +315,7 @@ namespace ultra::ui::window
 
 			// The close button at the bar's end
 			const auto	closeBox = px ( theme::closeSize ) * 2.0f;
-			const ImVec2	closeMin ( max.x - pad - closeBox, min.y + ( barHeight - closeBox ) * 0.5f );
+			const ImVec2	closeMin ( max.x - pad - closeBox, trackMin.y + ( trackBottom - trackMin.y - closeBox ) * 0.5f );
 			ImGui::SetCursorScreenPos ( closeMin );
 			ImGui::InvisibleButton ( "##close", ImVec2 ( closeBox, closeBox ) );
 			const auto	isCloseHovered = ImGui::IsItemHovered ();

@@ -193,7 +193,7 @@ namespace ultra::ui::theme
 	inline float	windowMinWidth = 0.0f;
 	inline float	windowMinHeight = 0.0f;
 	inline float	resizeEdge = 0.0f;
-	inline float	tabHeight = 0.0f;
+	inline float	tabHeight = 0.0f;				// the tab track's height; the bar adds the insets above and below
 	inline float	tabPadX = 0.0f;
 	inline float	tabGap = 0.0f;
 	inline float	tabLine = 0.0f;
@@ -203,7 +203,8 @@ namespace ultra::ui::theme
 	inline float	closeSize = 0.0f;
 	inline float	messagePad = 0.0f;
 	inline float	dotSize = 0.0f;
-	inline float	tabInset = 0.0f;				// the track's inset in the bar
+	inline float	tabInsetTop = 0.0f;			// the space above the tab track and below it, in the bar
+	inline float	tabInsetBottom = 0.0f;
 	inline float	tabPillInset = 0.0f;		// the selected pill's in the track
 	inline float	dotGap = 0.0f;				// a tab's dot to its label
 	inline float	dotRing = 0.0f;				// the dot's dark ring

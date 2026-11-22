@@ -82,8 +82,9 @@ namespace ultra::ui::theme
 			{ "tabHeight", &tabHeight }, { "tabPadX", &tabPadX }, { "tabGap", &tabGap }, { "tabLine", &tabLine }, { "scrollbarWidth", &scrollbarWidth },
 			{ "scrollbarGap", &scrollbarGap }, { "scrollThumbMin", &scrollThumbMin }, { "closeSize", &closeSize }, { "messagePad", &messagePad }, { "dotSize", &dotSize },
 			{ "tipEdge", &tipEdge },
-			{ "tabInset", &tabInset }, { "tabPillInset", &tabPillInset }, { "dotGap", &dotGap }, { "dotRing", &dotRing }, { "closeLine", &closeLine },
-			{ "pickerLine", &pickerLine }, { "separatorLine", &separatorLine }, { "dragThreshold", &dragThreshold }, { "sliderHandleGrow", &sliderHandleGrow } };
+			{ "tabInsetTop", &tabInsetTop }, { "tabPillInset", &tabPillInset }, { "dotGap", &dotGap }, { "dotRing", &dotRing }, { "closeLine", &closeLine },
+			{ "pickerLine", &pickerLine }, { "separatorLine", &separatorLine }, { "dragThreshold", &dragThreshold }, { "sliderHandleGrow", &sliderHandleGrow },
+			{ "tabInsetBottom", &tabInsetBottom } };
 
 		constexpr Color	colorTable[] {
 			{ "accent", &colors::accent }, { "danger", &colors::danger }, { "warning", &colors::warning }, { "accentHover", &colors::accentHover },
