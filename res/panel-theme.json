@@ -106,7 +106,14 @@
 		"choiceRowHeight": 30,
 		"logoGap": 15,
 		"logoHeight": 22,
-		"logoInset": 8
+		"logoInset": 8,
+		"barShadowHeight": 10,
+		"barShadowAlpha": 0.5,
+		"logoSweepAngle": 30,
+		"logoSweepWidth": 35,
+		"logoSweepSeconds": 0.45,
+		"logoSweepPeriod": 4,
+		"scrollThumbInset": 8
 	},
 	"colors": {
 		"accent": "#22A67C",
@@ -151,6 +158,7 @@
 		"message": "#202327",
 		"messageText": "#D9DDE2",
 		"titleBar": "#24282E",
-		"tabSelectedText": "#FFFFFF"
+		"tabSelectedText": "#FFFFFF",
+		"logoSweep": "#FF1493"
 	}
 }

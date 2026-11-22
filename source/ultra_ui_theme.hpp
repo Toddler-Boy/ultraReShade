@@ -80,6 +80,7 @@ namespace ultra::ui::theme
 		inline ImU32	windowEdge = 0;
 		inline ImU32	titleBar = 0;		// the track the tabs sit in, the selected tab's label on its accent pill
 		inline ImU32	tabSelectedText = 0;
+		inline ImU32	logoSweep = 0;		// the band that sweeps across the logo in the tab bar
 		inline ImU32	tab = 0;			// a tab's label, the selected one's, the one under the mouse, the line under the selected one
 		inline ImU32	tabActive = 0;
 		inline ImU32	tabHover = 0;
@@ -213,6 +214,13 @@ namespace ultra::ui::theme
 	inline float	logoGap = 0.0f;				// the logo left of the tab track, to the track
 	inline float	logoHeight = 0.0f;			// centred on the tab track
 	inline float	logoInset = 0.0f;			// the logo off the window's left edge, beyond windowPad
+	inline float	barShadowHeight = 0.0f;		// the tab bar's shadow over the content, black at barShadowAlpha fading to clear
+	inline float	barShadowAlpha = 0.0f;
+	inline float	logoSweepAngle = 0.0f;		// the band's lean from vertical, in degrees
+	inline float	logoSweepWidth = 0.0f;
+	inline float	logoSweepSeconds = 0.0f;	// one pass across the logo, one pass every logoSweepPeriod seconds
+	inline float	logoSweepPeriod = 0.0f;
+	inline float	scrollThumbInset = 0.0f;	// the page's scrollbar thumb off the track's ends
 
 	// Timing, in seconds
 	inline float	disabledAlpha = 0.0f;

@@ -12,6 +12,8 @@
 #include <string>
 #include <vector>
 
+#include <imgui_internal.h>
+
 #include "ultra_ui_convert.hpp"
 #include "ultra_ui_draw.hpp"
 #include "ultra_ui_font.hpp"
@@ -704,6 +706,40 @@ namespace ultra::ui
 		}
 	}
 
+	namespace
+	{
+		// The page's scrollbar thumb, ImGui's own made clear: scrollThumbInset off the track's ends, so the bar's shadow never covers it
+		void drawThumb ()
+		{
+			auto* const	window = ImGui::GetCurrentWindow ();
+			if ( ! window->ScrollbarY )
+				return;
+
+			const auto&	style = ImGui::GetStyle ();
+			const auto	track = ImGui::GetWindowScrollbarRect ( window, ImGuiAxis_Y );
+			auto		bb = track;
+			bb.Expand ( -std::trunc ( std::min ( style.ScrollbarPadding, std::min ( track.GetWidth (), track.GetHeight () ) * 0.5f ) ) );
+			bb.Min.y += theme::px ( theme::scrollThumbInset );
+			bb.Max.y -= theme::px ( theme::scrollThumbInset );
+
+			const auto	length = bb.GetHeight ();
+			if ( length < 1.0f )
+				return;
+
+			const auto	visible = window->InnerRect.GetHeight ();
+			const auto	total = std::max ( { window->ContentSize.y + window->WindowPadding.y * 2.0f, visible, 1.0f } );
+			const auto	thumb = std::clamp ( std::trunc ( length * visible / total ), std::min ( length, style.GrabMinSize ), length );
+			const auto	share = std::clamp ( window->Scroll.y / std::max ( 1.0f, total - visible ), 0.0f, 1.0f );
+			const auto	top = bb.Min.y + ( length - thumb ) * share;
+
+			const auto	id = ImGui::GetWindowScrollbarID ( window, ImGuiAxis_Y );
+			const auto	color = ImGui::GetActiveID () == id || ImGui::GetHoveredID () == id ? theme::colors::scrollThumbHover : theme::colors::scrollThumb;
+			window->DrawList->PushClipRect ( track.Min, track.Max, false );
+			window->DrawList->AddRectFilled ( ImVec2 ( bb.Min.x, top ), ImVec2 ( bb.Max.x, top + thumb ), draw::color ( color ), style.ScrollbarRounding );
+			window->DrawList->PopClipRect ();
+		}
+	}
+
 	void beginFrame ( api::effect_runtime* runtime )
 	{
 		theme::measureScale ( runtime != nullptr ? runtime->get_hwnd () : nullptr, ImGui::GetIO ().DisplaySize.y );
@@ -742,8 +778,11 @@ namespace ultra::ui
 		const auto	inset = theme::px ( theme::panelInset );
 		ImGui::PushStyleVar ( ImGuiStyleVar_WindowPadding, ImVec2 ( inset, inset ) );
 		ImGui::PushStyleColor ( ImGuiCol_ChildBg, IM_COL32 ( 0, 0, 0, 0 ) );
+		ImGui::PushStyleColor ( ImGuiCol_ScrollbarGrab, IM_COL32 ( 0, 0, 0, 0 ) );
+		ImGui::PushStyleColor ( ImGuiCol_ScrollbarGrabHovered, IM_COL32 ( 0, 0, 0, 0 ) );
+		ImGui::PushStyleColor ( ImGuiCol_ScrollbarGrabActive, IM_COL32 ( 0, 0, 0, 0 ) );
 		const auto	open = ImGui::BeginChild ( page.id, ImVec2 ( 0.0f, 0.0f ), ImGuiChildFlags_AlwaysUseWindowPadding, ImGuiWindowFlags_HorizontalScrollbar );
-		ImGui::PopStyleColor ();
+		ImGui::PopStyleColor ( 4 );
 		ImGui::PopStyleVar ();
 
 		if ( open )
@@ -760,6 +799,7 @@ namespace ultra::ui
 
 			drawSections ( page, frame, width );
 			keepScroll ( scrolls[ page.id ] );
+			drawThumb ();
 		}
 
 		ImGui::EndChild ();

@@ -9,6 +9,7 @@
 #include <map>
 #include <vector>
 
+#include <imgui_internal.h>
 #include <stb_image.h>
 #include <Windows.h>
 
@@ -128,6 +129,51 @@ namespace ultra::ui::window
 		{
 			dl->AddLine ( ImVec2 ( centre.x - half, centre.y - half ), ImVec2 ( centre.x + half, centre.y + half ), color, px ( theme::closeLine ) );
 			dl->AddLine ( ImVec2 ( centre.x - half, centre.y + half ), ImVec2 ( centre.x + half, centre.y - half ), color, px ( theme::closeLine ) );
+		}
+
+		// The logo in its tint, a band of logoSweep leaning logoSweepAngle passing across it once every logoSweepPeriod seconds; a
+		// grid of quads with the band's colour at their corners, fine enough for the band's soft edges
+		void drawLogo ( ImDrawList* list, const Texture& logo, ImVec2 at, ImVec2 size )
+		{
+			constexpr int	columns = 64;
+			constexpr int	rows = 4;
+
+			const auto	lean = std::tan ( theme::logoSweepAngle * 3.14159265f / 180.0f );
+			const auto	half = std::max ( 1.0f, px ( theme::logoSweepWidth ) * 0.5f );
+			const auto	seconds = std::max ( 0.001f, theme::logoSweepSeconds );
+			const auto	period = std::max ( seconds, theme::logoSweepPeriod );
+			const auto	phase = float ( std::fmod ( ImGui::GetTime (), double ( period ) ) ) / seconds;
+			const auto	from = -half - size.y * lean;
+			const auto	front = from + std::min ( phase, 1.0f ) * ( size.x + half - from );
+			const auto	tint = draw::color ( theme::colors::bright );
+			const auto	sweep = draw::color ( theme::colors::logoSweep );
+
+			list->PushTexture ( logo.ref () );
+			list->PrimReserve ( columns * rows * 6, ( columns + 1 ) * ( rows + 1 ) );
+			const auto	first = list->_VtxCurrentIdx;
+
+			for ( int r = 0; r <= rows; ++r )
+				for ( int c = 0; c <= columns; ++c )
+				{
+					const auto	u = float ( c ) / columns;
+					const auto	v = float ( r ) / rows;
+					const auto	x = u * size.x;
+					const auto	y = v * size.y;
+					const auto	distance = std::abs ( x - ( size.y - y ) * lean - front ) / half;
+					const auto	band = phase < 1.0f ? std::max ( 0.0f, 1.0f - distance * distance ) : 0.0f;
+					list->PrimWriteVtx ( ImVec2 ( at.x + x, at.y + y ), ImVec2 ( u, v ), draw::mix ( tint, sweep, band ) );
+				}
+
+			for ( int r = 0; r < rows; ++r )
+				for ( int c = 0; c < columns; ++c )
+				{
+					const auto	i = first + unsigned ( r * ( columns + 1 ) + c );
+					const auto	below = i + unsigned ( columns + 1 );
+					for ( const auto index : { i, i + 1, below + 1, i, below + 1, below } )
+						list->PrimWriteIdx ( ImDrawIdx ( index ) );
+				}
+
+			list->PopTexture ();
 		}
 
 		struct Artwork
@@ -292,7 +338,7 @@ namespace ultra::ui::window
 			{
 				const ImVec2	at ( std::round ( trackLeft + px ( theme::logoInset ) ),std::round ( trackTop + ( trackH - logoH ) * 0.5f ) );
 				const auto		logoW = float ( logo->width ) * logoH / float ( logo->height );
-				list->AddImage ( logo->ref (), at, ImVec2 ( at.x + logoW, at.y + logoH ), ImVec2 ( 0.0f, 0.0f ), ImVec2 ( 1.0f, 1.0f ), draw::color ( theme::colors::bright ) );
+				drawLogo ( list, *logo, at, ImVec2 ( logoW, logoH ) );
 				trackLeft += px ( theme::logoInset ) + logoW + px ( theme::logoGap );
 			}
 
@@ -388,8 +434,24 @@ namespace ultra::ui::window
 			const ImVec2	contentSize ( max.x - min.x - 2.0f * pad, max.y - min.y - barHeight - pad );
 			ImGui::SetCursorScreenPos ( contentMin );
 			if ( ImGui::BeginChild ( "##tab", contentSize, ImGuiChildFlags_None, ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse | ImGuiWindowFlags_NoNav ) )
+			{
 				if ( selected < tabs.size () && tabs[ selected ].draw )
 					tabs[ selected ].draw ();
+
+				// The bar's shadow over the content's top, drawn last: into the innermost child the tab made, which ImGui draws after the rest
+				auto*	last = ImGui::GetCurrentWindow ();
+				while ( ! last->DC.ChildWindows.empty () )
+					last = last->DC.ChildWindows.back ();
+
+				const auto	shadowH = px ( theme::barShadowHeight );
+				const auto	dark = IM_COL32 ( 0, 0, 0, int ( std::lround ( std::clamp ( theme::barShadowAlpha, 0.0f, 1.0f ) * 255.0f ) ) );
+				const auto	clear = IM_COL32 ( 0, 0, 0, 0 );
+				const ImVec2	shadowMin ( min.x + 1.0f, contentMin.y );
+				const ImVec2	shadowMax ( max.x - 1.0f, contentMin.y + shadowH );
+				last->DrawList->PushClipRect ( shadowMin, shadowMax, false );
+				last->DrawList->AddRectFilledMultiColor ( shadowMin, shadowMax, dark, dark, clear, clear );
+				last->DrawList->PopClipRect ();
+			}
 			ImGui::EndChild ();
 		}
 		ImGui::End ();
