@@ -65,7 +65,7 @@
 		"window": "#17191C",
 		"windowEdge": "#30353B",
 		"titleBar": "#24282E",
-		"tabFill": "#1D2024",
+		"tabSelectedText": "#FFFFFF",
 		"tab": "#8A929B",
 		"tabActive": "#F1F4F7",
 		"tabHover": "#D9DDE2",

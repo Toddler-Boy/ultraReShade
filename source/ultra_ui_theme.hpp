@@ -80,8 +80,8 @@ namespace ultra::ui::theme
 
 		inline ImU32	window = 0;			// the overlay's window: its fill and its edge
 		inline ImU32	windowEdge = 0;
-		inline ImU32	titleBar = 0;		// the tab bar's fill, an unselected tab's fill (the selected one takes the window's)
-		inline ImU32	tabFill = 0;
+		inline ImU32	titleBar = 0;		// the track the tabs sit in, the selected tab's label on its accent pill
+		inline ImU32	tabSelectedText = 0;
 		inline ImU32	tab = 0;			// a tab's label, the selected one's, the one under the mouse, the line under the selected one
 		inline ImU32	tabActive = 0;
 		inline ImU32	tabHover = 0;

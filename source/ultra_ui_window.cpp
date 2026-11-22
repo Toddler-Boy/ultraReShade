@@ -234,28 +234,56 @@ namespace ultra::ui::window
 			draw::shadow ( list, min, max, rounding );
 			const auto	barHeight = px ( theme::tabHeight );
 			list->AddRectFilled ( min, max, theme::colors::window, rounding );
-			list->AddRectFilled ( min, ImVec2 ( max.x, min.y + barHeight ), theme::colors::titleBar, rounding, ImDrawFlags_RoundTop );
 			list->AddRect ( ImVec2 ( min.x + 0.5f, min.y + 0.5f ), ImVec2 ( max.x - 0.5f, max.y - 0.5f ), theme::colors::windowEdge, rounding, 1.0f );
 
-			// The tab bar
+			// The tab bar: the tabs in a rounded track, the selected one an accent pill that glides to it
 			const auto	size = px ( theme::sizes::heading );
 			const auto	pad = px ( theme::windowPad );
-			auto		x = min.x + pad;
+			const auto	inset = px ( 5.0f );
+			const auto	pillInset = px ( 3.0f );
+			const auto	tabPad = px ( theme::tabPadX );
 			auto		selected = size_t ( 0 );
 			for ( size_t i = 0; i < tabs.size (); ++i )
 				if ( isSame ( tabs[ i ].name, state.tab ) )
 					selected = i;
 
-			ImVec2		selectedSpan ( x, x );
+			const ImVec2	trackMin ( min.x + pad, min.y + inset );
+			const auto		trackBottom = min.y + barHeight - inset;
+			const auto		trackH = trackBottom - trackMin.y;
+
+			std::vector<float>	widths;
+			auto				trackRight = trackMin.x + pillInset;
+			for ( const auto& tab : tabs )
+			{
+				const auto	dotRoom = dots.contains ( std::string ( tab.label ) ) ? px ( theme::dotSize ) + px ( 6.0f ) : 0.0f;
+				widths.push_back ( font::width ( font::Face::medium, size, tab.label ) + dotRoom + 2.0f * tabPad );
+				trackRight += widths.back ();
+			}
+			trackRight += pillInset;
+			auto	x = trackMin.x + pillInset;
+
+			if ( ! tabs.empty () )
+			{
+				list->AddRectFilled ( trackMin, ImVec2 ( trackRight, trackBottom ), theme::colors::titleBar, trackH * 0.5f );
+
+				auto	pillX = x;
+				for ( size_t i = 0; i < selected; ++i )
+					pillX += widths[ i ];
+
+				// In the window's own coordinates, so a moved window carries the pill along
+				const auto	from = min.x + anim::swing ( ImGui::GetID ( "tabPillLeft" ), pillX - min.x ).mid ();
+				const auto	to = min.x + anim::swing ( ImGui::GetID ( "tabPillRight" ), pillX + widths[ selected ] - min.x ).mid ();
+				const auto	pillH = trackH - 2.0f * pillInset;
+				list->AddRectFilled ( ImVec2 ( from, trackMin.y + pillInset ), ImVec2 ( to, trackBottom - pillInset ), theme::colors::accent, pillH * 0.5f );
+			}
+
 			for ( size_t i = 0; i < tabs.size (); ++i )
 			{
 				const auto&	tab = tabs[ i ];
 				const auto	dot = dots.find ( tab.label );
 				const auto	dotRoom = dot != dots.end () ? px ( theme::dotSize ) + px ( 6.0f ) : 0.0f;
-				const auto	textW = font::width ( font::Face::medium, size, tab.label );
-				const auto	w = textW + dotRoom;
-				const ImVec2	tabMin ( x - px ( theme::tabPadX ) * 0.5f, min.y + px ( theme::resizeEdge ) );
-				const ImVec2	tabMax ( x + w + px ( theme::tabPadX ) * 0.5f, min.y + barHeight );
+				const ImVec2	tabMin ( x, trackMin.y );
+				const ImVec2	tabMax ( x + widths[ i ], trackBottom );
 
 				ImGui::SetCursorScreenPos ( tabMin );
 				ImGui::PushID ( int ( i ) );
@@ -269,28 +297,21 @@ namespace ultra::ui::window
 				}
 				ImGui::PopID ();
 
-				// The selected tab in the window's colour, so it runs into its content; the others a step darker than the bar
-				list->AddRectFilled ( ImVec2 ( tabMin.x, min.y + px ( theme::resizeEdge ) ), ImVec2 ( tabMax.x, min.y + barHeight ),
-									  i == selected ? theme::colors::window : theme::colors::tabFill, rounding * 0.5f, ImDrawFlags_RoundTop );
-
-				const auto	color = i == selected ? theme::colors::tabActive : isHovered ? theme::colors::tabHover : theme::colors::tab;
+				const auto	isSelected = i == selected;
+				const auto	color = isSelected ? theme::colors::tabSelectedText : isHovered ? theme::colors::tabHover : theme::colors::tab;
+				const auto	textX = x + tabPad;
 				if ( dot != dots.end () )
-					list->AddCircleFilled ( ImVec2 ( x + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f ), px ( theme::dotSize ) * 0.5f, dot->second );
-				font::draw ( list, ImVec2 ( x + dotRoom, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );
-				if ( i == selected )
-					selectedSpan = ImVec2 ( x, x + w );
+				{
+					// A ring in the label's colour keeps a green dot visible on the green pill
+					const ImVec2	centre ( textX + px ( theme::dotSize ) * 0.5f, min.y + barHeight * 0.5f );
+					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f + ( isSelected ? px ( 1.5f ) : 0.0f ), color );
+					list->AddCircleFilled ( centre, px ( theme::dotSize ) * 0.5f, dot->second );
+				}
+				font::draw ( list, ImVec2 ( textX + dotRoom, font::centredTop ( font::Face::medium, size, min.y, barHeight ) ), font::Face::medium, size, draw::color ( color ), tab.label );
 
-				x += w + px ( theme::tabPadX ) + px ( theme::tabGap );
+				x += widths[ i ];
 			}
-
-			// The line under the selected tab glides to it, in the window's own coordinates so a moved window carries it along
-			if ( ! tabs.empty () )
-			{
-				const auto	from = min.x + anim::swing ( ImGui::GetID ( "tabLineLeft" ), selectedSpan.x - min.x ).mid ();
-				const auto	to = min.x + anim::swing ( ImGui::GetID ( "tabLineRight" ), selectedSpan.y - min.x ).mid ();
-				const auto	lineY = min.y + barHeight;
-				list->AddRectFilled ( ImVec2 ( from, lineY - px ( theme::tabLine ) ), ImVec2 ( to, lineY ), theme::colors::tabLine );
-			}
+			x = trackRight;
 
 			// The close button at the bar's end
 			const auto	closeBox = px ( theme::closeSize ) * 2.0f;
