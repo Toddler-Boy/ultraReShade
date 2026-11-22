@@ -102,7 +102,8 @@
 		"separatorLine": 1,
 		"dragThreshold": 3,
 		"sliderHandleGrow": 1,
-		"tabInsetBottom": 8
+		"tabInsetBottom": 8,
+		"choiceRowHeight": 30
 	},
 	"colors": {
 		"accent": "#22A67C",

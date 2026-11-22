@@ -616,7 +616,12 @@ namespace ultra::ui
 							label ( row, labelFor ( item, frame ), tip, applies );
 						sliderRow ( item, row, c, frame );
 						break;
-					case RESHADE_UI_ITEM_OPTIONS:	label ( row, labelFor ( item, frame ), tip, applies );	indexRow ( item, row, c, frame );	break;
+					case RESHADE_UI_ITEM_OPTIONS:
+						if ( asChoiceRow ( item ) )
+							height = theme::px ( theme::choiceRowHeight );
+						label ( ImVec2 ( row.x, row.y + ( height - rowH ) * 0.5f ), labelFor ( item, frame ), tip, applies );
+						indexRow ( item, row, c, frame );
+						break;
 					case RESHADE_UI_ITEM_TOGGLE:	toggleRow ( item, tip, row, frame );	break;
 					case RESHADE_UI_ITEM_TEXT:		height = textRow ( item, line, row, width, frame );	break;
 					case RESHADE_UI_ITEM_NUMBER:	label ( row, labelFor ( item, frame ), tip, applies );	numberRow ( item, row, c, frame );	break;

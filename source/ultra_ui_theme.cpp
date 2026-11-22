@@ -84,7 +84,7 @@ namespace ultra::ui::theme
 			{ "tipEdge", &tipEdge },
 			{ "tabInsetTop", &tabInsetTop }, { "tabPillInset", &tabPillInset }, { "dotGap", &dotGap }, { "dotRing", &dotRing }, { "closeLine", &closeLine },
 			{ "pickerLine", &pickerLine }, { "separatorLine", &separatorLine }, { "dragThreshold", &dragThreshold }, { "sliderHandleGrow", &sliderHandleGrow },
-			{ "tabInsetBottom", &tabInsetBottom } };
+			{ "tabInsetBottom", &tabInsetBottom }, { "choiceRowHeight", &choiceRowHeight } };
 
 		constexpr Color	colorTable[] {
 			{ "accent", &colors::accent }, { "danger", &colors::danger }, { "warning", &colors::warning }, { "accentHover", &colors::accentHover },

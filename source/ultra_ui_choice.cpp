@@ -18,7 +18,7 @@ namespace ultra::ui
 	Edit choice ( const char* id, int& index, std::span<const char* const> names, int def, float width )
 	{
 		const auto	count = int ( names.size () );
-		const auto	rowH = theme::px ( theme::rowHeight );
+		const auto	rowH = theme::px ( theme::choiceRowHeight );
 		const auto	pad = theme::px ( theme::choicePad );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 		const auto	itemId = ImGui::GetID ( id );

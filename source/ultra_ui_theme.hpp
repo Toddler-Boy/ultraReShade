@@ -205,6 +205,7 @@ namespace ultra::ui::theme
 	inline float	dotSize = 0.0f;
 	inline float	tabInsetTop = 0.0f;			// the space above the tab track and below it, in the bar
 	inline float	tabInsetBottom = 0.0f;
+	inline float	choiceRowHeight = 0.0f;			// a row-style choice's height, its row's too; every other row is rowHeight
 	inline float	tabPillInset = 0.0f;		// the selected pill's in the track
 	inline float	dotGap = 0.0f;				// a tab's dot to its label
 	inline float	dotRing = 0.0f;				// the dot's dark ring
