@@ -45,6 +45,7 @@ namespace
 	constexpr int		reloadDepth = 1 << 20;		// events the reload itself causes run on its thread without the lock
 
 	constexpr auto		writtenCheckInterval = std::chrono::milliseconds ( 100 );
+	constexpr auto		refusedRetryInterval = std::chrono::seconds ( 1 );
 	constexpr wchar_t	copyMarker[] = L".loaded";
 
 	struct TrackedSampler
@@ -102,6 +103,7 @@ namespace
 		HMODULE					module = nullptr;
 		FILETIME				loadedTime {};		// file's write time when the copy was made
 		bool					isChanged = false;	// the file watch reported a change since
+		std::chrono::steady_clock::time_point	retryAt {};	// it refused to reload: asked again from then on
 	};
 
 	std::vector<WatchedAddon>				watched;			// the presenting thread's, after loading
@@ -447,8 +449,9 @@ namespace
 
 		if ( canReload != nullptr && ! canReload () )
 		{
-			reshade::log::message ( reshade::log::level::warning, "The add-on in '%s' can't reload now; it stays as it is.", addon.file.u8string ().c_str () );
-			addon.loadedTime = writeTime ( addon.file );
+			reshade::log::message ( reshade::log::level::warning, "The add-on in '%s' can't reload now; asked again in a second.", addon.file.u8string ().c_str () );
+			addon.isChanged = true;
+			addon.retryAt = std::chrono::steady_clock::now () + refusedRetryInterval;
 			reshade::ultra::forgetExclusiveCalls ( addon.module );		// they belong to the set that did not come
 			return false;
 		}
@@ -778,7 +781,7 @@ void reshade::ultra::pollAddonReload ()
 			continue;
 		}
 
-		if ( ! addon.isChanged || ! isCheckDue )
+		if ( ! addon.isChanged || ! isCheckDue || now < addon.retryAt )
 			continue;
 
 		hasChecked = true;
