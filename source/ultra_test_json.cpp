@@ -246,6 +246,12 @@ namespace
 		expect ( text == expected, "the file form is '%s'", printable ( text ).c_str () );
 		expect ( json::serialize ( parsed ( text ).get () ) == text, "the file form does not read back as written" );
 
+		const auto	commented = parsed ( "{ // first\n\t\"a\": 1, // one\n\t\"b\": \"//\" // two\n}" );
+		expect ( json::get_int_or ( json::find ( commented.get (), "a" ), 0 ) == 1 && json::get_string_or ( json::find ( commented.get (), "b" ), "" ) == "//",
+				 "line comments are not skipped, or one inside a string is" );
+		expect ( json::set_comment ( json::find ( commented.get (), "a" ), "K" ) && json::serialize ( commented.get () ) == "{\n\t\"a\": 1, // K\n\t\"b\": \"//\"\n}\n"
+				 && json::serialize ( commented.get (), true ) == R"({"a": 1, "b": "//"})", "a comment is written after the value and its comma, in the file form only" );
+
 		std::string	keys;
 		const auto	order = json::find ( d.get (), "order" );
 

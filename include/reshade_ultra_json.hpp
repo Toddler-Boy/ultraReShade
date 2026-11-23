@@ -93,6 +93,7 @@ RESHADE_API_LIBRARY_DECL bool ReShadeJsonSetBool ( reshade::json::value* value, 
 RESHADE_API_LIBRARY_DECL bool ReShadeJsonSetInt ( reshade::json::value* value, int64_t integer );
 RESHADE_API_LIBRARY_DECL bool ReShadeJsonSetNumber ( reshade::json::value* value, double number );
 RESHADE_API_LIBRARY_DECL bool ReShadeJsonSetString ( reshade::json::value* value, const char* text, size_t length );
+RESHADE_API_LIBRARY_DECL bool ReShadeJsonSetComment ( reshade::json::value* value, const char* text, size_t length );
 RESHADE_API_LIBRARY_DECL bool ReShadeJsonAssign ( reshade::json::value* target, const reshade::json::value* source );
 RESHADE_API_LIBRARY_DECL reshade::json::value* ReShadeJsonMember ( reshade::json::value* object, const char* key );
 RESHADE_API_LIBRARY_DECL reshade::json::value* ReShadeJsonInsert ( reshade::json::value* array, size_t index );
@@ -139,6 +140,7 @@ namespace reshade::json
 			bool ( *set_int ) ( value*, int64_t ) = nullptr;
 			bool ( *set_number ) ( value*, double ) = nullptr;
 			bool ( *set_string ) ( value*, const char*, size_t ) = nullptr;
+			bool ( *set_comment ) ( value*, const char*, size_t ) = nullptr;
 			bool ( *assign ) ( value*, const value* ) = nullptr;
 			value* ( *member ) ( value*, const char* ) = nullptr;
 			value* ( *insert ) ( value*, size_t ) = nullptr;
@@ -163,7 +165,7 @@ namespace reshade::json
 			static const functions	table { &ReShadeJsonCreate, &ReShadeJsonCopy, &ReShadeJsonFree, &ReShadeJsonGetType, &ReShadeJsonGetBool, &ReShadeJsonGetInt,
 											&ReShadeJsonGetNumber, &ReShadeJsonGetString, &ReShadeJsonGetSize, &ReShadeJsonAt, &ReShadeJsonFind, &ReShadeJsonFindPath,
 											&ReShadeJsonEqual, &ReShadeJsonSetType, &ReShadeJsonSetBool, &ReShadeJsonSetInt, &ReShadeJsonSetNumber, &ReShadeJsonSetString,
-											&ReShadeJsonAssign, &ReShadeJsonMember, &ReShadeJsonInsert, &ReShadeJsonMakePath, &ReShadeJsonRemove, &ReShadeJsonRemoveAt,
+											&ReShadeJsonSetComment, &ReShadeJsonAssign, &ReShadeJsonMember, &ReShadeJsonInsert, &ReShadeJsonMakePath, &ReShadeJsonRemove, &ReShadeJsonRemoveAt,
 											&ReShadeJsonRemovePath, &ReShadeJsonParse, &ReShadeJsonSerialize, &ReShadeJsonReadFile, &ReShadeJsonWriteFile,
 											&ReShadeJsonLayerGet, &ReShadeJsonLayerSet, &ReShadeJsonLayerReset, &ReShadeJsonWatch, &ReShadeJsonUnwatch };
 			return table;
@@ -200,6 +202,7 @@ namespace reshade::json
 				bind_export ( module, f.set_int, "ReShadeJsonSetInt" );
 				bind_export ( module, f.set_number, "ReShadeJsonSetNumber" );
 				bind_export ( module, f.set_string, "ReShadeJsonSetString" );
+				bind_export ( module, f.set_comment, "ReShadeJsonSetComment" );
 				bind_export ( module, f.assign, "ReShadeJsonAssign" );
 				bind_export ( module, f.member, "ReShadeJsonMember" );
 				bind_export ( module, f.insert, "ReShadeJsonInsert" );
@@ -322,6 +325,10 @@ namespace reshade::json
 	inline bool set_int ( value* v, int64_t integer ) { const auto f = internal::get ().set_int; return f != nullptr && f ( v, integer ); }
 	inline bool set_number ( value* v, double number ) { const auto f = internal::get ().set_number; return f != nullptr && f ( v, number ); }
 	inline bool set_string ( value* v, std::string_view text ) { const auto f = internal::get ().set_string; return f != nullptr && f ( v, text.data (), text.size () ); }
+
+	// A line comment written after the value in the file (not in the compact form, never read back); empty takes it off, a line break
+	// becomes a space. False for a null pointer or invalid UTF-8. Files are read with their line comments skipped
+	inline bool set_comment ( value* v, std::string_view text ) { const auto f = internal::get ().set_comment; return f != nullptr && f ( v, text.data (), text.size () ); }
 
 	// A deep copy of source (which may lie inside target)
 	inline bool assign ( value* target, const value* source ) { const auto f = internal::get ().assign; return f != nullptr && f ( target, source ); }

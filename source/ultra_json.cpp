@@ -39,6 +39,7 @@ struct reshade::json::value
 	double								number = 0.0;
 	std::string							text;		// a string's
 	std::string							key;		// a member's own key
+	std::string							comment;	// written after the value as a line comment, never read from a file
 	std::vector<std::unique_ptr<value>>	items;		// an array's items or an object's members
 	value*								parent = nullptr;
 };
@@ -246,6 +247,7 @@ namespace
 		v->number = source.number;
 		v->text = source.text;
 		v->key = source.key;
+		v->comment = source.comment;
 		v->items.reserve ( source.items.size () );
 
 		for ( const auto& item : source.items )
@@ -265,6 +267,7 @@ namespace
 		v.integer = 0;
 		v.number = 0.0;
 		v.text.clear ();
+		v.comment.clear ();
 		v.items.clear ();
 	}
 
@@ -276,6 +279,7 @@ namespace
 		target.integer = source->integer;
 		target.number = source->number;
 		target.text = std::move ( source->text );
+		target.comment = std::move ( source->comment );
 		target.items = std::move ( source->items );
 
 		for ( const auto& item : target.items )
@@ -597,10 +601,20 @@ namespace
 			return c >= 32 && c <= 126 ? std::string ( "'" ) + c + "'" : "a byte " + std::to_string ( static_cast<unsigned char> ( c ) );
 		}
 
+		// White space and line comments ("//" to the line's end)
 		void skipSpace ()
 		{
-			while ( at < end && ( *at == ' ' || *at == '\t' || *at == '\n' || *at == '\r' ) )
-				++at;
+			for ( ;; )
+			{
+				while ( at < end && ( *at == ' ' || *at == '\t' || *at == '\n' || *at == '\r' ) )
+					++at;
+
+				if ( end - at < 2 || at[ 0 ] != '/' || at[ 1 ] != '/' )
+					return;
+
+				while ( at < end && *at != '\n' )
+					++at;
+			}
 		}
 
 		bool parseValue ( Value& v, size_t depth )
@@ -997,8 +1011,10 @@ namespace
 
 		for ( size_t i = 0; i < v.items.size (); ++i )
 		{
-			if ( i != 0 )
-				out += isCompact ? ", " : ",";
+			const auto&	item = *v.items[ i ];
+
+			if ( i != 0 && isCompact )
+				out += ", ";
 
 			if ( ! isCompact )
 			{
@@ -1008,11 +1024,23 @@ namespace
 
 			if ( isObjectKind )
 			{
-				appendString ( out, v.items[ i ]->key );
+				appendString ( out, item.key );
 				out += ": ";
 			}
 
-			appendValue ( out, *v.items[ i ], depth + 1, isCompact );
+			appendValue ( out, item, depth + 1, isCompact );
+
+			if ( isCompact )
+				continue;
+
+			if ( i + 1 < v.items.size () )
+				out += ',';
+
+			if ( ! item.comment.empty () )
+			{
+				out += " // ";
+				out += item.comment;
+			}
 		}
 
 		if ( ! isCompact )
@@ -1606,6 +1634,23 @@ bool ReShadeJsonSetString ( reshade::json::value* value, const char* text, size_
 
 	resetValue ( *value, reshade::json::type::string );
 	value->text = view;
+	return true;
+}
+//-----------------------------------------------------------------------------
+
+// A line break in the text becomes a space; the empty text takes the comment off
+bool ReShadeJsonSetComment ( reshade::json::value* value, const char* text, size_t length )
+{
+	if ( value == nullptr || ( text == nullptr && length != 0 ) )
+		return false;
+
+	const auto	view = text != nullptr ? std::string_view ( text, length ) : std::string_view ();
+
+	if ( ! isValidUtf8 ( view ) )
+		return false;
+
+	value->comment = view;
+	std::ranges::replace_if ( value->comment, [] ( char c ) { return c == '\n' || c == '\r'; }, ' ' );
 	return true;
 }
 //-----------------------------------------------------------------------------
