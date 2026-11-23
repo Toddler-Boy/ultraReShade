@@ -47,7 +47,7 @@ namespace ultra::ui
 		// x of byte offset at in the field's text
 		[[ nodiscard ]] float offsetX ( int at )
 		{
-			return font::width ( font::Face::bold, field.size, std::string_view ( field.text ).substr ( 0, size_t ( at ) ), true );
+			return font::width ( font::Face::bold, field.size, std::string_view ( field.text ).substr ( 0, size_t ( at ) ) );
 		}
 
 		// The byte offset nearest to x, on a character boundary
@@ -181,7 +181,7 @@ namespace ultra::ui
 				dl->AddRectFilled ( ImVec2 ( field.x + offsetX ( field.selStart ), top ), ImVec2 ( field.x + offsetX ( field.selEnd ), top + lineH ),
 									draw::color ( theme::colors::accent, selectionAlpha ) );
 
-			font::draw ( dl, ImVec2 ( field.x, top ), font::Face::bold, field.size, draw::color ( theme::colors::text ), field.text, true );
+			font::draw ( dl, ImVec2 ( field.x, top ), font::Face::bold, field.size, draw::color ( theme::colors::text ), field.text );
 
 			if ( std::fmod ( ImGui::GetTime () - field.cursorMoved, blinkPeriod ) < blinkOn )
 			{
@@ -241,7 +241,7 @@ namespace ultra::ui
 			ui::format ( text, sizeof ( text ), value, format );
 			shown = text;
 		}
-		font::draw ( dl, ImVec2 ( pos.x, font::centredTop ( font::Face::bold, size, pos.y, rowH ) ), font::Face::bold, size, draw::color ( theme::colors::text ), shown, true );
+		font::draw ( dl, ImVec2 ( pos.x, font::centredTop ( font::Face::bold, size, pos.y, rowH ) ), font::Face::bold, size, draw::color ( theme::colors::text ), shown );
 
 		return {};
 	}

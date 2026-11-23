@@ -170,7 +170,7 @@ namespace ultra::ui
 				const auto*	own = valueTextOf ( item, v, frame );
 				if ( own == nullptr )
 					format ( text, sizeof ( text ), v, f );
-				w = std::max ( w, font::width ( font::Face::bold, theme::px ( theme::text::body ), own != nullptr ? own : text, true ) );
+				w = std::max ( w, font::width ( font::Face::bold, theme::px ( theme::text::body ), own != nullptr ? own : text ) );
 			}
 
 			return w;
