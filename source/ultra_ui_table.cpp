@@ -231,6 +231,14 @@ namespace
 		return resultOf ( edit );
 	}
 
+	uint32_t subsectionOf ( const char* id, uint32_t* on, uint32_t hasSwitch, const char* text, const ReShadeUiToggleLook* look )
+	{
+		auto		isOn = *on != 0;
+		const auto	edit = subsection ( id, isOn, hasSwitch != 0, text, lookOf ( look ) );
+		*on = isOn ? 1 : 0;
+		return resultOf ( edit );
+	}
+
 	void headingOf ( const char* text, const ReShadeUiHotkey* hotkey )
 	{
 		heading ( text, hotkeyOf ( hotkey ) );
@@ -334,7 +342,8 @@ namespace
 		&imageOf, &maskOf, &decode,
 		&colourSpaceOverride, &setColourSpaceOverride, &isColourSpaceShown,
 		&labelAt, &labelWidthOf, &toggleOf, &headingOf, &collapseArrowOf, &subheadingAt, &sliderOf, &valueEditOf, &colorPickerOf, &textFieldOf,
-		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &isTypingOf, &specLayoutOf, &statusTextOf
+		&resetButtonOf, &choiceOf, &dropdownOf, &buttonOf, &buttonWidthOf, &flashOf, &tooltipOf, &headerOf, &headerTitleHeightOf, &pageDrawOf, &isMouseOverOf, &isTypingOf, &specLayoutOf, &statusTextOf,
+		&subsectionOf
 	};
 
 	void onPresent ( reshade::api::command_queue*, reshade::api::swapchain* swapchain, const reshade::api::rect*, const reshade::api::rect*, uint32_t, const reshade::api::rect* )

@@ -21,10 +21,12 @@ namespace ultra::ui
 			ImU32		color;
 		};
 
-		[[ nodiscard ]] Text textOf ( bool isHeading, Applies applies = Applies::now )
+		[[ nodiscard ]] Text textOf ( const ToggleLook& look )
 		{
-			return isHeading ? Text { font::Face::medium, theme::px ( theme::text::large ), theme::colors::text }
-							 : Text { font::Face::regular, theme::px ( theme::text::body ), labelColor ( applies ) };
+			if ( look.heading )
+				return { font::Face::medium, theme::px ( theme::text::large ), theme::colors::text };
+
+			return { look.isSub ? font::Face::semibold : font::Face::regular, theme::px ( theme::text::body ), labelColor ( look.applies ) };
 		}
 
 		// Text and its mark when it applies later, then the hotkey as keycaps a space and keyGap after it; the end x
@@ -55,11 +57,20 @@ namespace ultra::ui
 
 			return w;
 		}
+
+		void drawInfo ( ImDrawList* dl, ImGuiID itemId, ImVec2 pos, float end, const char* text )
+		{
+			const auto	rowH = theme::px ( theme::heights::row );
+			const auto	dot = theme::px ( theme::icons::icon );
+
+			draw::infoDot ( dl, ImVec2 ( end + theme::px ( theme::spacing::xs ) + dot * 0.5f, pos.y + rowH * 0.5f ) );
+			tooltip ( itemId, ImGui::IsMouseHoveringRect ( pos, ImVec2 ( end + theme::px ( theme::spacing::xs ) + dot, pos.y + rowH ) ), text );
+		}
 	}
 
 	Edit toggle ( const char* id, bool& on, const char* text, const ToggleLook& look )
 	{
-		const auto	t = textOf ( look.heading, look.applies );
+		const auto	t = textOf ( look );
 		const auto	switchW = theme::px ( theme::parts::switchWidth );
 		const auto	switchH = theme::px ( theme::heights::row );
 		const auto	gap = theme::px ( theme::spacing::m );
@@ -105,18 +116,33 @@ namespace ultra::ui
 		const auto	end = drawText ( dl, ImVec2 ( sMax.x + gap, pos.y ), t, text, look.hotkey, look.applies != Applies::now );
 
 		if ( look.tooltip != nullptr )
-		{
-			const auto	dot = theme::px ( theme::icons::icon );
-			draw::infoDot ( dl, ImVec2 ( end + theme::px ( theme::spacing::xs ) + dot * 0.5f, pos.y + rowH * 0.5f ) );
-			tooltip ( itemId, ImGui::IsMouseHoveringRect ( pos, ImVec2 ( end + theme::px ( theme::spacing::xs ) + dot, pos.y + rowH ) ), look.tooltip );
-		}
+			drawInfo ( dl, itemId, pos, end, look.tooltip );
 
 		return edit;
 	}
 
+	Edit subsection ( const char* id, bool& on, bool hasSwitch, const char* text, const ToggleLook& look )
+	{
+		auto	sub = look;
+		sub.heading = false;
+		sub.isSub = true;
+		if ( hasSwitch )
+			return toggle ( id, on, text, sub );
+
+		const auto	t = textOf ( sub );
+		const auto	pos = ImGui::GetCursorScreenPos ();
+		const auto	end = drawText ( ImGui::GetWindowDrawList (), pos, t, text, {} );
+
+		ImGui::Dummy ( ImVec2 ( textWidth ( t, text, {} ), theme::px ( theme::heights::row ) ) );
+		if ( sub.tooltip != nullptr )
+			drawInfo ( ImGui::GetWindowDrawList (), ImGui::GetID ( id ), pos, end, sub.tooltip );
+
+		return {};
+	}
+
 	void heading ( const char* text, const Hotkey& hotkey )
 	{
-		const auto	t = textOf ( true );
+		const auto	t = textOf ( ToggleLook { true } );
 		const auto	pos = ImGui::GetCursorScreenPos ();
 
 		drawText ( ImGui::GetWindowDrawList (), pos, t, text, hotkey );

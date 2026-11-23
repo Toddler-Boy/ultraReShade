@@ -135,13 +135,14 @@ typedef struct ReShadeUiPlacedLine
 enum
 {
 	RESHADE_UI_ITEM_SLIDER, RESHADE_UI_ITEM_TOGGLE, RESHADE_UI_ITEM_OPTIONS, RESHADE_UI_ITEM_BUTTON, RESHADE_UI_ITEM_TEXT,
-	RESHADE_UI_ITEM_SUBHEADING, RESHADE_UI_ITEM_FIELD, RESHADE_UI_ITEM_REPEAT, RESHADE_UI_ITEM_COLOR, RESHADE_UI_ITEM_NUMBER
+	RESHADE_UI_ITEM_SUBHEADING, RESHADE_UI_ITEM_FIELD, RESHADE_UI_ITEM_REPEAT, RESHADE_UI_ITEM_COLOR, RESHADE_UI_ITEM_NUMBER, RESHADE_UI_ITEM_SECTION
 };
 
 // ROW: options as a choice row whatever their names. SET_APART: a row gap more above it, unless a heading is right above it. PRIMARY: a
 // button's look. HAS_JOB: a button's action runs on a thread of the add-on's, who tells isBusy, progress and takeFinished. HAS_TONE: a text
 // row's colour is tone (), else muted. NO_RESET: no reset arrow. WRAP: a text row breaks into lines to the page's width. A number is a value
-// typed in, without a range, in the control column
+// typed in, without a range, in the control column. A section is one inside a section, to any depth: a heading line with the onOff switch
+// if bound, its children one step in; off, or dimmed by its reason, the heading alone shows
 #define RESHADE_UI_ITEM_FLAG_ROW		1u
 #define RESHADE_UI_ITEM_FLAG_SET_APART	2u
 #define RESHADE_UI_ITEM_FLAG_PRIMARY	4u
@@ -197,6 +198,8 @@ typedef struct ReShadeUiItem
 	const struct ReShadeUiItem*	( *repeatRows ) ( void* context, uint32_t entry, uint32_t* count );	// entry's rows, kept by the add-on
 	void				( *fieldCommit ) ( void* context );						// a field's edit is finished (Enter, or another control taken)
 	uint32_t			( *fieldIsSet ) ( void* context );						// a field has a value of its own: a reset arrow after it
+	const struct ReShadeUiItem*	children;										// a section's rows
+	uint32_t			childCount;
 } ReShadeUiItem;
 
 // A section: its switch (if bound) turns all its items on and off, the rest of the heading row collapses it; either hides the sections
@@ -320,6 +323,9 @@ typedef struct ReShadeWidgetTable
 	// A status text at x, y on the window being drawn: the stretches between the markers '\x01' and '\x02' (what ultraGame's text formatter
 	// writes round every number it fills in) in tabular digits, the markers not drawn, the rest as it is. Returns the width
 	float		( *statusText ) ( float x, float y, uint32_t face, float size, uint32_t color, const char* text );
+
+	// A nested section's heading line, as one item: its switch when hasSwitch (on, look's tooltip and def as a toggle's), else the text alone
+	uint32_t	( *subsection ) ( const char* id, uint32_t* on, uint32_t hasSwitch, const char* text, const ReShadeUiToggleLook* look );
 } ReShadeWidgetTable;
 
 // What the layout is made of: the sizes of the three structs a page is made of

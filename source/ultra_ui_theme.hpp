@@ -73,6 +73,7 @@ namespace ultra::ui::theme
 		inline float	m = 0.0f;
 		inline float	l = 0.0f;
 		inline float	xl = 0.0f;
+		inline float	indent = 0.0f;		// a nested section's rows, one step in for each level
 	}
 
 	namespace radius

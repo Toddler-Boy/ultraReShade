@@ -115,10 +115,15 @@ namespace ultra::ui
 			return out;
 		}
 
+		[[ nodiscard ]] bool isHeading ( const ReShadeUiItem& item )
+		{
+			return item.kind == RESHADE_UI_ITEM_SUBHEADING || item.kind == RESHADE_UI_ITEM_SECTION;
+		}
+
 		// A subheading shows while a row of its group does
 		[[ nodiscard ]] bool groupShown ( const std::vector<const ReShadeUiItem*>& items, size_t at, void* frame )
 		{
-			for ( auto i = at + 1; i < items.size () && items[ i ]->kind != RESHADE_UI_ITEM_SUBHEADING; ++i )
+			for ( auto i = at + 1; i < items.size () && ! isHeading ( *items[ i ] ); ++i )
 				if ( shown ( *items[ i ], frame ) )
 					return true;
 
@@ -163,31 +168,50 @@ namespace ultra::ui
 			return w;
 		}
 
+		[[ nodiscard ]] float indentOf ( size_t depth )
+		{
+			return theme::px ( theme::spacing::indent ) * float ( depth );
+		}
+
+		struct Widest
+		{
+			float	label = 0.0f;
+			float	value = 0.0f;
+		};
+
+		// The label column's width takes in the indent of its level, so the controls of every level line up
+		void widen ( Widest& widest, const std::vector<const ReShadeUiItem*>& rows, size_t depth, void* frame )
+		{
+			for ( const auto* row : rows )
+			{
+				const auto&	item = *row;
+				if ( ! shown ( item, frame ) )
+					continue;
+				if ( item.kind == RESHADE_UI_ITEM_SECTION )
+					widen ( widest, rowsOf ( item.children, item.childCount ), depth + 1, frame );
+				if ( labelled ( item.kind ) )
+					widest.label = std::max ( widest.label, indentOf ( depth )
+										+ labelWidth ( labelFor ( item, frame ), item.tooltip != nullptr || item.disabledReason != nullptr || item.applies != RESHADE_UI_APPLIES_NOW, appliesOf ( item.applies ) )
+										+ ( item.onOff.isBound != 0 ? theme::px ( theme::parts::switchWidth + theme::spacing::m ) : 0.0f ) );
+				if ( item.kind == RESHADE_UI_ITEM_SLIDER )
+					widest.value = std::max ( widest.value, valueWidth ( item ) );
+			}
+		}
+
 		// Over the rows shown now, so a game's hidden section does not widen the others
 		[[ nodiscard ]] Columns columns ( const ReShadeUiPage& page, float width, void* frame )
 		{
-			float	labelW = 0.0f;
-			float	valueW = 0.0f;
+			Widest	widest;
 
 			for ( uint32_t s = 0; s < page.sectionCount; ++s )
 			{
 				const auto&	section = page.sections[ s ];
-				if ( ! shown ( section, frame ) )
-					continue;
-
-				for ( const auto* row : rowsOf ( section.items, section.itemCount ) )
-				{
-					const auto&	item = *row;
-					if ( ! shown ( item, frame ) )
-						continue;
-					if ( labelled ( item.kind ) )
-						labelW = std::max ( labelW, labelWidth ( labelFor ( item, frame ), item.tooltip != nullptr || item.disabledReason != nullptr || item.applies != RESHADE_UI_APPLIES_NOW,
-																 appliesOf ( item.applies ) )
-														+ ( item.onOff.isBound != 0 ? theme::px ( theme::parts::switchWidth + theme::spacing::m ) : 0.0f ) );
-					if ( item.kind == RESHADE_UI_ITEM_SLIDER )
-						valueW = std::max ( valueW, valueWidth ( item ) );
-				}
+				if ( shown ( section, frame ) )
+					widen ( widest, rowsOf ( section.items, section.itemCount ), 0, frame );
 			}
+
+			const auto	labelW = widest.label;
+			const auto	valueW = widest.value;
 
 			const auto	g = theme::px ( theme::spacing::l );
 			const auto	resetW = theme::px ( theme::spacing::xl );
@@ -500,6 +524,124 @@ namespace ultra::ui
 			bool	isMoved = false;
 		} drag;
 
+		void drawItems ( const std::vector<const ReShadeUiItem*>& items, size_t depth, float x, float width, const Columns& c, void* frame );
+
+		void drawSubsection ( const ReShadeUiItem& item, size_t depth, float x, float width, const Columns& c, void* frame )
+		{
+			const auto*	reason = reasonOf ( item, frame );
+			const auto	on = item.onOff.isBound == 0 || item.onOff.get ( item.context, frame ) != 0.0f;
+			std::string	storage;
+			const auto*	tip = tipWith ( item.tooltip, reason, storage );
+			auto		isOn = on;
+
+			const auto	top = ImGui::GetCursorScreenPos ().y;
+
+			ImGui::SetCursorScreenPos ( ImVec2 ( x + indentOf ( depth ), top ) );
+			ImGui::BeginDisabled ( reason != nullptr );
+			const auto	edit = subsection ( "heading", isOn, item.onOff.isBound != 0, labelFor ( item, frame ), { false, {}, tip, Applies::now, item.onOff.def != 0.0f } );
+			ImGui::EndDisabled ();
+
+			if ( edit.changed )
+				item.onOff.set ( item.context, frame, isOn ? 1.0f : 0.0f );
+			finish ( edit, item.onOff, item.context, frame );
+
+			ImGui::SetCursorScreenPos ( ImVec2 ( x - theme::px ( theme::spacing::xl ), top ) );
+			ImGui::Dummy ( ImVec2 ( width, theme::px ( theme::heights::row ) ) );
+			gap ( theme::spacing::xs * 0.5f );
+
+			if ( on && reason == nullptr )
+				drawItems ( rowsOf ( item.children, item.childCount ), depth + 1, x, width, c, frame );
+		}
+
+		// The rows of a section or a nested one, depth levels in: their controls in the page's columns from x, their labels indented
+		void drawItems ( const std::vector<const ReShadeUiItem*>& items, size_t depth, float x, float width, const Columns& c, void* frame )
+		{
+			const auto	rowH = theme::px ( theme::heights::row );
+			const auto	indent = indentOf ( depth );
+			auto		first = true;
+			auto		isAfterHeading = false;
+			std::string	storage;
+
+			for ( size_t i = 0; i < items.size (); )
+			{
+				const auto&	item = *items[ i ];
+				auto		next = i + 1;
+				const auto*	line = item.kind == RESHADE_UI_ITEM_TEXT && item.line != nullptr ? item.line ( item.context, frame ) : nullptr;
+
+				if ( ! shown ( item, frame ) || ( item.kind == RESHADE_UI_ITEM_TEXT && ( line == nullptr || *line == 0 ) )
+					 || ( item.kind == RESHADE_UI_ITEM_SUBHEADING && ! groupShown ( items, i, frame ) ) )
+				{
+					i = next;
+					continue;
+				}
+
+				// A choice or drop-down right under its heading gets a little more room above it, a group's heading after
+				// other rows more
+				gap ( theme::spacing::xs * 0.5f + ( first && item.kind == RESHADE_UI_ITEM_OPTIONS ? theme::spacing::xs : 0.0f )
+					  + ( ! first && isHeading ( item ) ? theme::spacing::m : 0.0f )
+					  + ( ! first && has ( item, RESHADE_UI_ITEM_FLAG_SET_APART ) && ! isAfterHeading ? theme::spacing::xs : 0.0f ) );
+				first = false;
+				isAfterHeading = isHeading ( item );
+
+				if ( item.kind == RESHADE_UI_ITEM_SECTION )
+				{
+					ImGui::PushID ( int ( i ) );
+					drawSubsection ( item, depth, x, width, c, frame );
+					ImGui::PopID ();
+					i = next;
+					continue;
+				}
+
+				const ImVec2	row ( x, ImGui::GetCursorScreenPos ().y );
+				const ImVec2	at ( x + indent, row.y );
+				const auto*		reason = reasonOf ( item, frame );
+				auto			height = rowH;
+				const auto*		tip = tipWith ( item.tooltip, reason, storage, appliesOf ( item.applies ), item.appliesWhen );
+				const auto		applies = appliesOf ( item.applies );
+
+				ImGui::PushID ( int ( i ) );
+				ImGui::BeginDisabled ( reason != nullptr && item.kind != RESHADE_UI_ITEM_BUTTON );
+
+				switch ( item.kind )
+				{
+					case RESHADE_UI_ITEM_SLIDER:
+						if ( item.onOff.isBound != 0 )
+							switchLabel ( item, tip, at, frame );
+						else
+							label ( at, labelFor ( item, frame ), tip, applies );
+						sliderRow ( item, row, c, frame );
+						break;
+					case RESHADE_UI_ITEM_OPTIONS:
+						if ( asChoiceRow ( item ) )
+							height = theme::px ( theme::heights::large );
+						label ( ImVec2 ( at.x, row.y + ( height - rowH ) * 0.5f ), labelFor ( item, frame ), tip, applies );
+						indexRow ( item, row, c, frame );
+						break;
+					case RESHADE_UI_ITEM_TOGGLE:	toggleRow ( item, tip, at, frame );	break;
+					case RESHADE_UI_ITEM_TEXT:		height = textRow ( item, line, at, width - indent, frame );	break;
+					case RESHADE_UI_ITEM_NUMBER:	label ( at, labelFor ( item, frame ), tip, applies );	numberRow ( item, row, c, frame );	break;
+					case RESHADE_UI_ITEM_SUBHEADING:	subheading ( at, labelFor ( item, frame ) );	break;
+					case RESHADE_UI_ITEM_FIELD:		label ( at, labelFor ( item, frame ), tip, applies );	fieldRow ( item, row, c );	break;
+					case RESHADE_UI_ITEM_COLOR:		label ( at, labelFor ( item, frame ), tip, applies );	colorRow ( item, row, c );	break;
+					case RESHADE_UI_ITEM_BUTTON:
+						while ( next < items.size () && items[ next ]->kind == RESHADE_UI_ITEM_BUTTON )
+							++next;
+						height = buttonRow ( items, i, next, at, row.x - theme::px ( theme::spacing::xl ) + width, frame );
+						break;
+					case RESHADE_UI_ITEM_REPEAT:
+					case RESHADE_UI_ITEM_SECTION:	break;
+				}
+
+				ImGui::EndDisabled ();
+				ImGui::PopID ();
+
+				ImGui::SetCursorScreenPos ( ImVec2 ( row.x - theme::px ( theme::spacing::xl ), row.y ) );
+				ImGui::Dummy ( ImVec2 ( width, height ) );
+				gap ( theme::spacing::xs * 0.5f );
+				i = next;
+			}
+		}
+
 		void drawSection ( const ReShadeUiPage& page, const ReShadeUiSection& section, uint32_t index, float width, const Columns& c, void* frame )
 		{
 			const auto*	sectionReason = reasonOf ( section, frame );
@@ -573,79 +715,7 @@ namespace ultra::ui
 			if ( ! on || ! open || sectionReason != nullptr )
 				return;
 
-			const auto	rowH = theme::px ( theme::heights::row );
-			const auto	x = ImGui::GetCursorScreenPos ().x + theme::px ( theme::spacing::xl );
-			const auto	items = rowsOf ( section.items, section.itemCount );
-			auto		first = true;
-			auto		isAfterHeading = false;
-
-			for ( size_t i = 0; i < items.size (); )
-			{
-				const auto&	item = *items[ i ];
-				auto		next = i + 1;
-				const auto*	line = item.kind == RESHADE_UI_ITEM_TEXT && item.line != nullptr ? item.line ( item.context, frame ) : nullptr;
-
-				if ( ! shown ( item, frame ) || ( item.kind == RESHADE_UI_ITEM_TEXT && ( line == nullptr || *line == 0 ) )
-					 || ( item.kind == RESHADE_UI_ITEM_SUBHEADING && ! groupShown ( items, i, frame ) ) )
-				{
-					i = next;
-					continue;
-				}
-
-				// A choice or drop-down right under its heading gets a little more room above it, a group's heading after
-				// other rows more
-				gap ( theme::spacing::xs * 0.5f + ( first && item.kind == RESHADE_UI_ITEM_OPTIONS ? theme::spacing::xs : 0.0f )
-					  + ( ! first && item.kind == RESHADE_UI_ITEM_SUBHEADING ? theme::spacing::m : 0.0f )
-					  + ( ! first && has ( item, RESHADE_UI_ITEM_FLAG_SET_APART ) && ! isAfterHeading ? theme::spacing::xs : 0.0f ) );
-				first = false;
-				isAfterHeading = item.kind == RESHADE_UI_ITEM_SUBHEADING;
-
-				const ImVec2	row ( x, ImGui::GetCursorScreenPos ().y );
-				const auto*		reason = reasonOf ( item, frame );
-				auto			height = rowH;
-				const auto*		tip = tipWith ( item.tooltip, reason, storage, appliesOf ( item.applies ), item.appliesWhen );
-				const auto		applies = appliesOf ( item.applies );
-
-				ImGui::PushID ( int ( i ) );
-				ImGui::BeginDisabled ( reason != nullptr && item.kind != RESHADE_UI_ITEM_BUTTON );
-
-				switch ( item.kind )
-				{
-					case RESHADE_UI_ITEM_SLIDER:
-						if ( item.onOff.isBound != 0 )
-							switchLabel ( item, tip, row, frame );
-						else
-							label ( row, labelFor ( item, frame ), tip, applies );
-						sliderRow ( item, row, c, frame );
-						break;
-					case RESHADE_UI_ITEM_OPTIONS:
-						if ( asChoiceRow ( item ) )
-							height = theme::px ( theme::heights::large );
-						label ( ImVec2 ( row.x, row.y + ( height - rowH ) * 0.5f ), labelFor ( item, frame ), tip, applies );
-						indexRow ( item, row, c, frame );
-						break;
-					case RESHADE_UI_ITEM_TOGGLE:	toggleRow ( item, tip, row, frame );	break;
-					case RESHADE_UI_ITEM_TEXT:		height = textRow ( item, line, row, width, frame );	break;
-					case RESHADE_UI_ITEM_NUMBER:	label ( row, labelFor ( item, frame ), tip, applies );	numberRow ( item, row, c, frame );	break;
-					case RESHADE_UI_ITEM_SUBHEADING:	subheading ( row, labelFor ( item, frame ) );	break;
-					case RESHADE_UI_ITEM_FIELD:		label ( row, labelFor ( item, frame ), tip, applies );	fieldRow ( item, row, c );	break;
-					case RESHADE_UI_ITEM_COLOR:		label ( row, labelFor ( item, frame ), tip, applies );	colorRow ( item, row, c );	break;
-					case RESHADE_UI_ITEM_BUTTON:
-						while ( next < items.size () && items[ next ]->kind == RESHADE_UI_ITEM_BUTTON )
-							++next;
-						height = buttonRow ( items, i, next, row, row.x - theme::px ( theme::spacing::xl ) + width, frame );
-						break;
-					case RESHADE_UI_ITEM_REPEAT:	break;
-				}
-
-				ImGui::EndDisabled ();
-				ImGui::PopID ();
-
-				ImGui::SetCursorScreenPos ( ImVec2 ( row.x - theme::px ( theme::spacing::xl ), row.y ) );
-				ImGui::Dummy ( ImVec2 ( width, height ) );
-				gap ( theme::spacing::xs * 0.5f );
-				i = next;
-			}
+			drawItems ( rowsOf ( section.items, section.itemCount ), 0, ImGui::GetCursorScreenPos ().x + theme::px ( theme::spacing::xl ), width, c, frame );
 		}
 
 		void drawSections ( const ReShadeUiPage& page, void* frame, float width )

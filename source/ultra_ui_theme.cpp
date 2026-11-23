@@ -70,7 +70,7 @@ namespace ultra::ui::theme
 
 		// The file's numbers in its order, sections one after the other; the shades last. Everything before them is the roles' order (include/reshade_ultra_ui_theme.h)
 		constexpr Size	numberTable[] {
-			{ "xs", &spacing::xs }, { "m", &spacing::m }, { "l", &spacing::l }, { "xl", &spacing::xl },
+			{ "xs", &spacing::xs }, { "m", &spacing::m }, { "l", &spacing::l }, { "xl", &spacing::xl }, { "indent", &spacing::indent },
 			{ "small", &radius::little }, { "large", &radius::large },
 			{ "line", &lines::line },
 			{ "row", &heights::row }, { "large", &heights::large }, { "bar", &heights::bar },
@@ -90,7 +90,7 @@ namespace ultra::ui::theme
 			{ "muted", &shades::muted }, { "body", &shades::body } };
 
 		constexpr Section	sectionTable[] {
-			{ "spacing", 4, mostSize }, { "radius", 2, mostSize }, { "lines", 1, mostSize }, { "heights", 3, mostSize }, { "text", 4, mostSize }, { "icons", 1, mostSize },
+			{ "spacing", 5, mostSize }, { "radius", 2, mostSize }, { "lines", 1, mostSize }, { "heights", 3, mostSize }, { "text", 4, mostSize }, { "icons", 1, mostSize },
 			{ "parts", 15, mostSize }, { "motion", 3, mostSize }, { "effects", 6, mostSize }, { "logo", 4, mostSize }, { "shades", 7, mostShade } };
 
 		constexpr Color	colorTable[] {

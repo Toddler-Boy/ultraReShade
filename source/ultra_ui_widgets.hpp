@@ -55,9 +55,13 @@ namespace ultra::ui
 		const char*	tooltip = nullptr;
 		Applies		applies = Applies::now;
 		bool		def = false;
+		bool		isSub = false;		// a nested section's heading: semibold
 	};
 
 	[[ nodiscard ]] Edit toggle ( const char* id, bool& on, const char* text, const ToggleLook& look );
+
+	// A nested section's heading line: its switch where hasSwitch, else the text alone with the look's tooltip
+	[[ nodiscard ]] Edit subsection ( const char* id, bool& on, bool hasSwitch, const char* text, const ToggleLook& look );
 
 	// A heading without a switch, for a section that cannot be off
 	void heading ( const char* text, const Hotkey& hotkey = {} );
