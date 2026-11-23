@@ -69,6 +69,7 @@
 		"accent": "#22A67C",
 		"danger": "#F25A4D",
 		"warning": "#F2C94C",
+		"success": "#4FBF7F",
 		"appliesAfter": "#86A8CF",
 		"logoSweep": "#FF1493"
 	},

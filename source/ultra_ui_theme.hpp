@@ -45,6 +45,7 @@ namespace ultra::ui::theme
 		inline ImU32	accent = 0;
 		inline ImU32	danger = 0;			// a status that NR is off or failed
 		inline ImU32	warning = 0;		// a game tweak that is not available
+		inline ImU32	success = 0;		// a status line with nothing to report
 		inline ImU32	appliesAfter = 0;	// and of one that takes effect after something the player does
 		inline ImU32	logoSweep = 0;		// the band that sweeps across the logo in the tab bar
 	}

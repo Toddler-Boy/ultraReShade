@@ -95,7 +95,7 @@ namespace ultra::ui::theme
 
 		constexpr Color	colorTable[] {
 			{ "background", &colors::background }, { "text", &colors::text }, { "accent", &colors::accent },
-			{ "danger", &colors::danger }, { "warning", &colors::warning }, { "appliesAfter", &colors::appliesAfter }, { "logoSweep", &colors::logoSweep } };
+			{ "danger", &colors::danger }, { "warning", &colors::warning }, { "success", &colors::success }, { "appliesAfter", &colors::appliesAfter }, { "logoSweep", &colors::logoSweep } };
 
 		constexpr size_t	numberCount = std::size ( numberTable );
 		constexpr size_t	colorCount = std::size ( colorTable );
