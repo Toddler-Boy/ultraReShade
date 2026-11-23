@@ -27,6 +27,11 @@
 
 #if RESHADE_GUI
 
+// Generic Depth's (examples/09-depth)
+extern void reread_depth_config ();
+extern bool get_depth_seen ( reshade::api::effect_runtime* runtime, uint32_t* clears, uint32_t* candidates );
+extern bool get_depth_candidate ( reshade::api::effect_runtime* runtime, uint32_t index, uint32_t* width, uint32_t* height );
+
 // Never defined: cellOf of a name its record does not have does not compile
 void notInRecord ();
 
@@ -60,6 +65,9 @@ namespace
 
 	constexpr Field	screenshotPendingFields[] { { cells::runtime, ugPtr }, { cells::screenshot_pending::count, ugU32 } };
 	constexpr Field	effectsTargetFields[] { { cells::runtime, ugPtr }, { cells::effects_target::space, ugU32 } };
+	constexpr Field	depthRereadFields[] { { cells::runtime, ugPtr } };
+	constexpr Field	depthSeenFields[] { { cells::runtime, ugPtr }, { cells::depth_seen::clears, ugU32 }, { cells::depth_seen::candidates, ugU32 } };
+	constexpr Field	depthCandidateFields[] { { cells::runtime, ugPtr }, { cells::depth_candidate::index, ugU32 }, { cells::depth_candidate::width, ugU32 }, { cells::depth_candidate::height, ugU32 } };
 
 	std::mutex					toldLock;
 	std::set<std::string>		told;
@@ -132,6 +140,37 @@ namespace reshade::ultra
 			r._target_color_space = static_cast<api::color_space> ( space );
 			return 1;
 		}
+
+		static int depthReread ( runtime&, UgCell* )
+		{
+			reread_depth_config ();
+			return 1;
+		}
+
+		static int depthSeen ( runtime& r, UgCell* c )
+		{
+			constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( depthSeenFields, name ); };
+			uint32_t		clears = 0;
+			uint32_t		candidates = 0;
+
+			(void) get_depth_seen ( &r, &clears, &candidates );
+			c[ at ( cells::depth_seen::clears ) ].u32 = clears;
+			c[ at ( cells::depth_seen::candidates ) ].u32 = candidates;
+			return 1;
+		}
+
+		static int depthCandidate ( runtime& r, UgCell* c )
+		{
+			constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( depthCandidateFields, name ); };
+			uint32_t		width = 0;
+			uint32_t		height = 0;
+
+			if ( ! get_depth_candidate ( &r, c[ at ( cells::depth_candidate::index ) ].u32, &width, &height ) )
+				return 0;
+			c[ at ( cells::depth_candidate::width ) ].u32 = width;
+			c[ at ( cells::depth_candidate::height ) ].u32 = height;
+			return 1;
+		}
 	};
 }
 
@@ -154,10 +193,16 @@ namespace
 
 	constexpr const char*	screenshotPendingName = names::screenshot_pending;
 	constexpr const char*	effectsTargetName = names::effects_target;
+	constexpr const char*	depthRereadName = names::depth_reread;
+	constexpr const char*	depthSeenName = names::depth_seen;
+	constexpr const char*	depthCandidateName = names::depth_candidate;
 
 	constexpr Answer	answers[] {
 		{ names::screenshot_pending, &call<screenshotPendingFields, screenshotPendingName, &Access::screenshotPending>, screenshotPendingFields },
 		{ names::effects_target, &call<effectsTargetFields, effectsTargetName, &Access::effectsTarget>, effectsTargetFields },
+		{ names::depth_reread, &call<depthRereadFields, depthRereadName, &Access::depthReread>, depthRereadFields },
+		{ names::depth_seen, &call<depthSeenFields, depthSeenName, &Access::depthSeen>, depthSeenFields },
+		{ names::depth_candidate, &call<depthCandidateFields, depthCandidateName, &Access::depthCandidate>, depthCandidateFields },
 	};
 
 	[[ nodiscard ]] const Answer* answerOf ( const char* name )

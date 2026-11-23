@@ -17,6 +17,12 @@ namespace reshade::host
 		constexpr const char*	screenshot_pending = "screenshot.pending";
 		// How the targets the add-on renders effects onto, other than the back buffer, are encoded
 		constexpr const char*	effects_target = "effects.target";
+		// Generic Depth reads its [DEPTH] keys of the game's config again
+		constexpr const char*	depth_reread = "depth.reread";
+		// What Generic Depth saw at the runtime's last effects pass
+		constexpr const char*	depth_seen = "depth.seen";
+		// The size of one depth buffer Generic Depth saw
+		constexpr const char*	depth_candidate = "depth.candidate";
 	}
 
 	namespace cell
@@ -35,6 +41,22 @@ namespace reshade::host
 		namespace effects_target
 		{
 			constexpr const char*	space = "space";
+		}
+
+		// "depth.reread" has no cell but the runtime. "depth.seen" answers: clears = the clears of the selected depth buffer
+		// (counted while DepthCopyBeforeClears is on), candidates = how many depth buffer sizes came into question
+		namespace depth_seen
+		{
+			constexpr const char*	clears = "clears";
+			constexpr const char*	candidates = "candidates";
+		}
+
+		// "depth.candidate": for index (0 up to candidates - 1, the largest first) it answers the size and 1; past the last it answers 0
+		namespace depth_candidate
+		{
+			constexpr const char*	index = "index";
+			constexpr const char*	width = "width";
+			constexpr const char*	height = "height";
 		}
 	}
 }

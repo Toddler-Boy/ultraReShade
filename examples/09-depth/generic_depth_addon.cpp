@@ -173,6 +173,10 @@ struct __declspec(uuid("7c6363c7-f94e-437a-9160-141782c44a98")) generic_depth_da
 
 	// True when the shader resource view was created from the backup resource, false when it was created from the original depth-stencil
 	bool using_backup_texture = false;
+
+	// What the last effects pass saw, for the add-on's panel (guarded by s_mutex): the sizes of the depth-stencils that came into question, and the clears of the selected one
+	std::vector<std::pair<uint32_t, uint32_t>> candidate_sizes;
+	uint32_t seen_clears = 0;
 };
 
 struct depth_stencil_backup
@@ -358,16 +362,26 @@ static bool check_depth_format(format format)
 		return false;
 	}
 }
+static bool has_custom_resolution()
+{
+	return s_custom_resolution_filtering[0] != 0 || s_custom_resolution_filtering[1] != 0;
+}
+// A depth-stencil that cannot be bound to effects as it is needs a backup texture
+static bool needs_backup_texture(const resource_desc &desc, device_api api)
+{
+	return (desc.usage & resource_usage::shader_resource) == 0 || desc.texture.samples > 1 || api == device_api::d3d12 || api == device_api::vulkan;
+}
 // Checks whether the aspect ratio of the two sets of dimensions is similar or not
 static bool check_aspect_ratio(float width_to_check, float height_to_check, float width, float height)
 {
 	if (width_to_check == 0.0f || height_to_check == 0.0f)
 		return true;
 
-	if (s_aspect_ratio_heuristic == aspect_ratio_heuristic::match_resolution_exactly || (s_aspect_ratio_heuristic == aspect_ratio_heuristic::match_custom_resolution_exactly && s_custom_resolution_filtering[0] == 0 && s_custom_resolution_filtering[1] == 0))
-		return width_to_check == width && height_to_check == height;
-	if (s_aspect_ratio_heuristic == aspect_ratio_heuristic::match_custom_resolution_exactly)
+	if (has_custom_resolution())
 		return width_to_check == s_custom_resolution_filtering[0] && height_to_check == s_custom_resolution_filtering[1];
+
+	if (s_aspect_ratio_heuristic == aspect_ratio_heuristic::match_resolution_exactly || s_aspect_ratio_heuristic == aspect_ratio_heuristic::match_custom_resolution_exactly)
+		return width_to_check == width && height_to_check == height;
 
 	float w_ratio = width / width_to_check;
 	float h_ratio = height / height_to_check;
@@ -492,9 +506,15 @@ static void update_effect_runtime(effect_runtime *runtime)
 	});
 }
 
-static void on_init_device(device *device)
+// Reads the [DEPTH] keys again, from the defaults: at device start and whenever the add-on's panel changed them
+void reread_depth_config()
 {
-	device->create_private_data<generic_depth_device_data>();
+	s_disable_intz = false;
+	s_preserve_depth_buffers = 0;
+	s_draw_stats_heuristic = draw_stats_heuristic::prefer_vertices;
+	s_aspect_ratio_heuristic = aspect_ratio_heuristic::similar_aspect_ratio;
+	s_format_filtering = 0;
+	s_custom_resolution_filtering[0] = s_custom_resolution_filtering[1] = 0;
 
 	reshade::get_config_value(nullptr, "DEPTH", "DisableINTZ", s_disable_intz);
 
@@ -513,6 +533,39 @@ static void on_init_device(device *device)
 
 	if (s_aspect_ratio_heuristic > aspect_ratio_heuristic::match_custom_resolution_exactly)
 		s_aspect_ratio_heuristic = aspect_ratio_heuristic::similar_aspect_ratio;
+}
+
+// What the last effects pass of the runtime saw (the add-on's panel asks): how many clears the selected depth-stencil had, and the sizes of those that came into question
+bool get_depth_seen(effect_runtime *runtime, uint32_t *clears, uint32_t *candidates)
+{
+	const auto *const data = runtime->get_private_data<generic_depth_data>();
+	if (data == nullptr)
+		return false;
+
+	const std::shared_lock<std::shared_mutex> lock(s_mutex);
+	*clears = data->seen_clears;
+	*candidates = static_cast<uint32_t>(data->candidate_sizes.size());
+	return true;
+}
+bool get_depth_candidate(effect_runtime *runtime, uint32_t index, uint32_t *width, uint32_t *height)
+{
+	const auto *const data = runtime->get_private_data<generic_depth_data>();
+	if (data == nullptr)
+		return false;
+
+	const std::shared_lock<std::shared_mutex> lock(s_mutex);
+	if (index >= data->candidate_sizes.size())
+		return false;
+	*width = data->candidate_sizes[index].first;
+	*height = data->candidate_sizes[index].second;
+	return true;
+}
+
+static void on_init_device(device *device)
+{
+	device->create_private_data<generic_depth_device_data>();
+
+	reread_depth_config();
 }
 static void on_destroy_device(device *device)
 {
@@ -968,6 +1021,8 @@ static void on_begin_render_effects(effect_runtime *runtime, command_list *cmd_l
 	// Unlock before calling into device below, since device may hold a lock itself and that then can deadlock another thread that calls into 'on_destroy_resource' from the device holding that lock
 	lock.unlock();
 
+	std::vector<std::pair<uint32_t, uint32_t>> candidate_sizes;
+
 	for (auto &[depth_stencil, info] : current_depth_stencil_resources)
 	{
 		if (info.last_frame_stats.total.drawcalls == 0 || (info.last_frame_stats.total.vertices <= 3 && info.last_frame_stats.total.drawcalls_indirect == 0))
@@ -979,9 +1034,13 @@ static void on_begin_render_effects(effect_runtime *runtime, command_list *cmd_l
 		if (info.desc.texture.samples > 1 && !device->check_capability(device_caps::resolve_depth_stencil))
 			continue; // Ignore multisampled textures, since they would need to be resolved first
 
+		const std::pair<uint32_t, uint32_t> size = { info.desc.texture.width, info.desc.texture.height };
+		if (std::find(candidate_sizes.begin(), candidate_sizes.end(), size) == candidate_sizes.end())
+			candidate_sizes.push_back(size);
+
 		if (s_format_filtering != 0 && !check_depth_format(info.desc.texture.format))
 			continue;
-		if (s_aspect_ratio_heuristic != aspect_ratio_heuristic::none && !check_aspect_ratio(static_cast<float>(info.desc.texture.width), static_cast<float>(info.desc.texture.height), static_cast<float>(frame_width), static_cast<float>(frame_height)))
+		if ((has_custom_resolution() || s_aspect_ratio_heuristic != aspect_ratio_heuristic::none) && !check_aspect_ratio(static_cast<float>(info.desc.texture.width), static_cast<float>(info.desc.texture.height), static_cast<float>(frame_width), static_cast<float>(frame_height)))
 			continue; // Not a good fit
 
 		if (selected_depth_stencil.handle == 0 ||
@@ -1002,6 +1061,13 @@ static void on_begin_render_effects(effect_runtime *runtime, command_list *cmd_l
 		}
 	}
 
+	std::ranges::sort(candidate_sizes, [](const auto &a, const auto &b) { return static_cast<uint64_t>(a.first) * a.second > static_cast<uint64_t>(b.first) * b.second; });
+	{
+		const std::unique_lock<std::shared_mutex> store(s_mutex);
+		data.candidate_sizes = std::move(candidate_sizes);
+		data.seen_clears = selected_depth_stencil_info != nullptr ? static_cast<uint32_t>(selected_depth_stencil_info->last_frame_stats.clears.size()) : 0;
+	}
+
 	const resource_view prev_shader_resource = data.selected_shader_resource;
 
 	if (selected_depth_stencil != 0) do
@@ -1012,7 +1078,8 @@ static void on_begin_render_effects(effect_runtime *runtime, command_list *cmd_l
 
 		depth_stencil_backup *depth_stencil_backup = device_data->find_depth_stencil_backup(selected_depth_stencil);
 
-		if (selected_depth_stencil != data.selected_depth_stencil || prev_shader_resource == 0 || (s_preserve_depth_buffers && depth_stencil_backup == nullptr))
+		if (selected_depth_stencil != data.selected_depth_stencil || prev_shader_resource == 0 || (s_preserve_depth_buffers && depth_stencil_backup == nullptr) ||
+			(!s_preserve_depth_buffers && data.using_backup_texture && !needs_backup_texture(selected_depth_stencil_info->desc, api)))
 		{
 			// Untrack previous depth-stencil first, so that backup texture can potentially be reused
 			if (data.selected_depth_stencil != 0)
@@ -1029,7 +1096,7 @@ static void on_begin_render_effects(effect_runtime *runtime, command_list *cmd_l
 
 			// Need to create backup texture only if doing backup copies or original resource does not support shader access (which is necessary for binding it to effects)
 			// Also always create a backup texture in D3D12 or Vulkan to circumvent problems in case application makes use of resource aliasing
-			if (s_preserve_depth_buffers || (selected_depth_stencil_info->desc.usage & resource_usage::shader_resource) == 0 || selected_depth_stencil_info->desc.texture.samples > 1 || (api == device_api::d3d12 || api == device_api::vulkan))
+			if (s_preserve_depth_buffers || needs_backup_texture(selected_depth_stencil_info->desc, api))
 			{
 				depth_stencil_backup = device_data->track_depth_stencil_for_backup(device, selected_depth_stencil, selected_depth_stencil_info->desc);
 
