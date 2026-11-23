@@ -153,7 +153,13 @@ namespace ultra::ui
 			ImGui::Dummy ( ImVec2 ( 0.0f, theme::px ( unscaled ) ) );
 		}
 
-		[[ nodiscard ]] float valueWidth ( const ReShadeUiItem& item )
+		// The add-on's text for the value, null where the item has none
+		[[ nodiscard ]] const char* valueTextOf ( const ReShadeUiItem& item, float v, void* frame )
+		{
+			return item.valueText != nullptr ? item.valueText ( item.context, frame, v ) : nullptr;
+		}
+
+		[[ nodiscard ]] float valueWidth ( const ReShadeUiItem& item, void* frame )
 		{
 			char		text[ 32 ];
 			float		w = 0.0f;
@@ -161,8 +167,10 @@ namespace ultra::ui
 
 			for ( const auto v : { item.range.lo, item.range.hi } )
 			{
-				format ( text, sizeof ( text ), v, f );
-				w = std::max ( w, font::width ( font::Face::bold, theme::px ( theme::text::body ), text, true ) );
+				const auto*	own = valueTextOf ( item, v, frame );
+				if ( own == nullptr )
+					format ( text, sizeof ( text ), v, f );
+				w = std::max ( w, font::width ( font::Face::bold, theme::px ( theme::text::body ), own != nullptr ? own : text, true ) );
 			}
 
 			return w;
@@ -194,7 +202,7 @@ namespace ultra::ui
 										+ labelWidth ( labelFor ( item, frame ), item.tooltip != nullptr || item.disabledReason != nullptr || item.applies != RESHADE_UI_APPLIES_NOW, appliesOf ( item.applies ) )
 										+ ( item.onOff.isBound != 0 ? theme::px ( theme::parts::switchWidth + theme::spacing::m ) : 0.0f ) );
 				if ( item.kind == RESHADE_UI_ITEM_SLIDER )
-					widest.value = std::max ( widest.value, valueWidth ( item ) );
+					widest.value = std::max ( widest.value, valueWidth ( item, frame ) );
 			}
 		}
 
@@ -256,7 +264,7 @@ namespace ultra::ui
 			finish ( edit, item.value, item.context, frame );
 
 			ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.value, row.y ) );
-			const auto	typed = valueEdit ( "value", v, range, formatOf ( item.format ), c.valueWidth );
+			const auto	typed = valueEdit ( "value", v, range, formatOf ( item.format ), valueTextOf ( item, v, frame ), c.valueWidth );
 			if ( typed.changed )
 				item.value.set ( item.context, frame, v );
 			finish ( typed, item.value, item.context, frame );
@@ -279,7 +287,7 @@ namespace ultra::ui
 			const auto	range = rangeOf ( &item.range );
 
 			ImGui::SetCursorScreenPos ( ImVec2 ( row.x + c.control, row.y ) );
-			const auto	typed = valueEdit ( "value", v, range, formatOf ( item.format ), c.controlWidth );
+			const auto	typed = valueEdit ( "value", v, range, formatOf ( item.format ), valueTextOf ( item, v, frame ), c.controlWidth );
 			if ( typed.changed )
 				item.value.set ( item.context, frame, v );
 			finish ( typed, item.value, item.context, frame );

@@ -193,7 +193,7 @@ namespace ultra::ui
 		}
 	}
 
-	Edit valueEdit ( const char* id, float& value, const SliderRange& range, const Format& format, float width )
+	Edit valueEdit ( const char* id, float& value, const SliderRange& range, const Format& format, const char* shown, float width )
 	{
 		const auto	rowH = theme::px ( theme::heights::row );
 		const auto	pad = theme::px ( theme::spacing::xs );
@@ -236,8 +236,12 @@ namespace ultra::ui
 		}
 
 		char	text[ 32 ];
-		ui::format ( text, sizeof ( text ), value, format );
-		font::draw ( dl, ImVec2 ( pos.x, font::centredTop ( font::Face::bold, size, pos.y, rowH ) ), font::Face::bold, size, draw::color ( theme::colors::text ), text, true );
+		if ( shown == nullptr )
+		{
+			ui::format ( text, sizeof ( text ), value, format );
+			shown = text;
+		}
+		font::draw ( dl, ImVec2 ( pos.x, font::centredTop ( font::Face::bold, size, pos.y, rowH ) ), font::Face::bold, size, draw::color ( theme::colors::text ), shown, true );
 
 		return {};
 	}

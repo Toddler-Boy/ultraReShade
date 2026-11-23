@@ -261,7 +261,7 @@ namespace
 
 	uint32_t valueEditOf ( const char* id, float* value, const ReShadeUiRange* range, const ReShadeUiFormat* format, float width )
 	{
-		return resultOf ( valueEdit ( id, *value, rangeOf ( range ), format != nullptr ? formatOf ( *format ) : Format {}, width ) );
+		return resultOf ( valueEdit ( id, *value, rangeOf ( range ), format != nullptr ? formatOf ( *format ) : Format {}, nullptr, width ) );
 	}
 
 	uint32_t colorPickerOf ( const char* id, uint32_t* c, uint32_t def, float width )

@@ -103,8 +103,8 @@ namespace ultra::ui
 	[[ nodiscard ]] Edit textField ( const char* id, std::string& text, float width );
 
 	// UI_ValueEdit.cpp: a slider's value as text; a double-click makes it editable, Enter or clicking away takes the
-	// typed number, Escape keeps the old one
-	[[ nodiscard ]] Edit valueEdit ( const char* id, float& value, const SliderRange& range, const Format& format, float width );
+	// typed number, Escape keeps the old one. shown: the text to draw instead of the format's own (null: the format's)
+	[[ nodiscard ]] Edit valueEdit ( const char* id, float& value, const SliderRange& range, const Format& format, const char* shown, float width );
 
 	// UI_Reset.cpp: the arrow after a slider off its default, resetWidth wide; true when clicked
 	[[ nodiscard ]] bool resetButton ( const char* id );

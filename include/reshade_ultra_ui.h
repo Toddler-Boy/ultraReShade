@@ -202,6 +202,7 @@ typedef struct ReShadeUiItem
 	const struct ReShadeUiItem*	children;										// a section's rows
 	uint32_t			childCount;
 	const char*			( *lockReason ) ( void* context, void* frame );			// a section's: why its switch is held
+	const char*			( *valueText ) ( void* context, void* frame, float value );	// a slider's or number's value as shown, instead of format's own text; null: format's
 } ReShadeUiItem;
 
 // A section: its switch (if bound) turns all its items on and off, the rest of the heading row collapses it; off, or dimmed by its reason,
