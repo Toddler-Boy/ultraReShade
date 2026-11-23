@@ -142,7 +142,8 @@ enum
 // button's look. HAS_JOB: a button's action runs on a thread of the add-on's, who tells isBusy, progress and takeFinished. HAS_TONE: a text
 // row's colour is tone (), else muted. NO_RESET: no reset arrow. WRAP: a text row breaks into lines to the page's width. A number is a value
 // typed in, without a range, in the control column. A section is one inside a section, to any depth: a heading line with the onOff switch
-// if bound, its children one step in; off, or dimmed by its reason, the heading alone shows
+// if bound, its children one step in; off, or dimmed by its reason, the children show dimmed with why. lockReason holds the switch with
+// the children live
 #define RESHADE_UI_ITEM_FLAG_ROW		1u
 #define RESHADE_UI_ITEM_FLAG_SET_APART	2u
 #define RESHADE_UI_ITEM_FLAG_PRIMARY	4u
@@ -200,15 +201,15 @@ typedef struct ReShadeUiItem
 	uint32_t			( *fieldIsSet ) ( void* context );						// a field has a value of its own: a reset arrow after it
 	const struct ReShadeUiItem*	children;										// a section's rows
 	uint32_t			childCount;
+	const char*			( *lockReason ) ( void* context, void* frame );			// a section's: why its switch is held
 } ReShadeUiItem;
 
-// A section: its switch (if bound) turns all its items on and off, the rest of the heading row collapses it; either hides the sections
-// that name it as their parent. lockReason holds the switch with the items live
+// A section: its switch (if bound) turns all its items on and off, the rest of the heading row collapses it; off, or dimmed by its reason,
+// its items show dimmed with why. lockReason holds the switch with the items live
 typedef struct ReShadeUiSection
 {
 	const char*				label;
 	const char*				tooltip;
-	const char*				parent;
 	void*					context;
 	ReShadeUiBinding		toggle;
 	ReShadeUiHotkey			( *hotkey ) ( void* context );
@@ -222,8 +223,7 @@ typedef struct ReShadeUiSection
 	uint32_t				isDraggable;		// the heading moves it among the page's sections (moveSection)
 } ReShadeUiSection;
 
-// header: fills the page's header at each draw (null: no header). isCollapsed and setCollapsed keep which sections are closed;
-// note, when set, hears of a section hidden or shown again by its parent
+// header: fills the page's header at each draw (null: no header). isCollapsed and setCollapsed keep which sections are closed
 typedef struct ReShadeUiPage
 {
 	const char*				id;
@@ -233,7 +233,6 @@ typedef struct ReShadeUiPage
 	void					( *header ) ( void* context, void* frame, ReShadeUiHeader* out );
 	uint32_t				( *isCollapsed ) ( void* context, const char* label );
 	void					( *setCollapsed ) ( void* context, const char* label, uint32_t isCollapsed );
-	void					( *note ) ( void* context, const char* section, const char* parent, uint32_t isHidden );
 	void					( *moveSection ) ( void* context, uint32_t from, uint32_t to );
 } ReShadeUiPage;
 

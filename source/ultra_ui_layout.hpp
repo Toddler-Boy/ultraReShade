@@ -10,8 +10,8 @@
 #include "ultra_ui_theme.hpp"
 
 //-----------------------------------------------------------------------------
-// A page of sections and rows (reshade_ultra_ui.h) as rows in one label and one value column; a section off, dimmed or collapsed shows
-// its heading alone. The overlay's tabs of an add-on and the Shaders tab are drawn by it
+// A page of sections and rows (reshade_ultra_ui.h) as rows in one label and one value column; a section collapsed shows its heading alone,
+// off or dimmed its rows dimmed. The overlay's tabs of an add-on and the Shaders tab are drawn by it
 
 namespace ultra::ui
 {

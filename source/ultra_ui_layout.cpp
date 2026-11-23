@@ -441,7 +441,7 @@ namespace ultra::ui
 		}
 
 		// Buttons in a run, side by side from the row's start, onto the next line where the row is full; the height used
-		[[ nodiscard ]] float buttonRow ( const std::vector<const ReShadeUiItem*>& items, size_t first, size_t last, ImVec2 row, float right, void* frame )
+		[[ nodiscard ]] float buttonRow ( const std::vector<const ReShadeUiItem*>& items, size_t first, size_t last, ImVec2 row, float right, const char* dimmed, void* frame )
 		{
 			const auto	rowH = theme::px ( theme::heights::row );
 			const auto	lineStep = rowH + theme::px ( theme::spacing::xs );
@@ -469,7 +469,7 @@ namespace ultra::ui
 				ImGui::PushID ( int ( i ) );
 				// Running, a reporting job shows its progress at full strength, any other dims
 				const auto	progress = progressOf ( item );
-				const auto*	reason = reasonOf ( item, frame );
+				const auto*	reason = dimmed != nullptr ? dimmed : reasonOf ( item, frame );
 				std::string	storage;
 
 				ImGui::BeginDisabled ( reason != nullptr || ( isBusy ( item ) && progress < 0.0f ) );
@@ -493,28 +493,16 @@ namespace ultra::ui
 			return y - row.y + rowH;
 		}
 
-		// A section hung under another is hidden, its own collapsed state kept, while that one is collapsed or switched off
-		[[ nodiscard ]] bool hiddenUnder ( const ReShadeUiPage& page, const ReShadeUiSection& section, void* frame )
+		// Why a section's rows are dimmed: what the section around it says, else its own reason, else that its switch is off
+		[[ nodiscard ]] const char* dimReason ( const char* inherited, const char* own, bool isOn, const char* title, std::string& storage )
 		{
-			if ( section.parent == nullptr )
-				return false;
+			if ( inherited != nullptr )
+				return inherited;
+			if ( own != nullptr || isOn )
+				return own;
 
-			const ReShadeUiSection*	parent = nullptr;
-			for ( uint32_t i = 0; i < page.sectionCount && parent == nullptr; ++i )
-				if ( page.sections[ i ].label != nullptr && std::strcmp ( page.sections[ i ].label, section.parent ) == 0 )
-					parent = &page.sections[ i ];
-
-			const auto	off = parent != nullptr && parent->toggle.isBound != 0 && parent->toggle.get ( parent->context, frame ) == 0.0f;
-			if ( page.note != nullptr )
-			{
-				static std::map<std::string, bool, std::less<>>	logged;
-				if ( const auto [ it, fresh ] = logged.try_emplace ( section.label, off ); fresh || it->second != off )
-				{
-					it->second = off;
-					page.note ( page.context, section.label, section.parent, off ? 1 : 0 );
-				}
-			}
-			return off || page.isCollapsed ( page.context, section.parent ) != 0;
+			storage.assign ( title ).append ( " off" );
+			return storage.c_str ();
 		}
 
 		// The heading being dragged to another place in the page, and whether it moved: a drag is no click on its arrow
@@ -524,13 +512,18 @@ namespace ultra::ui
 			bool	isMoved = false;
 		} drag;
 
-		void drawItems ( const std::vector<const ReShadeUiItem*>& items, size_t depth, float x, float width, const Columns& c, void* frame );
+		void drawItems ( const std::vector<const ReShadeUiItem*>& items, size_t depth, float x, float width, const Columns& c, const char* dimmed, void* frame );
 
-		void drawSubsection ( const ReShadeUiItem& item, size_t depth, float x, float width, const Columns& c, void* frame )
+		void drawSubsection ( const ReShadeUiItem& item, size_t depth, float x, float width, const Columns& c, const char* dimmed, void* frame )
 		{
-			const auto*	reason = reasonOf ( item, frame );
+			const auto*	own = reasonOf ( item, frame );
+			const auto*	lock = item.lockReason != nullptr ? item.lockReason ( item.context, frame ) : nullptr;
+			const auto*	title = labelFor ( item, frame );
+			const auto	key = item.hotkey != nullptr ? item.hotkey ( item.context ) : ReShadeUiHotkey {};
 			const auto	on = item.onOff.isBound == 0 || item.onOff.get ( item.context, frame ) != 0.0f;
+			const auto*	reason = dimmed != nullptr ? dimmed : lock != nullptr ? lock : own;
 			std::string	storage;
+			std::string	offText;
 			const auto*	tip = tipWith ( item.tooltip, reason, storage );
 			auto		isOn = on;
 
@@ -538,7 +531,7 @@ namespace ultra::ui
 
 			ImGui::SetCursorScreenPos ( ImVec2 ( x + indentOf ( depth ), top ) );
 			ImGui::BeginDisabled ( reason != nullptr );
-			const auto	edit = subsection ( "heading", isOn, item.onOff.isBound != 0, labelFor ( item, frame ), { false, {}, tip, Applies::now, item.onOff.def != 0.0f } );
+			const auto	edit = subsection ( "heading", isOn, item.onOff.isBound != 0, title, { false, hotkeyOf ( &key ), tip, Applies::now, item.onOff.def != 0.0f } );
 			ImGui::EndDisabled ();
 
 			if ( edit.changed )
@@ -549,12 +542,12 @@ namespace ultra::ui
 			ImGui::Dummy ( ImVec2 ( width, theme::px ( theme::heights::row ) ) );
 			gap ( theme::spacing::xs * 0.5f );
 
-			if ( on && reason == nullptr )
-				drawItems ( rowsOf ( item.children, item.childCount ), depth + 1, x, width, c, frame );
+			drawItems ( rowsOf ( item.children, item.childCount ), depth + 1, x, width, c, dimReason ( dimmed, own, on, title, offText ), frame );
 		}
 
-		// The rows of a section or a nested one, depth levels in: their controls in the page's columns from x, their labels indented
-		void drawItems ( const std::vector<const ReShadeUiItem*>& items, size_t depth, float x, float width, const Columns& c, void* frame )
+		// The rows of a section or a nested one, depth levels in: their controls in the page's columns from x, their labels indented. dimmed:
+		// why they all are, null while none is
+		void drawItems ( const std::vector<const ReShadeUiItem*>& items, size_t depth, float x, float width, const Columns& c, const char* dimmed, void* frame )
 		{
 			const auto	rowH = theme::px ( theme::heights::row );
 			const auto	indent = indentOf ( depth );
@@ -586,7 +579,7 @@ namespace ultra::ui
 				if ( item.kind == RESHADE_UI_ITEM_SECTION )
 				{
 					ImGui::PushID ( int ( i ) );
-					drawSubsection ( item, depth, x, width, c, frame );
+					drawSubsection ( item, depth, x, width, c, dimmed, frame );
 					ImGui::PopID ();
 					i = next;
 					continue;
@@ -594,7 +587,7 @@ namespace ultra::ui
 
 				const ImVec2	row ( x, ImGui::GetCursorScreenPos ().y );
 				const ImVec2	at ( x + indent, row.y );
-				const auto*		reason = reasonOf ( item, frame );
+				const auto*		reason = dimmed != nullptr ? dimmed : reasonOf ( item, frame );
 				auto			height = rowH;
 				const auto*		tip = tipWith ( item.tooltip, reason, storage, appliesOf ( item.applies ), item.appliesWhen );
 				const auto		applies = appliesOf ( item.applies );
@@ -626,7 +619,7 @@ namespace ultra::ui
 					case RESHADE_UI_ITEM_BUTTON:
 						while ( next < items.size () && items[ next ]->kind == RESHADE_UI_ITEM_BUTTON )
 							++next;
-						height = buttonRow ( items, i, next, at, row.x - theme::px ( theme::spacing::xl ) + width, frame );
+						height = buttonRow ( items, i, next, at, row.x - theme::px ( theme::spacing::xl ) + width, dimmed, frame );
 						break;
 					case RESHADE_UI_ITEM_REPEAT:
 					case RESHADE_UI_ITEM_SECTION:	break;
@@ -711,11 +704,12 @@ namespace ultra::ui
 
 			gap ( theme::spacing::xs );
 
-			// Off, dimmed by what it depends on, or collapsed: the heading alone, its rows not built
-			if ( ! on || ! open || sectionReason != nullptr )
+			if ( ! open )
 				return;
 
-			drawItems ( rowsOf ( section.items, section.itemCount ), 0, ImGui::GetCursorScreenPos ().x + theme::px ( theme::spacing::xl ), width, c, frame );
+			std::string	offText;
+			drawItems ( rowsOf ( section.items, section.itemCount ), 0, ImGui::GetCursorScreenPos ().x + theme::px ( theme::spacing::xl ), width, c,
+						dimReason ( nullptr, sectionReason, on, title, offText ), frame );
 		}
 
 		void drawSections ( const ReShadeUiPage& page, void* frame, float width )
@@ -728,7 +722,7 @@ namespace ultra::ui
 			for ( uint32_t i = 0; i < page.sectionCount; ++i )
 			{
 				const auto&	section = page.sections[ i ];
-				if ( ! shown ( section, frame ) || hiddenUnder ( page, section, frame ) )
+				if ( ! shown ( section, frame ) )
 					continue;
 
 				ImGui::PushID ( int ( i ) );
