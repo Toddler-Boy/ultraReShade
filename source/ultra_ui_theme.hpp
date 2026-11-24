@@ -34,7 +34,8 @@ namespace ultra::ui::theme
 	[[ nodiscard ]] float scale ();
 	void measureScale ( void* window, float backBufferHeight );
 
-	// The same scale for a window whose back buffer is that tall, measured now; 0 when the window does not tell
+	// The monitor's DPI scale (asked per-monitor-aware: a DPI-unaware game is told 96) times back buffer pixels per screen pixel,
+	// measured now, not in quarter steps; 0 when the window does not tell
 	[[ nodiscard ]] float screenScale ( void* window, float backBufferHeight );
 	[[ nodiscard ]] inline float px ( float unscaled )	{ return unscaled * scale (); }
 

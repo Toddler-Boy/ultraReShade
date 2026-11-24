@@ -303,12 +303,11 @@ namespace ultra::ui::theme
 		return measured;
 	}
 
-	// The monitor's DPI scale (read per-monitor-aware: a DPI-unaware game is told 96) times back buffer pixels per
-	// screen pixel, in quarter steps so the fonts stay crisp
+	// The window's scale in quarter steps, so the fonts stay crisp
 	void measureScale ( void* window, float backBufferHeight )
 	{
 		if ( const auto s = screenScale ( window, backBufferHeight ); s > 0.0f )
-			measured = s;
+			measured = std::round ( s * 4.0f ) / 4.0f;
 	}
 
 	float screenScale ( void* window, float backBufferHeight )
@@ -328,7 +327,10 @@ namespace ultra::ui::theme
 		const auto	monitorScale = hasDpi ? float ( dpiY ) / 96.0f : 1.0f;
 		const auto	pixelSize = hasFrame ? backBufferHeight / float ( frame.bottom - frame.top ) : 1.0f;
 
-		return std::clamp ( std::round ( monitorScale * pixelSize * 4.0f ) / 4.0f, 0.5f, 4.0f );
+		// Within 1% of a quarter step it is that step, so the measured frame adds no noise
+		const auto	scale = std::clamp ( monitorScale * pixelSize, 0.5f, 4.0f );
+		const auto	step = std::round ( scale * 4.0f ) / 4.0f;
+		return std::abs ( scale - step ) <= 0.01f * step ? step : scale;
 	}
 
 	void load ()
