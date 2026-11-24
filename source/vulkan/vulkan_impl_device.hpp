@@ -25,7 +25,7 @@ namespace reshade::vulkan
 	class command_list_immediate_impl;
 	class command_queue_impl;
 
-	class device_impl : public api::api_object_impl<VkDevice, api::device>
+	class device_impl final : public api::api_object_impl<VkDevice, api::device>
 	{
 		friend class command_list_impl;
 		friend class command_list_immediate_impl;

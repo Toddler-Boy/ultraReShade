@@ -81,7 +81,7 @@ namespace reshade::vulkan
 	};
 
 	template <>
-	struct object_data<VK_OBJECT_TYPE_COMMAND_BUFFER> : public command_list_impl
+	struct object_data<VK_OBJECT_TYPE_COMMAND_BUFFER> final : public command_list_impl
 	{
 		using Handle = VkCommandBuffer;
 

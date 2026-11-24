@@ -52,7 +52,7 @@ namespace reshade::vulkan
 	};
 
 	template <>
-	struct object_data<VK_OBJECT_TYPE_QUEUE> : public command_queue_impl
+	struct object_data<VK_OBJECT_TYPE_QUEUE> final : public command_queue_impl
 	{
 		using Handle = VkQueue;
 

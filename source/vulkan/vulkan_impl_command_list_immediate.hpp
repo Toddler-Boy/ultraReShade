@@ -9,7 +9,7 @@
 
 namespace reshade::vulkan
 {
-	class command_list_immediate_impl : public command_list_impl
+	class command_list_immediate_impl final : public command_list_impl
 	{
 		static constexpr uint32_t NUM_COMMAND_FRAMES = 8; // Use power of two so that modulo can be replaced with bitwise operation
 

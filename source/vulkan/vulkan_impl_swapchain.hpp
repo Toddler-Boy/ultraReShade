@@ -36,7 +36,7 @@ namespace reshade::vulkan
 	};
 
 	template <>
-	struct object_data<VK_OBJECT_TYPE_SWAPCHAIN_KHR> : public swapchain_impl
+	struct object_data<VK_OBJECT_TYPE_SWAPCHAIN_KHR> final : public swapchain_impl
 	{
 		using Handle = VkSwapchainKHR;
 
