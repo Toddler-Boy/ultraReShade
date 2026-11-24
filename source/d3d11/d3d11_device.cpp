@@ -8,6 +8,7 @@
 #include "d3d11on12_device.hpp"
 #include "d3d11_resource.hpp"
 #include "d3d11_impl_type_convert.hpp"
+#include "ultra_d3d11_float_clone.hpp"
 #include "dll_log.hpp" // Include late to get 'hr_to_string' helper function
 #include "com_utils.hpp"
 #include "hook_manager.hpp"
@@ -58,6 +59,8 @@ D3D11Device::~D3D11Device()
 	device_impl::destroy_pipeline_layout(_global_pipeline_layout);
 
 	reshade::invoke_addon_event<reshade::addon_event::destroy_device>(this);
+
+	reshade::ultra::d3d11::floatClone::forgetDevice(_orig);
 
 	reshade::unload_addons();
 
@@ -357,6 +360,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateTexture2D(const D3D11_TEXTURE2D_DES
 
 		reshade::hooks::install("ID3D11Texture2D::GetDevice", reshade::hooks::vtable_from_instance(resource), 3, &ID3D11Resource_GetDevice);
 
+		reshade::ultra::d3d11::floatClone::noteTexture(_orig, resource, pInitialData != nullptr);
+
 		reshade::invoke_addon_event<reshade::addon_event::init_resource>(this, desc, reinterpret_cast<const reshade::api::subresource_data *>(pInitialData), reshade::api::resource_usage::general, to_handle(resource));
 
 		if (reshade::has_addon_event<reshade::addon_event::destroy_resource>())
@@ -446,6 +451,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateShaderResourceView(ID3D11Resource *
 	{
 		ID3D11ShaderResourceView *const resource_view = *ppShaderResourceView;
 
+		reshade::ultra::d3d11::floatClone::noteView(pResource, resource_view, reshade::ultra::d3d11::floatClone::ViewKind::shaderResource);
+
 		reshade::invoke_addon_event<reshade::addon_event::init_resource_view>(this, to_handle(pResource), reshade::api::resource_usage::shader_resource, desc, to_handle(resource_view));
 
 		if (reshade::has_addon_event<reshade::addon_event::destroy_resource_view>())
@@ -485,6 +492,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateUnorderedAccessView(ID3D11Resource 
 	{
 		ID3D11UnorderedAccessView *const resource_view = *ppUnorderedAccessView;
 
+		reshade::ultra::d3d11::floatClone::noteView(pResource, resource_view, reshade::ultra::d3d11::floatClone::ViewKind::unorderedAccess);
+
 		reshade::invoke_addon_event<reshade::addon_event::init_resource_view>(this, to_handle(pResource), reshade::api::resource_usage::unordered_access, desc, to_handle(resource_view));
 
 		if (reshade::has_addon_event<reshade::addon_event::destroy_resource_view>())
@@ -523,6 +532,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateRenderTargetView(ID3D11Resource *pR
 	if (SUCCEEDED(hr))
 	{
 		ID3D11RenderTargetView *const resource_view = *ppRenderTargetView;
+
+		reshade::ultra::d3d11::floatClone::noteView(pResource, resource_view, reshade::ultra::d3d11::floatClone::ViewKind::renderTarget);
 
 		reshade::invoke_addon_event<reshade::addon_event::init_resource_view>(this, to_handle(pResource), reshade::api::resource_usage::render_target, desc, to_handle(resource_view));
 
@@ -782,6 +793,10 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreatePixelShader(const void *pShaderByte
 		{ reshade::api::pipeline_subobject_type::pixel_shader, 1, &desc }
 	};
 
+	// The game's own bytecode names the shader, not the one an add-on put in its place
+	const void *const game_code = pShaderBytecode;
+	const SIZE_T game_code_size = BytecodeLength;
+
 	if (reshade::invoke_addon_event<reshade::addon_event::create_pipeline>(this, _global_pipeline_layout, static_cast<uint32_t>(std::size(subobjects)), subobjects))
 	{
 		pShaderBytecode = desc.code;
@@ -792,6 +807,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreatePixelShader(const void *pShaderByte
 	if (SUCCEEDED(hr))
 	{
 		ID3D11PixelShader *const pipeline = *ppPixelShader;
+
+		reshade::ultra::d3d11::floatClone::notePixelShader(pipeline, game_code, game_code_size);
 
 		reshade::invoke_addon_event<reshade::addon_event::init_pipeline>(this, _global_pipeline_layout, static_cast<uint32_t>(std::size(subobjects)), subobjects, to_handle(pipeline));
 
@@ -1746,6 +1763,9 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateTexture2D1(const D3D11_TEXTURE2D_DE
 
 		reshade::hooks::install("ID3D11Texture2D1::GetDevice", reshade::hooks::vtable_from_instance(resource), 3, &ID3D11Resource_GetDevice);
 
+		if (pDesc1->TextureLayout == D3D11_TEXTURE_LAYOUT_UNDEFINED)
+			reshade::ultra::d3d11::floatClone::noteTexture(_orig, resource, pInitialData != nullptr);
+
 		reshade::invoke_addon_event<reshade::addon_event::init_resource>(this, desc, reinterpret_cast<const reshade::api::subresource_data *>(pInitialData), reshade::api::resource_usage::general, to_handle(resource));
 
 		if (reshade::has_addon_event<reshade::addon_event::destroy_resource>())
@@ -1912,6 +1932,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateShaderResourceView1(ID3D11Resource 
 	{
 		ID3D11ShaderResourceView1 *const resource_view = *ppShaderResourceView1;
 
+		reshade::ultra::d3d11::floatClone::noteView(pResource, resource_view, reshade::ultra::d3d11::floatClone::ViewKind::shaderResource);
+
 		reshade::invoke_addon_event<reshade::addon_event::init_resource_view>(this, to_handle(pResource), reshade::api::resource_usage::shader_resource, desc, to_handle(resource_view));
 
 		if (reshade::has_addon_event<reshade::addon_event::destroy_resource_view>())
@@ -1953,6 +1975,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateUnorderedAccessView1(ID3D11Resource
 	{
 		ID3D11UnorderedAccessView1 *const resource_view = *ppUnorderedAccessView1;
 
+		reshade::ultra::d3d11::floatClone::noteView(pResource, resource_view, reshade::ultra::d3d11::floatClone::ViewKind::unorderedAccess);
+
 		reshade::invoke_addon_event<reshade::addon_event::init_resource_view>(this, to_handle(pResource), reshade::api::resource_usage::unordered_access, desc, to_handle(resource_view));
 
 		if (reshade::has_addon_event<reshade::addon_event::destroy_resource_view>())
@@ -1993,6 +2017,8 @@ HRESULT STDMETHODCALLTYPE D3D11Device::CreateRenderTargetView1(ID3D11Resource *p
 	if (SUCCEEDED(hr))
 	{
 		ID3D11RenderTargetView1 *const resource_view = *ppRenderTargetView1;
+
+		reshade::ultra::d3d11::floatClone::noteView(pResource, resource_view, reshade::ultra::d3d11::floatClone::ViewKind::renderTarget);
 
 		reshade::invoke_addon_event<reshade::addon_event::init_resource_view>(this, to_handle(pResource), reshade::api::resource_usage::render_target, desc, to_handle(resource_view));
 

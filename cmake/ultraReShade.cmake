@@ -164,7 +164,7 @@ function(ultra_finish_targets)
   endif()
 
   # Shader bytecode for resource.rc's "shaders\*.cso", per configuration
-  foreach(shader copy_ps:Pixel:4.0 fullscreen_vs:Vertex:4.0 imgui_ps_3_0:Pixel:3.0 imgui_ps_4_0:Pixel:4.0 imgui_vs_3_0:Vertex:3.0 imgui_vs_4_0:Vertex:4.0 mipmap_cs_5_0:Compute:5.0)
+  foreach(shader copy_ps:Pixel:4.0 float_copy_ps:Pixel:4.0 fullscreen_vs:Vertex:4.0 imgui_ps_3_0:Pixel:3.0 imgui_ps_4_0:Pixel:4.0 imgui_vs_3_0:Vertex:3.0 imgui_vs_4_0:Vertex:4.0 mipmap_cs_5_0:Compute:5.0)
     string(REPLACE ":" ";" shader ${shader})
     list(GET shader 0 name)
     list(GET shader 1 type)

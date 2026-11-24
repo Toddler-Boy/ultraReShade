@@ -16,7 +16,9 @@
 #include <reshade_ultra_host_names.h>
 
 #include "dll_log.hpp"
+#include "d3d11/ultra_d3d11_float_clone.hpp"
 #include "runtime.hpp"
+#include "ultra_float_clone.hpp"
 #include "ultra_host_api.hpp"
 #include "ultra_ui_shaders.hpp"
 
@@ -68,6 +70,10 @@ namespace
 	constexpr Field	depthRereadFields[] { { cells::runtime, ugPtr } };
 	constexpr Field	depthSeenFields[] { { cells::runtime, ugPtr }, { cells::depth_seen::clears, ugU32 }, { cells::depth_seen::candidates, ugU32 } };
 	constexpr Field	depthCandidateFields[] { { cells::runtime, ugPtr }, { cells::depth_candidate::index, ugU32 }, { cells::depth_candidate::width, ugU32 }, { cells::depth_candidate::height, ugU32 } };
+	constexpr Field	floatTargetsFields[] { { cells::float_targets::formats, ugU32 }, { cells::float_targets::shaders, ugPtr }, { cells::float_targets::shader_count, ugU32 } };
+	constexpr Field	floatSourceFields[] { { cells::float_source::resource, ugU64 }, { cells::float_source::source, ugU64 }, { cells::float_source::format, ugU32 } };
+
+	constexpr uint32_t	maxRuleShaders = 4096;
 
 	std::mutex					toldLock;
 	std::set<std::string>		told;
@@ -178,6 +184,46 @@ namespace
 {
 	using Access = reshade::ultra::HostAccess;
 
+	// The two names about the game's textures: no runtime, a record of their own
+	int floatTargets ( UgCell* c )
+	{
+		constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( floatTargetsFields, name ); };
+		const auto		formats = c[ at ( cells::float_targets::formats ) ].u32;
+		const auto		count = c[ at ( cells::float_targets::shader_count ) ].u32;
+		const auto*		shaders = static_cast<const uint32_t*> ( c[ at ( cells::float_targets::shaders ) ].ptr );
+
+		if ( ( shaders == nullptr && count != 0 ) || count > maxRuleShaders )
+		{
+			tell ( "range " + std::string ( names::float_targets ), std::string ( names::float_targets ) + " called with " + std::to_string ( count ) + " shaders and "
+				   + ( shaders == nullptr ? "no list" : "a list" ) + ": refused" );
+			return 0;
+		}
+
+		if ( reshade::ultra::floatClone::stateRule ( formats, shaders, count ) )
+			reshade::ultra::d3d11::floatClone::rulesChanged ();
+		return 1;
+	}
+
+	int floatSource ( UgCell* c )
+	{
+		constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( floatSourceFields, name ); };
+		uint32_t		format = 0;
+
+		c[ at ( cells::float_source::source ) ].u64 = reshade::ultra::d3d11::floatClone::sourceOf ( c[ at ( cells::float_source::resource ) ].u64, format );
+		c[ at ( cells::float_source::format ) ].u32 = format;
+		return 1;
+	}
+
+	// fn reads and writes its record's cells
+	template <const auto& fields, const char* const& name, int ( *fn ) ( UgCell* cells )>
+	int callPlain ( void*, UgCell* in, uint32_t count )
+	{
+		constexpr auto	needed = uint32_t ( std::size ( fields ) + 1 );
+		if ( in == nullptr || count < needed )
+			return refused ( name, count, needed );
+		return fn ( in );
+	}
+
 	// fn reads and writes its record's cells, the runtime found
 	template <const auto& fields, const char* const& name, int ( *fn ) ( reshade::runtime& runtime, UgCell* cells )>
 	int call ( void*, UgCell* in, uint32_t count )
@@ -196,6 +242,8 @@ namespace
 	constexpr const char*	depthRereadName = names::depth_reread;
 	constexpr const char*	depthSeenName = names::depth_seen;
 	constexpr const char*	depthCandidateName = names::depth_candidate;
+	constexpr const char*	floatTargetsName = names::float_targets;
+	constexpr const char*	floatSourceName = names::float_source;
 
 	constexpr Answer	answers[] {
 		{ names::screenshot_pending, &call<screenshotPendingFields, screenshotPendingName, &Access::screenshotPending>, screenshotPendingFields },
@@ -203,6 +251,8 @@ namespace
 		{ names::depth_reread, &call<depthRereadFields, depthRereadName, &Access::depthReread>, depthRereadFields },
 		{ names::depth_seen, &call<depthSeenFields, depthSeenName, &Access::depthSeen>, depthSeenFields },
 		{ names::depth_candidate, &call<depthCandidateFields, depthCandidateName, &Access::depthCandidate>, depthCandidateFields },
+		{ names::float_targets, &callPlain<floatTargetsFields, floatTargetsName, &floatTargets>, floatTargetsFields },
+		{ names::float_source, &callPlain<floatSourceFields, floatSourceName, &floatSource>, floatSourceFields },
 	};
 
 	[[ nodiscard ]] const Answer* answerOf ( const char* name )

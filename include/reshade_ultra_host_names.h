@@ -7,12 +7,27 @@
 
 // The names ultraReShade answers (reshade::get_host, the form of reshade_ultra_api.h) and the cells of their records: what the add-on
 // tells it about what it does that ReShade cannot know. Every record's first cell is the effect runtime (an api::effect_runtime*, as the add-on events
-// give it); a call without a known runtime is refused
+// give it); a call without a known runtime is refused. The two float_ names are about the game's textures, whatever runtime: no runtime cell
+
+#include <stdint.h>
 
 namespace reshade::host
 {
+	// The bits of "targets.float"'s formats
+	namespace float_format
+	{
+		// RGBA8 typeless, unorm and unorm sRGB
+		constexpr uint32_t	rgba8 = 1;
+		// RGB10A2 unorm
+		constexpr uint32_t	rgb10a2 = 2;
+	}
+
 	namespace name
 	{
+		// The rule for the game's float render targets: which textures get a float clone and which pixel shaders' draws make it
+		constexpr const char*	float_targets = "targets.float";
+		// The game's texture a float clone stands for
+		constexpr const char*	float_source = "targets.float_source";
 		// The add-on's own screenshot files still being written
 		constexpr const char*	screenshot_pending = "screenshot.pending";
 		// How the targets the add-on renders effects onto, other than the back buffer, are encoded
@@ -28,6 +43,25 @@ namespace reshade::host
 	namespace cell
 	{
 		constexpr const char*	runtime = "runtime";
+
+		// "targets.float": the game's 2D textures made in these formats (formats, bits of float_format) are tagged as they are made, left as
+		// they are. The first time one is a render target of a draw whose pixel shader's CRC-32 (zlib) is one of the shaders (a pointer
+		// to shader_count of them), it gets an RGBA16F clone, and every use of it from then on goes to the clone
+		namespace float_targets
+		{
+			constexpr const char*	formats = "formats";
+			constexpr const char*	shaders = "shaders";
+			constexpr const char*	shader_count = "shader_count";
+		}
+
+		// "targets.float_source": for a resource handle (the clone's, as the add-on events give it) the game's texture it stands for and the
+		// format that was made as (an api::format); source 0 for a resource that is no clone
+		namespace float_source
+		{
+			constexpr const char*	resource = "resource";
+			constexpr const char*	source = "source";
+			constexpr const char*	format = "format";
+		}
 
 		// "screenshot.pending": how many of the add-on's own files (beside the one ReShade's writer saves) are still being written; the
 		// "Saving screenshot" message stays up while there are any

@@ -273,6 +273,8 @@ set(RESHADE_SOURCE
   source/ultra_effect_settings.hpp
   source/ultra_file_watch.cpp
   source/ultra_file_watch.hpp
+  source/ultra_float_clone.cpp
+  source/ultra_float_clone.hpp
   source/ultra_home.cpp
   source/ultra_home.hpp
   source/ultra_host_api.cpp
@@ -375,6 +377,8 @@ set(RESHADE_SOURCE_DIRECTX
   source/d3d11/d3d11_impl_swapchain.cpp
   source/d3d11/d3d11_impl_swapchain.hpp
   source/d3d11/d3d11_impl_type_convert.cpp
+  source/d3d11/ultra_d3d11_float_clone.cpp
+  source/d3d11/ultra_d3d11_float_clone.hpp
   source/d3d11/d3d11_impl_type_convert.hpp
   source/d3d11/d3d11_resource.cpp
   source/d3d11/d3d11_resource.hpp

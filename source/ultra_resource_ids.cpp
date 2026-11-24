@@ -15,6 +15,7 @@
 #include <reshade_ultra.hpp>
 
 #include "addon_manager.hpp"
+#include "d3d11/ultra_d3d11_float_clone.hpp"
 
 //-----------------------------------------------------------------------------
 
@@ -284,7 +285,11 @@ void unregister_addon_resource_ids ()
 
 uint64_t ReShadeGetResourceStableId ( reshade::api::device* device, reshade::api::resource resource )
 {
+	// A float clone has the ID of the game's texture it stands for
+	uint32_t	format = 0;
+	const auto	source = reshade::ultra::d3d11::floatClone::sourceOf ( resource.handle, format );
+
 	const std::scoped_lock	guard ( lock );
-	const auto				it = tracked.find ( { device, resource.handle } );
+	const auto				it = tracked.find ( { device, source != 0 ? source : resource.handle } );
 	return it != tracked.end () ? it->second.id : 0;
 }

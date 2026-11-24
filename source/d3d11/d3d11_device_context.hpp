@@ -6,6 +6,7 @@
 #pragma once
 
 #include "d3d11_impl_device_context.hpp"
+#include "ultra_d3d11_float_clone.hpp"
 
 class D3D11Device;
 
@@ -189,6 +190,16 @@ public:
 	unsigned short _interface_version = 0;
 
 private:
+	reshade::ultra::d3d11::floatClone::ContextState _float;
+
+	// A draw of a pixel shader of the float rule onto tagged textures: they get their clones and the context takes those
+	void before_draw()
+	{
+		if (_float.isDue())
+			invoke_clone_bound_targets();
+	}
+	void invoke_clone_bound_targets();
+
 	void invoke_bind_default_state_events();
 	void invoke_bind_samplers_event(reshade::api::shader_stage stage, UINT first, UINT count, ID3D11SamplerState *const *objects);
 	void invoke_bind_shader_resource_views_event(reshade::api::shader_stage stage, UINT first, UINT count, ID3D11ShaderResourceView *const *objects);

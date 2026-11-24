@@ -12,6 +12,24 @@
 #include "addon_manager.hpp"
 
 using reshade::d3d11::to_handle;
+namespace float_clone = reshade::ultra::d3d11::floatClone;
+
+namespace
+{
+	// What the game names, or where its textures have clones, the views of those; storage is for them when any changed
+	ID3D11ShaderResourceView *const *swap_resources(float_clone::ContextState &state, UINT count, ID3D11ShaderResourceView *const *views, ID3D11ShaderResourceView **storage)
+	{
+		return float_clone::hasClones() && count <= D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT ? float_clone::swapViews(state, count, views, storage) : views;
+	}
+	ID3D11UnorderedAccessView *const *swap_storage(float_clone::ContextState &state, UINT count, ID3D11UnorderedAccessView *const *views, ID3D11UnorderedAccessView **storage)
+	{
+		return float_clone::hasClones() && count <= D3D11_1_UAV_SLOT_COUNT ? float_clone::swapViews(state, count, views, storage) : views;
+	}
+	ID3D11RenderTargetView *const *swap_targets(float_clone::ContextState &state, UINT count, ID3D11RenderTargetView *const *views, ID3D11RenderTargetView **storage)
+	{
+		return float_clone::hasTagged() && count <= D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT ? float_clone::swapViews(state, count, views, storage) : views;
+	}
+}
 
 D3D11DeviceContext::D3D11DeviceContext(D3D11Device *device, ID3D11DeviceContext  *original) :
 	device_context_impl(device, original)
@@ -173,12 +191,15 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::VSSetConstantBuffers(UINT StartSlo
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::PSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews)
 {
+	ID3D11ShaderResourceView *swapped[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+	ppShaderResourceViews = swap_resources(_float, NumViews, ppShaderResourceViews, swapped);
 	_orig->PSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
 	invoke_bind_shader_resource_views_event(reshade::api::shader_stage::pixel, StartSlot, NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::PSSetShader(ID3D11PixelShader *pPixelShader, ID3D11ClassInstance *const *ppClassInstances, UINT NumClassInstances)
 {
 	_orig->PSSetShader(pPixelShader, ppClassInstances, NumClassInstances);
+	float_clone::bindPixelShader(_float, pPixelShader);
 	reshade::invoke_addon_event<reshade::addon_event::bind_pipeline>(this, reshade::api::pipeline_stage::pixel_shader, to_handle(pPixelShader));
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::PSSetSamplers(UINT StartSlot, UINT NumSamplers, ID3D11SamplerState *const *ppSamplers)
@@ -193,12 +214,14 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::VSSetShader(ID3D11VertexShader *pV
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexed(UINT IndexCount, UINT StartIndexLocation, INT BaseVertexLocation)
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw_indexed>(this, IndexCount, 1, StartIndexLocation, BaseVertexLocation, 0))
 		return;
 	_orig->DrawIndexed(IndexCount, StartIndexLocation, BaseVertexLocation);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::Draw(UINT VertexCount, UINT StartVertexLocation)
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw>(this, VertexCount, 1, StartVertexLocation, 0))
 		return;
 	_orig->Draw(VertexCount, StartVertexLocation);
@@ -316,12 +339,14 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::IASetIndexBuffer(ID3D11Buffer *pIn
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexedInstanced(UINT IndexCountPerInstance, UINT InstanceCount, UINT StartIndexLocation, INT BaseVertexLocation, UINT StartInstanceLocation)
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw_indexed>(this, IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation))
 		return;
 	_orig->DrawIndexedInstanced(IndexCountPerInstance, InstanceCount, StartIndexLocation, BaseVertexLocation, StartInstanceLocation);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawInstanced(UINT VertexCountPerInstance, UINT InstanceCount, UINT StartVertexLocation, UINT StartInstanceLocation)
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw>(this, VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation))
 		return;
 	_orig->DrawInstanced(VertexCountPerInstance, InstanceCount, StartVertexLocation, StartInstanceLocation);
@@ -347,6 +372,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::IASetPrimitiveTopology(D3D11_PRIMI
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::VSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews)
 {
+	ID3D11ShaderResourceView *swapped[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+	ppShaderResourceViews = swap_resources(_float, NumViews, ppShaderResourceViews, swapped);
 	_orig->VSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
 	invoke_bind_shader_resource_views_event(reshade::api::shader_stage::vertex, StartSlot, NumViews, ppShaderResourceViews);
 }
@@ -373,6 +400,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::SetPredication(ID3D11Predicate *pP
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::GSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews)
 {
+	ID3D11ShaderResourceView *swapped[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+	ppShaderResourceViews = swap_resources(_float, NumViews, ppShaderResourceViews, swapped);
 	_orig->GSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
 	invoke_bind_shader_resource_views_event(reshade::api::shader_stage::geometry, StartSlot, NumViews, ppShaderResourceViews);
 }
@@ -383,6 +412,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::GSSetSamplers(UINT StartSlot, UINT
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargets(UINT NumViews, ID3D11RenderTargetView *const *ppRenderTargetViews, ID3D11DepthStencilView *pDepthStencilView)
 {
+	ID3D11RenderTargetView *swapped[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
+	ppRenderTargetViews = swap_targets(_float, NumViews, ppRenderTargetViews, swapped);
 	_orig->OMSetRenderTargets(NumViews, ppRenderTargetViews, pDepthStencilView);
 
 	if (!reshade::has_addon_event<reshade::addon_event::bind_render_targets_and_depth_stencil>())
@@ -402,6 +433,12 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargets(UINT NumViews, 
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMSetRenderTargetsAndUnorderedAccessViews(UINT NumRTVs, ID3D11RenderTargetView *const *ppRenderTargetViews, ID3D11DepthStencilView *pDepthStencilView, UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView *const *ppUnorderedAccessViews, const UINT *pUAVInitialCounts)
 {
+	ID3D11RenderTargetView *swapped_targets[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT];
+	ID3D11UnorderedAccessView *swapped_storage[D3D11_1_UAV_SLOT_COUNT];
+	if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL)
+		ppRenderTargetViews = swap_targets(_float, NumRTVs, ppRenderTargetViews, swapped_targets);
+	if (NumUAVs != D3D11_KEEP_UNORDERED_ACCESS_VIEWS)
+		ppUnorderedAccessViews = swap_storage(_float, NumUAVs, ppUnorderedAccessViews, swapped_storage);
 	_orig->OMSetRenderTargetsAndUnorderedAccessViews(NumRTVs, ppRenderTargetViews, pDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
 
 	if (NumRTVs != D3D11_KEEP_RENDER_TARGETS_AND_DEPTH_STENCIL &&
@@ -477,18 +514,21 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::SOSetTargets(UINT NumBuffers, ID3D
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawAuto()
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw>(this, 0, 0, 0, 0))
 		return;
 	_orig->DrawAuto();
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawIndexedInstancedIndirect(ID3D11Buffer *pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw_or_dispatch_indirect>(this, reshade::api::indirect_command::draw_indexed, to_handle(pBufferForArgs), AlignedByteOffsetForArgs, 1, 0))
 		return;
 	_orig->DrawIndexedInstancedIndirect(pBufferForArgs, AlignedByteOffsetForArgs);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DrawInstancedIndirect(ID3D11Buffer *pBufferForArgs, UINT AlignedByteOffsetForArgs)
 {
+	before_draw();
 	if (reshade::invoke_addon_event<reshade::addon_event::draw_or_dispatch_indirect>(this, reshade::api::indirect_command::draw, to_handle(pBufferForArgs), AlignedByteOffsetForArgs, 1, 0))
 		return;
 	_orig->DrawInstancedIndirect(pBufferForArgs, AlignedByteOffsetForArgs);
@@ -526,6 +566,12 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::RSSetScissorRects(UINT NumRects, c
 void    STDMETHODCALLTYPE D3D11DeviceContext::CopySubresourceRegion(ID3D11Resource *pDstResource, UINT DstSubresource, UINT DstX, UINT DstY, UINT DstZ, ID3D11Resource *pSrcResource, UINT SrcSubresource, const D3D11_BOX *pSrcBox)
 {
 	assert(pDstResource != nullptr && pSrcResource != nullptr);
+
+	const auto plan = float_clone::planCopy(_orig, pDstResource, pSrcResource, false);
+	if (plan.kind == float_clone::CopyKind::dropped)
+		return;
+	pDstResource = plan.dest;
+	pSrcResource = plan.source;
 
 	if (reshade::has_addon_event<reshade::addon_event::copy_buffer_region>() ||
 		reshade::has_addon_event<reshade::addon_event::copy_texture_region>())
@@ -615,19 +661,39 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::CopySubresourceRegion(ID3D11Resour
 		}
 	}
 
+	if (plan.kind == float_clone::CopyKind::converted)
+	{
+		const float_clone::CopyRegion region { DstSubresource, DstX, DstY, SrcSubresource, pSrcBox };
+		float_clone::convertCopy(_orig, plan, &region);
+		return;
+	}
 	_orig->CopySubresourceRegion(pDstResource, DstSubresource, DstX, DstY, DstZ, pSrcResource, SrcSubresource, pSrcBox);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::CopyResource(ID3D11Resource *pDstResource, ID3D11Resource *pSrcResource)
 {
 	assert(pDstResource != nullptr && pSrcResource != nullptr);
 
+	const auto plan = float_clone::planCopy(_orig, pDstResource, pSrcResource, true);
+	if (plan.kind == float_clone::CopyKind::dropped)
+		return;
+	pDstResource = plan.dest;
+	pSrcResource = plan.source;
+
 	if (reshade::invoke_addon_event<reshade::addon_event::copy_resource>(this, to_handle(pSrcResource), to_handle(pDstResource)))
 		return;
+	if (plan.kind == float_clone::CopyKind::converted)
+	{
+		float_clone::convertCopy(_orig, plan, nullptr);
+		return;
+	}
 	_orig->CopyResource(pDstResource, pSrcResource);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::UpdateSubresource(ID3D11Resource *pDstResource, UINT DstSubresource, const D3D11_BOX *pDstBox, const void *pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch)
 {
 	assert(pDstResource != nullptr);
+
+	if (float_clone::isUpdateDropped(pDstResource))
+		return;
 
 	if (_orig->GetType() == D3D11_DEVICE_CONTEXT_IMMEDIATE)
 	{
@@ -716,18 +782,24 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::CopyStructureCount(ID3D11Buffer *p
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::ClearRenderTargetView(ID3D11RenderTargetView *pRenderTargetView, const FLOAT ColorRGBA[4])
 {
+	if (float_clone::hasClones())
+		pRenderTargetView = float_clone::swapView(_float, pRenderTargetView);
 	if (reshade::invoke_addon_event<reshade::addon_event::clear_render_target_view>(this, to_handle(pRenderTargetView), ColorRGBA, 0, nullptr))
 		return;
 	_orig->ClearRenderTargetView(pRenderTargetView, ColorRGBA);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::ClearUnorderedAccessViewUint(ID3D11UnorderedAccessView *pUnorderedAccessView, const UINT Values[4])
 {
+	if (float_clone::hasClones())
+		pUnorderedAccessView = float_clone::swapView(_float, pUnorderedAccessView);
 	if (reshade::invoke_addon_event<reshade::addon_event::clear_unordered_access_view_uint>(this, to_handle(pUnorderedAccessView), Values, 0, nullptr))
 		return;
 	_orig->ClearUnorderedAccessViewUint(pUnorderedAccessView, Values);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::ClearUnorderedAccessViewFloat(ID3D11UnorderedAccessView *pUnorderedAccessView, const FLOAT Values[4])
 {
+	if (float_clone::hasClones())
+		pUnorderedAccessView = float_clone::swapView(_float, pUnorderedAccessView);
 	if (reshade::invoke_addon_event<reshade::addon_event::clear_unordered_access_view_float>(this, to_handle(pUnorderedAccessView), Values, 0, nullptr))
 		return;
 	_orig->ClearUnorderedAccessViewFloat(pUnorderedAccessView, Values);
@@ -740,20 +812,29 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::ClearDepthStencilView(ID3D11DepthS
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::GenerateMips(ID3D11ShaderResourceView *pShaderResourceView)
 {
+	if (float_clone::hasClones())
+		pShaderResourceView = float_clone::swapView(_float, pShaderResourceView);
 	if (reshade::invoke_addon_event<reshade::addon_event::generate_mipmaps>(this, to_handle(pShaderResourceView)))
 		return;
 	_orig->GenerateMips(pShaderResourceView);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::SetResourceMinLOD(ID3D11Resource *pResource, FLOAT MinLOD)
 {
-	_orig->SetResourceMinLOD(pResource, MinLOD);
+	_orig->SetResourceMinLOD(float_clone::swapResource(pResource), MinLOD);
 }
 FLOAT   STDMETHODCALLTYPE D3D11DeviceContext::GetResourceMinLOD(ID3D11Resource *pResource)
 {
-	return _orig->GetResourceMinLOD(pResource);
+	return _orig->GetResourceMinLOD(float_clone::swapResource(pResource));
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::ResolveSubresource(ID3D11Resource *pDstResource, UINT DstSubresource, ID3D11Resource *pSrcResource, UINT SrcSubresource, DXGI_FORMAT Format)
 {
+	const auto plan = float_clone::planResolve(_orig, pDstResource, pSrcResource, Format);
+	if (plan.isDropped)
+		return;
+	pDstResource = plan.dest;
+	pSrcResource = plan.source;
+	Format = plan.format;
+
 	if (reshade::invoke_addon_event<reshade::addon_event::resolve_texture_region>(this, to_handle(pSrcResource), SrcSubresource, nullptr, to_handle(pDstResource), DstSubresource, 0, 0, 0, reshade::d3d11::convert_format(Format)))
 		return;
 	_orig->ResolveSubresource(pDstResource, DstSubresource, pSrcResource, SrcSubresource, Format);
@@ -778,6 +859,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::ExecuteCommandList(ID3D11CommandLi
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::HSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews)
 {
+	ID3D11ShaderResourceView *swapped[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+	ppShaderResourceViews = swap_resources(_float, NumViews, ppShaderResourceViews, swapped);
 	_orig->HSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
 	invoke_bind_shader_resource_views_event(reshade::api::shader_stage::hull, StartSlot, NumViews, ppShaderResourceViews);
 }
@@ -798,6 +881,8 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::HSSetConstantBuffers(UINT StartSlo
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews)
 {
+	ID3D11ShaderResourceView *swapped[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+	ppShaderResourceViews = swap_resources(_float, NumViews, ppShaderResourceViews, swapped);
 	_orig->DSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
 	invoke_bind_shader_resource_views_event(reshade::api::shader_stage::domain, StartSlot, NumViews, ppShaderResourceViews);
 }
@@ -818,11 +903,15 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DSSetConstantBuffers(UINT StartSlo
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::CSSetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView *const *ppShaderResourceViews)
 {
+	ID3D11ShaderResourceView *swapped[D3D11_COMMONSHADER_INPUT_RESOURCE_SLOT_COUNT];
+	ppShaderResourceViews = swap_resources(_float, NumViews, ppShaderResourceViews, swapped);
 	_orig->CSSetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
 	invoke_bind_shader_resource_views_event(reshade::api::shader_stage::compute, StartSlot, NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::CSSetUnorderedAccessViews(UINT StartSlot, UINT NumUAVs, ID3D11UnorderedAccessView *const *ppUnorderedAccessViews, const UINT *pUAVInitialCounts)
 {
+	ID3D11UnorderedAccessView *swapped[D3D11_1_UAV_SLOT_COUNT];
+	ppUnorderedAccessViews = swap_storage(_float, NumUAVs, ppUnorderedAccessViews, swapped);
 	_orig->CSSetUnorderedAccessViews(StartSlot, NumUAVs, ppUnorderedAccessViews, pUAVInitialCounts);
 	invoke_bind_unordered_access_views_event(reshade::api::shader_stage::compute, StartSlot, NumUAVs, ppUnorderedAccessViews);
 }
@@ -848,6 +937,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::VSGetConstantBuffers(UINT StartSlo
 void    STDMETHODCALLTYPE D3D11DeviceContext::PSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView **ppShaderResourceViews)
 {
 	_orig->PSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
+	float_clone::unswapViews(NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::PSGetShader(ID3D11PixelShader **ppPixelShader, ID3D11ClassInstance **ppClassInstances, UINT *pNumClassInstances)
 {
@@ -892,6 +982,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::IAGetPrimitiveTopology(D3D11_PRIMI
 void    STDMETHODCALLTYPE D3D11DeviceContext::VSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView **ppShaderResourceViews)
 {
 	_orig->VSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
+	float_clone::unswapViews(NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::VSGetSamplers(UINT StartSlot, UINT NumSamplers, ID3D11SamplerState **ppSamplers)
 {
@@ -904,6 +995,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::GetPredication(ID3D11Predicate **p
 void    STDMETHODCALLTYPE D3D11DeviceContext::GSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView **ppShaderResourceViews)
 {
 	_orig->GSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
+	float_clone::unswapViews(NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::GSGetSamplers(UINT StartSlot, UINT NumSamplers, ID3D11SamplerState **ppSamplers)
 {
@@ -912,10 +1004,13 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::GSGetSamplers(UINT StartSlot, UINT
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMGetRenderTargets(UINT NumViews, ID3D11RenderTargetView **ppRenderTargetViews, ID3D11DepthStencilView **ppDepthStencilView)
 {
 	_orig->OMGetRenderTargets(NumViews, ppRenderTargetViews, ppDepthStencilView);
+	float_clone::unswapViews(NumViews, ppRenderTargetViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMGetRenderTargetsAndUnorderedAccessViews(UINT NumRTVs, ID3D11RenderTargetView **ppRenderTargetViews, ID3D11DepthStencilView **ppDepthStencilView, UINT UAVStartSlot, UINT NumUAVs, ID3D11UnorderedAccessView **ppUnorderedAccessViews)
 {
 	_orig->OMGetRenderTargetsAndUnorderedAccessViews(NumRTVs, ppRenderTargetViews, ppDepthStencilView, UAVStartSlot, NumUAVs, ppUnorderedAccessViews);
+	float_clone::unswapViews(NumRTVs, ppRenderTargetViews);
+	float_clone::unswapViews(NumUAVs, ppUnorderedAccessViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::OMGetBlendState(ID3D11BlendState **ppBlendState, FLOAT BlendFactor[4], UINT *pSampleMask)
 {
@@ -944,6 +1039,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::RSGetScissorRects(UINT *pNumRects,
 void    STDMETHODCALLTYPE D3D11DeviceContext::HSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView **ppShaderResourceViews)
 {
 	_orig->HSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
+	float_clone::unswapViews(NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::HSGetShader(ID3D11HullShader **ppHullShader, ID3D11ClassInstance **ppClassInstances, UINT *pNumClassInstances)
 {
@@ -960,6 +1056,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::HSGetConstantBuffers(UINT StartSlo
 void    STDMETHODCALLTYPE D3D11DeviceContext::DSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView **ppShaderResourceViews)
 {
 	_orig->DSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
+	float_clone::unswapViews(NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DSGetShader(ID3D11DomainShader **ppDomainShader, ID3D11ClassInstance **ppClassInstances, UINT *pNumClassInstances)
 {
@@ -976,10 +1073,12 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DSGetConstantBuffers(UINT StartSlo
 void    STDMETHODCALLTYPE D3D11DeviceContext::CSGetShaderResources(UINT StartSlot, UINT NumViews, ID3D11ShaderResourceView **ppShaderResourceViews)
 {
 	_orig->CSGetShaderResources(StartSlot, NumViews, ppShaderResourceViews);
+	float_clone::unswapViews(NumViews, ppShaderResourceViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::CSGetUnorderedAccessViews(UINT StartSlot, UINT NumUAVs, ID3D11UnorderedAccessView **ppUnorderedAccessViews)
 {
 	_orig->CSGetUnorderedAccessViews(StartSlot, NumUAVs, ppUnorderedAccessViews);
+	float_clone::unswapViews(NumUAVs, ppUnorderedAccessViews);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::CSGetShader(ID3D11ComputeShader **ppComputeShader, ID3D11ClassInstance **ppClassInstances, UINT *pNumClassInstances)
 {
@@ -1028,6 +1127,7 @@ HRESULT STDMETHODCALLTYPE D3D11DeviceContext::FinishCommandList(BOOL RestoreDefe
 	if (!RestoreDeferredContextState)
 	{
 		reshade::invoke_addon_event<reshade::addon_event::reset_command_list>(this);
+		_float.clear();
 	}
 
 	return hr;
@@ -1042,6 +1142,12 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::CopySubresourceRegion1(ID3D11Resou
 	assert(_interface_version >= 1);
 
 	assert(pDstResource != nullptr && pSrcResource != nullptr);
+
+	const auto plan = float_clone::planCopy(_orig, pDstResource, pSrcResource, false);
+	if (plan.kind == float_clone::CopyKind::dropped)
+		return;
+	pDstResource = plan.dest;
+	pSrcResource = plan.source;
 
 	if (reshade::has_addon_event<reshade::addon_event::copy_buffer_region>() ||
 		reshade::has_addon_event<reshade::addon_event::copy_texture_region>())
@@ -1131,11 +1237,20 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::CopySubresourceRegion1(ID3D11Resou
 		}
 	}
 
+	if (plan.kind == float_clone::CopyKind::converted)
+	{
+		const float_clone::CopyRegion region { DstSubresource, DstX, DstY, SrcSubresource, pSrcBox };
+		float_clone::convertCopy(_orig, plan, &region);
+		return;
+	}
 	static_cast<ID3D11DeviceContext1 *>(_orig)->CopySubresourceRegion1(pDstResource, DstSubresource, DstX, DstY, DstZ, pSrcResource, SrcSubresource, pSrcBox, CopyFlags);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::UpdateSubresource1(ID3D11Resource *pDstResource, UINT DstSubresource, const D3D11_BOX *pDstBox, const void *pSrcData, UINT SrcRowPitch, UINT SrcDepthPitch, UINT CopyFlags)
 {
 	assert(_interface_version >= 1);
+
+	if (float_clone::isUpdateDropped(pDstResource))
+		return;
 
 	assert(pDstResource != nullptr);
 
@@ -1210,13 +1325,13 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DiscardResource(ID3D11Resource *pR
 {
 	assert(_interface_version >= 1);
 
-	static_cast<ID3D11DeviceContext1 *>(_orig)->DiscardResource(pResource);
+	static_cast<ID3D11DeviceContext1 *>(_orig)->DiscardResource(float_clone::swapResource(pResource));
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::DiscardView(ID3D11View *pResourceView)
 {
 	assert(_interface_version >= 1);
 
-	static_cast<ID3D11DeviceContext1 *>(_orig)->DiscardView(pResourceView);
+	static_cast<ID3D11DeviceContext1 *>(_orig)->DiscardView(float_clone::hasClones() ? float_clone::swapView(_float, pResourceView) : pResourceView);
 }
 void    STDMETHODCALLTYPE D3D11DeviceContext::VSSetConstantBuffers1(UINT StartSlot, UINT NumBuffers, ID3D11Buffer *const *ppConstantBuffers, const UINT *pFirstConstant, const UINT *pNumConstants)
 {
@@ -1312,6 +1427,9 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::ClearView(ID3D11View *pView, const
 {
 	assert(_interface_version >= 1);
 
+	if (float_clone::hasClones())
+		pView = float_clone::swapView(_float, pView);
+
 	if (com_ptr<ID3D11RenderTargetView> rtv;
 		SUCCEEDED(pView->QueryInterface(&rtv)))
 	{
@@ -1340,7 +1458,7 @@ void    STDMETHODCALLTYPE D3D11DeviceContext::DiscardView1(ID3D11View *pResource
 {
 	assert(_interface_version >= 1);
 
-	static_cast<ID3D11DeviceContext1 *>(_orig)->DiscardView1(pResourceView, pRects, NumRects);
+	static_cast<ID3D11DeviceContext1 *>(_orig)->DiscardView1(float_clone::hasClones() ? float_clone::swapView(_float, pResourceView) : pResourceView, pRects, NumRects);
 }
 
 HRESULT STDMETHODCALLTYPE D3D11DeviceContext::UpdateTileMappings(ID3D11Resource *pTiledResource, UINT NumTiledResourceRegions, const D3D11_TILED_RESOURCE_COORDINATE *pTiledResourceRegionStartCoordinates, const D3D11_TILE_REGION_SIZE *pTiledResourceRegionSizes, ID3D11Buffer *pTilePool, UINT NumRanges, const UINT *pRangeFlags, const UINT *pTilePoolStartOffsets, const UINT *pRangeTileCounts, UINT Flags)
@@ -1439,8 +1557,37 @@ HRESULT STDMETHODCALLTYPE D3D11DeviceContext::Wait(ID3D11Fence *pFence, UINT64 V
 	return static_cast<ID3D11DeviceContext4 *>(_orig)->Wait(pFence, Value);
 }
 
+void D3D11DeviceContext::invoke_clone_bound_targets()
+{
+	if (!float_clone::cloneBoundTargets(_orig, _float) || !reshade::has_addon_event<reshade::addon_event::bind_render_targets_and_depth_stencil>())
+		return;
+
+	ID3D11RenderTargetView *rtvs[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+	ID3D11DepthStencilView *dsv = nullptr;
+	_orig->OMGetRenderTargets(D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT, rtvs, &dsv);
+
+	UINT count = 0;
+	reshade::api::resource_view handles[D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT] = {};
+	for (UINT i = 0; i < D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+	{
+		handles[i] = to_handle(rtvs[i]);
+		if (rtvs[i] != nullptr)
+			count = i + 1;
+	}
+
+	reshade::invoke_addon_event<reshade::addon_event::bind_render_targets_and_depth_stencil>(this, count, handles, to_handle(dsv));
+
+	for (auto *rtv : rtvs)
+		if (rtv != nullptr)
+			rtv->Release();
+	if (dsv != nullptr)
+		dsv->Release();
+}
+
 void D3D11DeviceContext::invoke_bind_default_state_events()
 {
+	_float.clear();
+
 	// Call events with cleared state
 	reshade::invoke_addon_event<reshade::addon_event::bind_pipeline>(this, reshade::api::pipeline_stage::all, reshade::api::pipeline {});
 

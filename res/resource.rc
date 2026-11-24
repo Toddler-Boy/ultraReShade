@@ -91,6 +91,8 @@ IDR_MIPMAP_CS           RCDATA                  "shaders\\mipmap_cs_5_0.cso"
 
 IDR_MIPMAP_CS_GLSL      RCDATA                  "shaders\\mipmap_cs_430.glsl"
 
+IDR_FLOAT_COPY_PS       RCDATA                  "shaders\\float_copy_ps.cso"
+
 #endif    // Neutral (Default) resources
 /////////////////////////////////////////////////////////////////////////////
 

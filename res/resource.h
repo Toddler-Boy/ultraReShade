@@ -14,6 +14,7 @@
 #define IDR_IMGUI_VS_SPIRV              110
 #define IDR_MIPMAP_CS                   111
 #define IDR_MIPMAP_CS_GLSL              112
+#define IDR_FLOAT_COPY_PS               113
 #define IDB_MAIN_ICON                   600
 #define IDB_ULTRA_LOGO                  601
 
