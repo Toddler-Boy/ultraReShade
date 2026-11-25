@@ -7,7 +7,7 @@
 
 // The names ultraReShade answers (reshade::get_host, the form of reshade_ultra_api.h) and the cells of their records: what the add-on
 // tells it about what it does that ReShade cannot know. Every record's first cell is the effect runtime (an api::effect_runtime*, as the add-on events
-// give it); a call without a known runtime is refused. The two float_ names are about the game's textures, whatever runtime: no runtime cell
+// give it); a call without a known runtime is refused. The three float_ names are about the game's textures, whatever runtime: no runtime cell
 
 #include <stdint.h>
 
@@ -26,6 +26,8 @@ namespace reshade::host
 	{
 		// The rule for the game's float render targets: which textures get a float clone and which pixel shaders' draws make it
 		constexpr const char*	float_targets = "targets.float";
+		// Pauses the float clones: the game's own resources are used again, as the game calls
+		constexpr const char*	float_paused = "targets.float_paused";
 		// The game's texture a float clone stands for
 		constexpr const char*	float_source = "targets.float_source";
 		// The add-on's own screenshot files still being written
@@ -52,6 +54,13 @@ namespace reshade::host
 			constexpr const char*	formats = "formats";
 			constexpr const char*	shaders = "shaders";
 			constexpr const char*	shader_count = "shader_count";
+		}
+
+		// "targets.float_paused": paused 1 = no use of a resource goes to a clone and no clone is made (textures are still tagged, the
+		// clones made stay and are used again by 0). Set between frames
+		namespace float_paused
+		{
+			constexpr const char*	paused = "paused";
 		}
 
 		// "targets.float_source": for a resource handle (the clone's, as the add-on events give it) the game's texture it stands for and the

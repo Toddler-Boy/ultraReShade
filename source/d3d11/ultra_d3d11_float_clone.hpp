@@ -23,11 +23,20 @@ namespace reshade::ultra::d3d11::floatClone
 	{
 		inline std::atomic<bool>	hasTaggedTextures { false };
 		inline std::atomic<bool>	hasClonedTextures { false };
+		inline std::atomic<bool>	isPausedNow { false };
 	}
 
-	// Binds look no further when no texture is tagged (render targets) or cloned (the other views)
-	[[ nodiscard ]] inline bool hasTagged () { return detail::hasTaggedTextures.load ( std::memory_order_relaxed ); }
-	[[ nodiscard ]] inline bool hasClones () { return detail::hasClonedTextures.load ( std::memory_order_relaxed ); }
+	// Paused: every use of a resource is the game's own and no clone is made; tagging goes on and the clones made stay. Set between frames
+	inline void setPaused ( bool isPaused ) { detail::isPausedNow.store ( isPaused, std::memory_order_relaxed ); }
+	[[ nodiscard ]] inline bool isPaused () { return detail::isPausedNow.load ( std::memory_order_relaxed ); }
+
+	// Whatever the pause: a texture is tagged or cloned at all
+	[[ nodiscard ]] inline bool areAnyTagged () { return detail::hasTaggedTextures.load ( std::memory_order_relaxed ); }
+	[[ nodiscard ]] inline bool areAnyCloned () { return detail::hasClonedTextures.load ( std::memory_order_relaxed ); }
+
+	// Binds look no further when no texture is tagged (render targets) or cloned (the other views), or while paused
+	[[ nodiscard ]] inline bool hasTagged () { return areAnyTagged () && ! isPaused (); }
+	[[ nodiscard ]] inline bool hasClones () { return areAnyCloned () && ! isPaused (); }
 
 	enum class ViewKind : uint8_t { shaderResource, renderTarget, unorderedAccess };
 
@@ -46,7 +55,7 @@ namespace reshade::ultra::d3d11::floatClone
 		const void*				trigger = nullptr;				// the pixel shader bound, when it is one of the rule's
 		bool					hasPendingTarget = false;		// a render target bound is a tagged texture without a clone
 
-		[[ nodiscard ]] bool isDue () const { return trigger != nullptr && hasPendingTarget; }
+		[[ nodiscard ]] bool isDue () const { return trigger != nullptr && hasPendingTarget && ! isPaused (); }
 		void clear ();
 	};
 

@@ -680,7 +680,7 @@ namespace reshade::ultra::d3d11::floatClone
 
 	void noteView ( ID3D11Resource* resource, ID3D11View* view, ViewKind kind )
 	{
-		if ( ! hasTagged () )
+		if ( ! areAnyTagged () )
 			return;
 
 		auto&	t = tables ();
@@ -798,7 +798,7 @@ namespace reshade::ultra::d3d11::floatClone
 	template <typename View>
 	void unswapViews ( UINT count, View** views )
 	{
-		if ( ! hasClones () || views == nullptr )
+		if ( ! areAnyCloned () || views == nullptr )
 			return;
 
 		auto&	t = tables ();
@@ -1039,7 +1039,7 @@ namespace reshade::ultra::d3d11::floatClone
 
 	uint64_t sourceOf ( uint64_t clone, uint32_t& format )
 	{
-		if ( ! hasClones () )
+		if ( ! areAnyCloned () )
 			return 0;
 
 		std::shared_lock	lock ( tables ().lock );

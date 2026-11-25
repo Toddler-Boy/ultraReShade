@@ -71,6 +71,7 @@ namespace
 	constexpr Field	depthSeenFields[] { { cells::runtime, ugPtr }, { cells::depth_seen::clears, ugU32 }, { cells::depth_seen::candidates, ugU32 } };
 	constexpr Field	depthCandidateFields[] { { cells::runtime, ugPtr }, { cells::depth_candidate::index, ugU32 }, { cells::depth_candidate::width, ugU32 }, { cells::depth_candidate::height, ugU32 } };
 	constexpr Field	floatTargetsFields[] { { cells::float_targets::formats, ugU32 }, { cells::float_targets::shaders, ugPtr }, { cells::float_targets::shader_count, ugU32 } };
+	constexpr Field	floatPausedFields[] { { cells::float_paused::paused, ugU32 } };
 	constexpr Field	floatSourceFields[] { { cells::float_source::resource, ugU64 }, { cells::float_source::source, ugU64 }, { cells::float_source::format, ugU32 } };
 
 	constexpr uint32_t	maxRuleShaders = 4096;
@@ -184,7 +185,7 @@ namespace
 {
 	using Access = reshade::ultra::HostAccess;
 
-	// The two names about the game's textures: no runtime, a record of their own
+	// The names about the game's textures: no runtime, a record of their own
 	int floatTargets ( UgCell* c )
 	{
 		constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( floatTargetsFields, name ); };
@@ -201,6 +202,14 @@ namespace
 
 		if ( reshade::ultra::floatClone::stateRule ( formats, shaders, count ) )
 			reshade::ultra::d3d11::floatClone::rulesChanged ();
+		return 1;
+	}
+
+	int floatPaused ( UgCell* c )
+	{
+		constexpr auto	at = [] ( std::string_view name ) consteval { return cellOf ( floatPausedFields, name ); };
+
+		reshade::ultra::d3d11::floatClone::setPaused ( c[ at ( cells::float_paused::paused ) ].u32 != 0 );
 		return 1;
 	}
 
@@ -243,6 +252,7 @@ namespace
 	constexpr const char*	depthSeenName = names::depth_seen;
 	constexpr const char*	depthCandidateName = names::depth_candidate;
 	constexpr const char*	floatTargetsName = names::float_targets;
+	constexpr const char*	floatPausedName = names::float_paused;
 	constexpr const char*	floatSourceName = names::float_source;
 
 	constexpr Answer	answers[] {
@@ -252,6 +262,7 @@ namespace
 		{ names::depth_seen, &call<depthSeenFields, depthSeenName, &Access::depthSeen>, depthSeenFields },
 		{ names::depth_candidate, &call<depthCandidateFields, depthCandidateName, &Access::depthCandidate>, depthCandidateFields },
 		{ names::float_targets, &callPlain<floatTargetsFields, floatTargetsName, &floatTargets>, floatTargetsFields },
+		{ names::float_paused, &callPlain<floatPausedFields, floatPausedName, &floatPaused>, floatPausedFields },
 		{ names::float_source, &callPlain<floatSourceFields, floatSourceName, &floatSource>, floatSourceFields },
 	};
 
